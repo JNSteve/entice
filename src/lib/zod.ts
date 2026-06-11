@@ -206,6 +206,71 @@ export const plantSchema = z.object({
 
 export type PlantInput = z.infer<typeof plantSchema>
 
+// ─── Quotes ──────────────────────────────────────────────────────────────────
+
+export const QUOTE_STATUSES = ['draft', 'sent', 'accepted', 'lost'] as const
+export type QuoteStatus = (typeof QUOTE_STATUSES)[number]
+
+export const quoteCreateSchema = z.object({
+  client_id: z.uuid('Pick a client'),
+  site_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  contact_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  title: z.string().min(1, 'Title is required'),
+})
+
+export type QuoteCreateInput = z.infer<typeof quoteCreateSchema>
+
+export const quoteHeaderSchema = z.object({
+  title: z.string().min(1, 'Title is required').optional(),
+  description: optionalText.optional(),
+  valid_days: z.coerce.number().int().min(1).max(365).optional(),
+  notes: optionalText.optional(),
+})
+
+export type QuoteHeaderInput = z.infer<typeof quoteHeaderSchema>
+
+export const quoteStatusSchema = z.object({
+  status: z.enum(['sent', 'accepted', 'lost']),
+  lost_reason: optionalText.optional(),
+})
+
+export type QuoteStatusInput = z.infer<typeof quoteStatusSchema>
+
+export const quoteSectionSchema = z.object({
+  quote_id: z.uuid(),
+  title: z.string().min(1, 'Section title is required'),
+})
+
+export type QuoteSectionInput = z.infer<typeof quoteSectionSchema>
+
+export const quoteLineCreateSchema = z.object({
+  quote_id: z.uuid(),
+  section_id: z.uuid(),
+  /** When set, the line is prefilled from this rate item. */
+  rate_item_id: z.uuid().optional(),
+})
+
+export type QuoteLineCreateInput = z.infer<typeof quoteLineCreateSchema>
+
+export const quoteLineUpdateSchema = z.object({
+  description: z.string(),
+  qty: z.coerce.number().min(0),
+  unit: z.string().min(1, 'Unit is required'),
+  unit_cost: z.coerce.number().min(0),
+  markup_pct: z.coerce.number().min(-100).max(1000),
+  unit_sell: z.coerce.number().min(0),
+  /** When false, unit_sell is recomputed server-side from cost + markup. */
+  sell_overridden: z.boolean(),
+})
+
+export type QuoteLineUpdateInput = z.infer<typeof quoteLineUpdateSchema>
+
 // ─── Checklist templates ─────────────────────────────────────────────────────
 
 export const checklistTemplateSchema = z.object({
