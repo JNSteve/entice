@@ -1,11 +1,13 @@
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { computeClaim, type ClaimLineInput } from '@/lib/claims'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
 import { QuotePdf, type QuotePdfSection } from '@/pdf/QuotePdf'
 import { InvoicePdf } from '@/pdf/InvoicePdf'
 import { PoPdf } from '@/pdf/PoPdf'
+import { ClaimPdf, type ClaimPdfLine } from '@/pdf/ClaimPdf'
 import type { DocCompany } from '@/pdf/DocShell'
 
 export const runtime = 'nodejs'
@@ -74,7 +76,9 @@ export async function GET(
       return invoicePdf(id)
     case 'po':
       return poPdf(id)
-    // claim | diary | swms land in later tasks
+    case 'claim':
+      return claimPdf(id)
+    // diary | swms land in later tasks
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -256,6 +260,196 @@ async function quotePdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${quote.number}.pdf"`,
+    },
+  })
+}
+
+async function claimPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: claim }, { data: claimLines }, { data: settings }] = await Promise.all([
+    supabase
+      .from('claims')
+      .select(
+        `id, project_id, number, status, reference_date, gst_rate,
+         gross_this_claim, retention_this_claim, subtotal, gst, total_inc_gst,
+         projects(name, number, client_ref, superintendent, contract_sum,
+                  retention_pct, retention_cap_pct, clients(name, abn))`
+      )
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('claim_lines')
+      .select(
+        'source_type, source_id, description, line_value, pct_complete, previous_claimed, claimed_to_date, this_claim'
+      )
+      .eq('claim_id', id),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path, claim_footer')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  if (!claim) return new Response('Not found', { status: 404 })
+
+  const projectRel = claim.projects as unknown as {
+    name: string
+    number: string
+    client_ref: string | null
+    superintendent: string | null
+    contract_sum: number
+    retention_pct: number
+    retention_cap_pct: number
+    clients: { name: string; abn: string | null } | null
+  } | null
+  if (!projectRel) return new Response('Not found', { status: 404 })
+
+  const [{ data: budgetLines }, { data: variations }, { data: retentionEntries }] =
+    await Promise.all([
+      supabase
+        .from('budget_lines')
+        .select('id, position')
+        .eq('project_id', claim.project_id)
+        .order('position'),
+      supabase
+        .from('variations')
+        .select('id, number, sell_amount, status')
+        .eq('project_id', claim.project_id),
+      supabase
+        .from('retention_entries')
+        .select('kind, amount, claim_id, claims(number)')
+        .eq('project_id', claim.project_id),
+    ])
+
+  // Deterministic ordering matching the editor.
+  const budgetPos = new Map((budgetLines ?? []).map((b, i) => [b.id as string, i]))
+  const voNum = new Map((variations ?? []).map((v) => [v.id as string, v.number as number]))
+  const orderKey = (l: { source_type: string; source_id: string }) =>
+    l.source_type === 'budget_line'
+      ? (budgetPos.get(l.source_id) ?? Number.MAX_SAFE_INTEGER)
+      : (voNum.get(l.source_id) ?? Number.MAX_SAFE_INTEGER)
+
+  const sorted = (claimLines ?? [])
+    .map((l) => ({
+      source_type: l.source_type as string,
+      source_id: l.source_id as string,
+      description: l.description as string,
+      line_value: Number(l.line_value),
+      pct_complete: Number(l.pct_complete),
+      previous_claimed: Number(l.previous_claimed),
+      claimed_to_date: Number(l.claimed_to_date),
+      this_claim: Number(l.this_claim),
+    }))
+    .sort(
+      (a, b) =>
+        orderKey(a) - orderKey(b) || a.description.localeCompare(b.description)
+    )
+
+  const toPdfLine = (l: (typeof sorted)[number]): ClaimPdfLine => ({
+    description: l.description,
+    line_value: l.line_value,
+    pct_complete: l.pct_complete,
+    claimed_to_date: l.claimed_to_date,
+    previous_claimed: l.previous_claimed,
+    this_claim: l.this_claim,
+  })
+  const contractLines = sorted.filter((l) => l.source_type === 'budget_line').map(toPdfLine)
+  const variationLines = sorted.filter((l) => l.source_type === 'variation').map(toPdfLine)
+
+  // Retention held up to and including this claim (later claims excluded).
+  const heldToDateBase = round2(
+    (retentionEntries ?? []).reduce((s, e) => {
+      const entryClaimNumber =
+        (e.claims as unknown as { number: number } | null)?.number ?? null
+      if (entryClaimNumber != null && entryClaimNumber > claim.number) return s
+      return s + (e.kind === 'withheld' ? Number(e.amount) : -Number(e.amount))
+    }, 0)
+  )
+
+  const gstRate = Number(claim.gst_rate)
+  let totals: {
+    gross: number
+    retention: number
+    retentionHeldToDate: number
+    subtotal: number
+    gst: number
+    gstRate: number
+    total: number
+  }
+
+  if (claim.status !== 'draft' && claim.subtotal != null) {
+    totals = {
+      gross: Number(claim.gross_this_claim ?? 0),
+      retention: Number(claim.retention_this_claim ?? 0),
+      retentionHeldToDate: heldToDateBase,
+      subtotal: Number(claim.subtotal),
+      gst: Number(claim.gst ?? 0),
+      gstRate,
+      total: Number(claim.total_inc_gst ?? 0),
+    }
+  } else {
+    // Draft: recompute via the engine against the adjusted contract sum.
+    const adjustedSum = round2(
+      Number(projectRel.contract_sum) +
+        (variations ?? [])
+          .filter((v) => v.status === 'approved')
+          .reduce((s, v) => s + Number(v.sell_amount), 0)
+    )
+    const inputs: ClaimLineInput[] = sorted.map((l) => ({
+      sourceType: l.source_type as 'budget_line' | 'variation',
+      sourceId: l.source_id,
+      description: l.description,
+      lineValue: l.line_value,
+      pctComplete: l.pct_complete,
+      previousClaimed: l.previous_claimed,
+    }))
+    const result = computeClaim(
+      inputs,
+      {
+        pctPerClaim: Number(projectRel.retention_pct),
+        capPct: Number(projectRel.retention_cap_pct),
+        contractSum: adjustedSum,
+        previouslyWithheld: heldToDateBase,
+      },
+      gstRate
+    )
+    totals = {
+      gross: result.grossThisClaim,
+      retention: result.retentionThisClaim,
+      retentionHeldToDate: round2(heldToDateBase + result.retentionThisClaim),
+      subtotal: result.subtotal,
+      gst: result.gst,
+      gstRate,
+      total: result.totalIncGst,
+    }
+  }
+
+  const buffer = await renderToBuffer(
+    <ClaimPdf
+      claim={{
+        number: claim.number,
+        date: fmtDate(claim.reference_date),
+        status: claim.status,
+        projectName: projectRel.name,
+        projectNumber: projectRel.number,
+        clientName: projectRel.clients?.name ?? '—',
+        clientAbn: projectRel.clients?.abn,
+        clientRef: projectRel.client_ref,
+        superintendent: projectRel.superintendent,
+      }}
+      company={toCompany(settings)}
+      contractLines={contractLines}
+      variationLines={variationLines}
+      totals={totals}
+      footerText={settings?.claim_footer ?? null}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="payment-claim-${claim.number}.pdf"`,
     },
   })
 }

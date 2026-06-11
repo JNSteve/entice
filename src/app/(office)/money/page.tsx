@@ -2,8 +2,18 @@ import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
+import { StatusBadge } from '@/components/StatusBadge'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { docTotals } from '@/lib/money'
+import { aud, fmtDate } from '@/lib/format'
 import { InvoiceTableWithExport, type InvoiceRow } from './xero-export-button'
 
 const FILTER_TABS = [
@@ -37,7 +47,15 @@ export default async function MoneyPage({
   if (filter === 'unpaid') query = query.in('status', ['draft', 'sent'])
   if (filter === 'paid') query = query.eq('status', 'paid')
 
-  const { data: invoices } = await query
+  const [{ data: invoices }, { data: claims }] = await Promise.all([
+    query,
+    supabase
+      .from('claims')
+      .select(
+        'id, project_id, number, status, total_inc_gst, certified_amount, paid_at, projects(number, name)'
+      )
+      .order('created_at', { ascending: false }),
+  ])
 
   const rows: InvoiceRow[] = (invoices ?? []).map((inv) => {
     const lines = ((inv.invoice_lines ?? []) as { description: string; qty: number; unit_sell: number }[]).map(
@@ -106,6 +124,73 @@ export default async function MoneyPage({
       </div>
 
       <InvoiceTableWithExport rows={rows} emptyMessage={emptyMessage} />
+
+      {/* Progress claims */}
+      <section className="flex flex-col gap-3">
+        <h2 className="text-base font-semibold">Progress claims</h2>
+        {(claims ?? []).length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No claims yet. Create one from a project&apos;s Claims tab.
+          </p>
+        ) : (
+          <div className="rounded-xl border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Project</TableHead>
+                  <TableHead>Claim #</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Total inc GST</TableHead>
+                  <TableHead className="text-right">Certified</TableHead>
+                  <TableHead>Paid</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {(claims ?? []).map((c) => {
+                  const project = c.projects as unknown as {
+                    number: string
+                    name: string
+                  } | null
+                  return (
+                    <TableRow key={c.id}>
+                      <TableCell>
+                        <Link
+                          href={`/projects/${c.project_id}`}
+                          className="hover:underline"
+                        >
+                          {project ? `${project.number} — ${project.name}` : '—'}
+                        </Link>
+                      </TableCell>
+                      <TableCell className="font-mono font-medium">
+                        <Link
+                          href={`/projects/${c.project_id}/claims/${c.id}`}
+                          className="hover:underline"
+                        >
+                          PC-{c.number}
+                        </Link>
+                      </TableCell>
+                      <TableCell>
+                        <StatusBadge status={c.status} />
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {c.total_inc_gst != null ? aud(Number(c.total_inc_gst)) : '—'}
+                      </TableCell>
+                      <TableCell className="text-right tabular-nums">
+                        {c.certified_amount != null
+                          ? aud(Number(c.certified_amount))
+                          : '—'}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground tabular-nums">
+                        {c.paid_at ? fmtDate(c.paid_at) : '—'}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </section>
     </div>
   )
 }

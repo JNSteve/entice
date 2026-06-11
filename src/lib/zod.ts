@@ -624,6 +624,29 @@ export const variationStatusSchema = z.object({
 
 export type VariationStatusInput = z.infer<typeof variationStatusSchema>
 
+// ─── Claims ──────────────────────────────────────────────────────────────────
+
+export const CLAIM_STATUSES = ['draft', 'submitted', 'certified', 'paid'] as const
+export type ClaimStatus = (typeof CLAIM_STATUSES)[number]
+
+export const claimLineUpdateSchema = z.object({
+  pct_complete: z.coerce
+    .number()
+    .min(0, '% complete cannot be negative')
+    .max(100, '% complete cannot exceed 100'),
+  /** Unlocks values below the previously-claimed floor (credit situations). */
+  allow_reduction: z.boolean().default(false),
+})
+
+export type ClaimLineUpdateInput = z.infer<typeof claimLineUpdateSchema>
+
+export const claimCertifySchema = z.object({
+  certified_amount: z.coerce.number().min(0, 'Certified amount cannot be negative'),
+  schedule_received_at: z.string().min(1, 'Schedule received date is required'),
+})
+
+export type ClaimCertifyInput = z.infer<typeof claimCertifySchema>
+
 // ─── Vendors ─────────────────────────────────────────────────────────────────
 
 export const vendorQuickSchema = z.object({
