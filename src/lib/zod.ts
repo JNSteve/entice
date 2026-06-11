@@ -727,3 +727,58 @@ export const retentionReleaseSchema = z.object({
 })
 
 export type RetentionReleaseInput = z.infer<typeof retentionReleaseSchema>
+
+// ─── Trade packages ───────────────────────────────────────────────────────────
+
+export const PACKAGE_STATUSES = [
+  'planned',
+  'rfq_out',
+  'quotes_in',
+  'recommended',
+  'awarded',
+] as const
+export type PackageStatus = (typeof PACKAGE_STATUSES)[number]
+
+export const packageCreateSchema = z.object({
+  project_id: z.uuid(),
+  name: z.string().min(1, 'Package name is required'),
+  budget_amount: z.coerce.number().min(0).default(0),
+  cost_code_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  owner_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  let_by_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+  notes: optionalText,
+})
+
+export type PackageCreateInput = z.infer<typeof packageCreateSchema>
+
+export const packageUpdateSchema = z.object({
+  name: z.string().min(1, 'Package name is required').optional(),
+  budget_amount: z.coerce.number().min(0).optional(),
+  cost_code_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  owner_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  let_by_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  notes: optionalText.optional(),
+})
+
+export type PackageUpdateInput = z.infer<typeof packageUpdateSchema>
