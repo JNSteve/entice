@@ -424,3 +424,106 @@ export const jobCostSchema = z.object({
 })
 
 export type JobCostInput = z.infer<typeof jobCostSchema>
+
+// ─── Projects ────────────────────────────────────────────────────────────────
+
+export const PROJECT_STATUSES = [
+  'active',
+  'practical_completion',
+  'defects_liability',
+  'closed',
+] as const
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number]
+
+export const projectCreateSchema = z.object({
+  client_id: z.uuid('Pick a client'),
+  site_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  name: z.string().min(1, 'Name is required'),
+  description: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+  contract_sum: z.coerce.number().min(0).default(0),
+  retention_pct: z.coerce.number().min(0).max(100).default(10),
+  retention_cap_pct: z.coerce.number().min(0).max(100).default(5),
+  dlp_months: z.coerce.number().int().min(0).max(120).default(12),
+  claim_day: z.coerce.number().int().min(1).max(31).default(25),
+  start_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+  supervisor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type ProjectCreateInput = z.infer<typeof projectCreateSchema>
+
+/** Status transitions are validated in the server action (forward-only chain). */
+export const projectUpdateSchema = z.object({
+  name: z.string().min(1, 'Name is required').optional(),
+  description: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  status: z.enum(PROJECT_STATUSES).optional(),
+  site_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  supervisor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  contract_sum: z.coerce.number().min(0).optional(),
+  retention_pct: z.coerce.number().min(0).max(100).optional(),
+  retention_cap_pct: z.coerce.number().min(0).max(100).optional(),
+  dlp_months: z.coerce.number().int().min(0).max(120).optional(),
+  claim_day: z.coerce.number().int().min(1).max(31).optional(),
+  start_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  client_ref: optionalText.optional(),
+  superintendent: optionalText.optional(),
+})
+
+export type ProjectUpdateInput = z.infer<typeof projectUpdateSchema>
+
+export const budgetLineSchema = z.object({
+  project_id: z.uuid(),
+  cost_code_id: z.uuid('Pick a cost code'),
+  description: z.string().min(1, 'Description is required'),
+  budget_amount: z.coerce.number().min(0),
+})
+
+export type BudgetLineInput = z.infer<typeof budgetLineSchema>
+
+export const budgetLineUpdateSchema = z.object({
+  description: z.string().min(1, 'Description is required').optional(),
+  cost_code_id: z.uuid('Pick a cost code').optional(),
+  budget_amount: z.coerce.number().min(0).optional(),
+})
+
+export type BudgetLineUpdateInput = z.infer<typeof budgetLineUpdateSchema>
+
+export const projectCostSchema = z.object({
+  project_id: z.uuid(),
+  date: z.string().min(1, 'Date is required'),
+  description: z.string().min(1, 'Description is required'),
+  amount: z.coerce.number().positive('Amount must be positive'),
+  cost_code_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type ProjectCostInput = z.infer<typeof projectCostSchema>
