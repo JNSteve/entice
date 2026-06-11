@@ -25,7 +25,7 @@ function revalidateJob(jobId: string) {
 export async function createJob(
   data: unknown
 ): Promise<{ error?: string; id?: string }> {
-  await requireRole('admin', 'office', 'supervisor')
+  await requireRole('admin', 'office')
 
   const parsed = jobCreateSchema.safeParse(data)
   if (!parsed.success) {
