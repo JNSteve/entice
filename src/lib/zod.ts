@@ -660,6 +660,60 @@ export const vendorQuickSchema = z.object({
 
 export type VendorQuickInput = z.infer<typeof vendorQuickSchema>
 
+export const vendorSchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  abn: optionalText.refine(
+    (v) => v === null || /^\d{11}$/.test(v.replace(/\s/g, '')),
+    'ABN must be 11 digits'
+  ).optional(),
+  trades: z
+    .string()
+    .optional()
+    .transform((v) =>
+      (v ?? '')
+        .split(',')
+        .map((t) => t.trim())
+        .filter(Boolean)
+    ),
+  contact_name: optionalText.optional(),
+  email: optionalText
+    .refine(
+      (v) => v === null || z.email().safeParse(v).success,
+      'Invalid email address'
+    )
+    .optional(),
+  phone: optionalText.optional(),
+  payment_terms_days: z.coerce.number().int().min(0).max(120).default(30),
+  notes: optionalText.optional(),
+})
+
+export type VendorInput = z.infer<typeof vendorSchema>
+
+export const COMPLIANCE_DOC_KINDS = [
+  'public_liability',
+  'workers_comp',
+  'licence',
+  'other',
+] as const
+export type ComplianceDocKind = (typeof COMPLIANCE_DOC_KINDS)[number]
+
+export const COMPLIANCE_DOC_KIND_LABELS: Record<ComplianceDocKind, string> = {
+  public_liability: 'Public Liability',
+  workers_comp: "Workers' Comp",
+  licence: 'Licence',
+  other: 'Other',
+}
+
+export const complianceDocSchema = z.object({
+  id: z.string().uuid().optional(),
+  vendor_id: z.string().uuid(),
+  kind: z.enum(COMPLIANCE_DOC_KINDS),
+  reference: optionalText.optional(),
+  expiry_date: z.string().min(1, 'Expiry date is required'),
+})
+
+export type ComplianceDocInput = z.infer<typeof complianceDocSchema>
+
 // ─── Retention ────────────────────────────────────────────────────────────────
 
 export const RETENTION_RELEASE_KINDS = ['release_pc', 'release_final'] as const
