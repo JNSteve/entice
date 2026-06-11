@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState } from 'react'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 
@@ -38,18 +38,12 @@ export function MoneyInput({
   className,
 }: MoneyInputProps) {
   const [focused, setFocused] = useState(false)
+  // rawText is only meaningful while focused; when blurred we derive from value.
   const [rawText, setRawText] = useState('')
-
-  // When value changes externally and not focused, sync display
-  useEffect(() => {
-    if (!focused) {
-      setRawText(formatDisplay(value))
-    }
-  }, [value, focused])
 
   function handleFocus() {
     setFocused(true)
-    // Show raw number without formatting when focused
+    // Show raw number without formatting when focused.
     setRawText(value != null ? String(value) : '')
   }
 
@@ -57,7 +51,6 @@ export function MoneyInput({
     setFocused(false)
     const parsed = parseRaw(rawText, allowNegative)
     onChange(parsed)
-    setRawText(formatDisplay(parsed))
   }
 
   function handleChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -68,7 +61,7 @@ export function MoneyInput({
     <Input
       type="text"
       inputMode="decimal"
-      value={rawText}
+      value={focused ? rawText : formatDisplay(value)}
       placeholder={placeholder ?? '0.00'}
       className={cn('text-right tabular-nums', className)}
       onChange={handleChange}

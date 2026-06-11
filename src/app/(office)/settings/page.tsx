@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { requireRole } from '@/lib/auth'
 import { PageHeader } from '@/components/PageHeader'
 import { SettingsTabs, type SettingsTab } from './settings-tabs'
 
@@ -21,7 +22,10 @@ export default async function SettingsPage({
     ? (tab as SettingsTab)
     : 'company'
 
-  const supabase = await createClient()
+  const [caller, supabase] = await Promise.all([
+    requireRole('admin'),
+    createClient(),
+  ])
 
   const [
     { data: settings },
@@ -65,6 +69,7 @@ export default async function SettingsPage({
         initialTab={initialTab}
         settings={settings}
         profiles={profiles ?? []}
+        currentUserId={caller.id}
         rateItems={rateItems ?? []}
         costCodes={costCodes ?? []}
         plant={plant ?? []}

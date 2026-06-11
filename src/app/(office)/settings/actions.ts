@@ -55,7 +55,12 @@ export async function createUser(
     p_role: parsed.data.role,
   })
 
-  if (error) return { error: error.message }
+  if (error) {
+    if (/duplicate|already exists|unique/i.test(error.message)) {
+      return { error: 'A user with that email already exists' }
+    }
+    return { error: error.message }
+  }
 
   revalidatePath('/settings')
   return { id: id as string }
@@ -65,11 +70,21 @@ export async function updateProfile(
   id: string,
   data: unknown
 ): Promise<{ error?: string }> {
-  await requireRole('admin')
+  const caller = await requireRole('admin')
 
   const parsed = profileUpdateSchema.safeParse(data)
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  // Prevent an admin from demoting or deactivating their own account.
+  if (id === caller.id) {
+    if (parsed.data.role !== undefined && parsed.data.role !== 'admin') {
+      return { error: "You can't demote or deactivate your own admin account" }
+    }
+    if (parsed.data.active !== undefined && parsed.data.active === false) {
+      return { error: "You can't demote or deactivate your own admin account" }
+    }
   }
 
   const supabase = await createSupabaseClient()

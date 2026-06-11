@@ -44,7 +44,13 @@ const ROLE_LABELS: Record<UserRole, string> = {
   field: 'Field',
 }
 
-export function UsersSection({ profiles }: { profiles: ProfileRow[] }) {
+export function UsersSection({
+  profiles,
+  currentUserId,
+}: {
+  profiles: ProfileRow[]
+  currentUserId: string
+}) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between gap-4">
@@ -96,16 +102,21 @@ export function UsersSection({ profiles }: { profiles: ProfileRow[] }) {
             key: 'actions',
             header: <span className="sr-only">Actions</span>,
             className: 'w-0',
-            render: (r: ProfileRow) => (
-              <div className="flex items-center justify-end gap-1">
-                <EditUserDialog profile={r} />
-                <ToggleActiveButton
-                  active={r.active}
-                  label={r.full_name}
-                  onToggle={(active) => updateProfile(r.id, { active })}
-                />
-              </div>
-            ),
+            render: (r: ProfileRow) => {
+              const isSelf = r.id === currentUserId
+              return (
+                <div className="flex items-center justify-end gap-1">
+                  <EditUserDialog profile={r} isSelf={isSelf} />
+                  {!isSelf && (
+                    <ToggleActiveButton
+                      active={r.active}
+                      label={r.full_name}
+                      onToggle={(active) => updateProfile(r.id, { active })}
+                    />
+                  )}
+                </div>
+              )
+            },
           },
         ]}
         rows={profiles}
@@ -287,7 +298,13 @@ function NewUserDialog() {
 
 // ─── Edit user dialog ─────────────────────────────────────────────────────────
 
-function EditUserDialog({ profile }: { profile: ProfileRow }) {
+function EditUserDialog({
+  profile,
+  isSelf,
+}: {
+  profile: ProfileRow
+  isSelf: boolean
+}) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
@@ -349,7 +366,11 @@ function EditUserDialog({ profile }: { profile: ProfileRow }) {
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="eu-role">Role</Label>
-              <Select value={role} onValueChange={(v) => setRole(v as UserRole)}>
+              <Select
+                value={role}
+                onValueChange={(v) => setRole(v as UserRole)}
+                disabled={isSelf}
+              >
                 <SelectTrigger id="eu-role" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
@@ -361,6 +382,11 @@ function EditUserDialog({ profile }: { profile: ProfileRow }) {
                   ))}
                 </SelectContent>
               </Select>
+              {isSelf && (
+                <p className="text-xs text-muted-foreground">
+                  You can&apos;t change your own role or active status.
+                </p>
+              )}
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="eu-hourly">Hourly cost (AUD)</Label>

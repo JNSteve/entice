@@ -33,6 +33,7 @@ interface SettingsTabsProps {
   initialTab: SettingsTab
   settings: SettingsRow | null
   profiles: ProfileRow[]
+  currentUserId: string
   rateItems: RateItemRow[]
   costCodes: CostCodeRow[]
   plant: PlantRow[]
@@ -43,6 +44,7 @@ export function SettingsTabs({
   initialTab,
   settings,
   profiles,
+  currentUserId,
   rateItems,
   costCodes,
   plant,
@@ -70,7 +72,7 @@ export function SettingsTabs({
         <CompanyForm settings={settings} />
       </TabsContent>
       <TabsContent value="users" className="pt-4">
-        <UsersSection profiles={profiles} />
+        <UsersSection profiles={profiles} currentUserId={currentUserId} />
       </TabsContent>
       <TabsContent value="rates" className="pt-4">
         <RatesSection rateItems={rateItems} />

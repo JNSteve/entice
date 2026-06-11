@@ -53,9 +53,14 @@ export function CompanyForm({ settings }: { settings: SettingsRow | null }) {
       let newLogoPath: string | undefined
 
       if (logoFile) {
+        const ALLOWED = ['png', 'jpg', 'jpeg', 'svg', 'webp']
         const ext =
           logoFile.name.split('.').pop()?.toLowerCase().replace(/[^a-z0-9]/g, '') ||
-          'png'
+          ''
+        if (!ALLOWED.includes(ext)) {
+          toast.error('Logo must be PNG, JPG, SVG or WebP')
+          return
+        }
         const path = `logo.${ext}`
         const supabase = createClient()
         const { error: uploadError } = await supabase.storage
