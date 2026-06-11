@@ -1,4 +1,5 @@
 import { renderToBuffer } from '@react-pdf/renderer'
+import { format, parseISO } from 'date-fns'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { computeClaim, type ClaimLineInput } from '@/lib/claims'
@@ -8,13 +9,16 @@ import { QuotePdf, type QuotePdfSection } from '@/pdf/QuotePdf'
 import { InvoicePdf } from '@/pdf/InvoicePdf'
 import { PoPdf } from '@/pdf/PoPdf'
 import { ClaimPdf, type ClaimPdfLine } from '@/pdf/ClaimPdf'
+import { DiaryPdf, type DiaryPdfDay, type DiaryPdfPhoto } from '@/pdf/DiaryPdf'
 import type { DocCompany } from '@/pdf/DocShell'
 
 export const runtime = 'nodejs'
 
-// PDFs are money documents — office/admin only. /api/* is excluded from the
-// auth proxy, so this route enforces auth itself.
-const ALLOWED_ROLES = ['admin', 'office']
+// /api/* is excluded from the auth proxy, so this route enforces auth itself.
+// Money documents are office/admin only; site diaries are operational, so
+// supervisors may export them too (field cannot).
+const MONEY_ROLES = ['admin', 'office']
+const DIARY_ROLES = ['admin', 'office', 'supervisor']
 
 // react-pdf's <Image> can only decode PNG/JPEG.
 const LOGO_EXTENSIONS = ['png', 'jpg', 'jpeg']
@@ -58,16 +62,18 @@ function toCompany(settings: SettingsRow | null): DocCompany {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ type: string; id: string }> }
 ) {
   const profile = await getProfile()
   if (!profile) return new Response('Unauthorized', { status: 401 })
-  if (!ALLOWED_ROLES.includes(profile.role)) {
-    return new Response('Forbidden', { status: 403 })
-  }
 
   const { type, id } = await params
+
+  const allowedRoles = type.startsWith('diary') ? DIARY_ROLES : MONEY_ROLES
+  if (!allowedRoles.includes(profile.role)) {
+    return new Response('Forbidden', { status: 403 })
+  }
 
   switch (type) {
     case 'quote':
@@ -78,7 +84,15 @@ export async function GET(
       return poPdf(id)
     case 'claim':
       return claimPdf(id)
-    // diary | swms land in later tasks
+    case 'diary':
+      // [id] = diary row id → single-day export
+      return diaryPdf(id)
+    case 'diary-range': {
+      // [id] = project id; ?from=YYYY-MM-DD&to=YYYY-MM-DD → multi-day export
+      const url = new URL(request.url)
+      return diaryRangePdf(id, url.searchParams.get('from'), url.searchParams.get('to'))
+    }
+    // swms lands in a later task
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -537,6 +551,202 @@ async function poPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${po.number}.pdf"`,
+    },
+  })
+}
+
+// ─── Site diary ──────────────────────────────────────────────────────────────
+
+type DiaryRouteRow = {
+  id: string
+  date: string
+  weather: string | null
+  work_performed: string | null
+  delays: string | null
+  instructions: string | null
+  visitors: string | null
+  profiles: { full_name: string } | null
+}
+
+const DIARY_SELECT = `id, date, weather, work_performed, delays, instructions, visitors,
+  profiles!diaries_created_by_fkey(full_name)`
+
+// react-pdf's <Image> can only decode PNG/JPEG.
+const PHOTO_CONTENT_TYPES = ['image/jpeg', 'image/png']
+
+/**
+ * Shapes diary rows into DiaryPdf day props: child labour/plant rows plus a
+ * photo contact sheet built from signed attachment URLs (fetched server-side).
+ */
+async function buildDiaryDays(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  diaries: DiaryRouteRow[]
+): Promise<DiaryPdfDay[]> {
+  const diaryIds = diaries.map((d) => d.id)
+
+  const [{ data: labourRows }, { data: plantRows }, { data: photoRows }] =
+    await Promise.all([
+      supabase
+        .from('diary_labour')
+        .select('diary_id, name, trade, headcount, hours')
+        .in('diary_id', diaryIds)
+        .order('id'),
+      supabase
+        .from('diary_plant')
+        .select('diary_id, name, status, hours')
+        .in('diary_id', diaryIds)
+        .order('id'),
+      supabase
+        .from('attachments')
+        .select('parent_id, path, caption, content_type, created_at')
+        .eq('parent_type', 'diary')
+        .in('parent_id', diaryIds)
+        .eq('kind', 'photo')
+        .order('created_at'),
+    ])
+
+  const photos = (photoRows ?? []).filter((p) =>
+    PHOTO_CONTENT_TYPES.includes(p.content_type as string)
+  )
+
+  // Batch-sign all photo URLs — react-pdf fetches them over https at render time.
+  const urlByPath = new Map<string, string>()
+  if (photos.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from('attachments')
+      .createSignedUrls(photos.map((p) => p.path as string), 3600)
+    for (const entry of signed ?? []) {
+      if (entry.signedUrl && entry.path) urlByPath.set(entry.path, entry.signedUrl)
+    }
+  }
+
+  return diaries.map((d) => {
+    const dayPhotos: DiaryPdfPhoto[] = photos
+      .filter((p) => p.parent_id === d.id && urlByPath.has(p.path as string))
+      .map((p) => ({
+        url: urlByPath.get(p.path as string)!,
+        caption: (p.caption as string | null) ?? null,
+        timestamp: format(parseISO(p.created_at as string), 'dd/MM/yyyy HH:mm'),
+      }))
+
+    return {
+      date: format(parseISO(d.date), 'EEEE dd/MM/yyyy'),
+      weather: d.weather,
+      author: d.profiles?.full_name ?? null,
+      work_performed: d.work_performed,
+      delays: d.delays,
+      instructions: d.instructions,
+      visitors: d.visitors,
+      labour: (labourRows ?? [])
+        .filter((l) => l.diary_id === d.id)
+        .map((l) => ({
+          name: l.name as string,
+          trade: (l.trade as string | null) ?? null,
+          headcount: Number(l.headcount),
+          hours: Number(l.hours),
+        })),
+      plant: (plantRows ?? [])
+        .filter((p) => p.diary_id === d.id)
+        .map((p) => ({
+          name: p.name as string,
+          status: p.status as string,
+          hours: Number(p.hours),
+        })),
+      photos: dayPhotos,
+    }
+  })
+}
+
+async function diaryPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: diary }, { data: settings }] = await Promise.all([
+    supabase
+      .from('diaries')
+      .select(`${DIARY_SELECT}, project_id, projects(name, number)`)
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  if (!diary) return new Response('Not found', { status: 404 })
+
+  const projectRel = diary.projects as unknown as { name: string; number: string } | null
+  if (!projectRel) return new Response('Not found', { status: 404 })
+
+  const days = await buildDiaryDays(supabase, [
+    diary as unknown as DiaryRouteRow,
+  ])
+
+  const buffer = await renderToBuffer(
+    <DiaryPdf
+      project={{ name: projectRel.name, number: projectRel.number }}
+      company={toCompany(settings)}
+      days={days}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="diary-${projectRel.number}-${diary.date}.pdf"`,
+    },
+  })
+}
+
+async function diaryRangePdf(
+  projectId: string,
+  from: string | null,
+  to: string | null
+): Promise<Response> {
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+  if (!from || !to || !dateRe.test(from) || !dateRe.test(to) || from > to) {
+    return new Response('Invalid date range — expected ?from=YYYY-MM-DD&to=YYYY-MM-DD', {
+      status: 400,
+    })
+  }
+
+  const supabase = await createClient()
+
+  const [{ data: project }, { data: diaries }, { data: settings }] = await Promise.all([
+    supabase.from('projects').select('name, number').eq('id', projectId).single(),
+    supabase
+      .from('diaries')
+      .select(DIARY_SELECT)
+      .eq('project_id', projectId)
+      .gte('date', from)
+      .lte('date', to)
+      .order('date'),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  if (!project) return new Response('Not found', { status: 404 })
+  if (!diaries || diaries.length === 0) {
+    return new Response('No diary entries in that date range', { status: 404 })
+  }
+
+  const days = await buildDiaryDays(supabase, diaries as unknown as DiaryRouteRow[])
+
+  const buffer = await renderToBuffer(
+    <DiaryPdf
+      project={{ name: project.name, number: project.number }}
+      company={toCompany(settings)}
+      days={days}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="diary-${project.number}-${from}-to-${to}.pdf"`,
     },
   })
 }

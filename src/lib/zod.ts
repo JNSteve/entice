@@ -830,6 +830,68 @@ export const manualEntrySchema = z
 
 export type ManualEntryInput = z.infer<typeof manualEntrySchema>
 
+// ─── Site diary ──────────────────────────────────────────────────────────────
+
+export const WEATHER_OPTIONS = [
+  'Fine',
+  'Overcast',
+  'Rain — work affected',
+  'Rain — work stopped',
+] as const
+export type WeatherOption = (typeof WEATHER_OPTIONS)[number]
+
+export const diarySchema = z.object({
+  project_id: z.uuid(),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date'),
+  /** Free text — usually one of WEATHER_OPTIONS with an optional addendum. */
+  weather: optionalText.optional(),
+  work_performed: z.string().min(1, 'Describe the work performed'),
+  delays: optionalText.optional(),
+  instructions: optionalText.optional(),
+  visitors: optionalText.optional(),
+})
+
+export type DiaryInput = z.infer<typeof diarySchema>
+
+export const labourRowSchema = z.object({
+  diary_id: z.uuid(),
+  user_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  name: z.string().min(1, 'Name is required'),
+  trade: optionalText.optional(),
+  headcount: z.coerce.number().int().min(1, 'Headcount must be at least 1').max(500),
+  hours: z.coerce.number().min(0).max(24, 'Hours cannot exceed 24'),
+})
+
+export type LabourRowInput = z.infer<typeof labourRowSchema>
+
+export const labourRowUpdateSchema = z.object({
+  name: z.string().min(1, 'Name is required').optional(),
+  trade: optionalText.optional(),
+  headcount: z.coerce.number().int().min(1).max(500).optional(),
+  hours: z.coerce.number().min(0).max(24).optional(),
+})
+
+export type LabourRowUpdateInput = z.infer<typeof labourRowUpdateSchema>
+
+export const PLANT_STATUSES = ['working', 'idle', 'down'] as const
+export type PlantStatus = (typeof PLANT_STATUSES)[number]
+
+export const plantRowSchema = z.object({
+  diary_id: z.uuid(),
+  plant_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  name: z.string().min(1, 'Name is required'),
+  status: z.enum(PLANT_STATUSES),
+  hours: z.coerce.number().min(0).max(24, 'Hours cannot exceed 24'),
+})
+
+export type PlantRowInput = z.infer<typeof plantRowSchema>
+
 // ─── Assignments ─────────────────────────────────────────────────────────────
 
 export const assignmentSchema = z.object({
