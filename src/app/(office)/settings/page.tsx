@@ -1,0 +1,75 @@
+import { createClient } from '@/lib/supabase/server'
+import { PageHeader } from '@/components/PageHeader'
+import { SettingsTabs, type SettingsTab } from './settings-tabs'
+
+const VALID_TABS: SettingsTab[] = [
+  'company',
+  'users',
+  'rates',
+  'cost-codes',
+  'plant',
+  'checklists',
+]
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>
+}) {
+  const { tab } = await searchParams
+  const initialTab: SettingsTab = VALID_TABS.includes(tab as SettingsTab)
+    ? (tab as SettingsTab)
+    : 'company'
+
+  const supabase = await createClient()
+
+  const [
+    { data: settings },
+    { data: profiles },
+    { data: rateItems },
+    { data: costCodes },
+    { data: plant },
+    { data: checklists },
+  ] = await Promise.all([
+    supabase.from('settings').select('*').eq('id', 1).single(),
+    supabase
+      .from('profiles')
+      .select('id, full_name, role, phone, hourly_cost, active')
+      .order('full_name'),
+    supabase
+      .from('rate_items')
+      .select('id, kind, name, unit, cost, default_markup_pct, active')
+      .order('kind')
+      .order('name'),
+    supabase
+      .from('cost_codes')
+      .select('id, code, name, category, active')
+      .order('code'),
+    supabase
+      .from('plant')
+      .select('id, name, type, rego, ownership, hourly_rate, active')
+      .order('name'),
+    supabase
+      .from('checklist_templates')
+      .select('id, title, items, created_at')
+      .order('title'),
+  ])
+
+  return (
+    <div className="flex flex-col gap-2">
+      <PageHeader
+        title="Settings"
+        description="Company details, users, rates and master data."
+      />
+      <SettingsTabs
+        initialTab={initialTab}
+        settings={settings}
+        profiles={profiles ?? []}
+        rateItems={rateItems ?? []}
+        costCodes={costCodes ?? []}
+        plant={plant ?? []}
+        checklists={checklists ?? []}
+      />
+    </div>
+  )
+}

@@ -58,7 +58,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Schedule', href: '/schedule', icon: CalendarIcon },
   { label: 'Money', href: '/money', icon: DollarSignIcon, roles: ['admin', 'office'] },
   { label: 'Reports', href: '/reports', icon: BarChart3Icon, roles: ['admin', 'office'] },
-  { label: 'Settings', href: '/settings', icon: SettingsIcon, roles: ['admin', 'office'] },
+  { label: 'Settings', href: '/settings', icon: SettingsIcon, roles: ['admin'] },
 ]
 
 function NavLinks({
