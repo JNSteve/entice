@@ -47,6 +47,18 @@ export default async function QuoteBuilderPage({
 
   if (!quote) notFound()
 
+  // Resolve the converted entity number (jobs or projects) if applicable.
+  let convertedNumber: string | null = null
+  if (quote.converted_to && quote.converted_id) {
+    const table = quote.converted_to === 'job' ? 'jobs' : 'projects'
+    const { data: converted } = await supabase
+      .from(table)
+      .select('number')
+      .eq('id', quote.converted_id)
+      .single()
+    convertedNumber = (converted as { number: string } | null)?.number ?? null
+  }
+
   const quoteData: QuoteData = {
     id: quote.id,
     number: quote.number,
@@ -61,6 +73,9 @@ export default async function QuoteBuilderPage({
     client_name: (quote.clients as { name: string } | null)?.name ?? '—',
     site_name: (quote.sites as { name: string } | null)?.name ?? null,
     contact_name: (quote.contacts as { name: string } | null)?.name ?? null,
+    converted_to: quote.converted_to ?? null,
+    converted_id: quote.converted_id ?? null,
+    converted_number: convertedNumber,
   }
 
   const sectionData: SectionData[] = (sections ?? []).map((s) => ({

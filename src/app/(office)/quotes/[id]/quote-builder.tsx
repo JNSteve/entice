@@ -17,6 +17,8 @@ import { cn } from '@/lib/utils'
 import {
   addLine,
   addSection,
+  convertQuoteToJob,
+  convertQuoteToProject,
   deleteSection,
   moveSection,
   setQuoteStatus,
@@ -35,8 +37,11 @@ export type { LineData }
 import {
   ArrowDownIcon,
   ArrowUpIcon,
+  BriefcaseIcon,
   CheckIcon,
+  ExternalLinkIcon,
   FileDownIcon,
+  FolderOpenIcon,
   LayersIcon,
   PlusIcon,
   SendIcon,
@@ -58,6 +63,9 @@ export interface QuoteData {
   client_name: string
   site_name: string | null
   contact_name: string | null
+  converted_to: 'job' | 'project' | null
+  converted_id: string | null
+  converted_number: string | null
 }
 
 export interface SectionData {
@@ -190,6 +198,32 @@ function HeaderCard({ quote, editable }: { quote: QuoteData; editable: boolean }
     changeStatus('lost', reason)
   }
 
+  function handleConvertToJob() {
+    const ok = confirm(
+      `Convert "${quote.title}" to a Job?\n\nThis will create a new scheduled job from this quote. The quote cannot be converted again once confirmed.`
+    )
+    if (!ok) return
+    startTransition(async () => {
+      const result = await convertQuoteToJob(quote.id)
+      if (result?.error) {
+        toast.error(result.error)
+      }
+    })
+  }
+
+  function handleConvertToProject() {
+    const ok = confirm(
+      `Convert "${quote.title}" to a Project?\n\nThis will create a new project with budget lines derived from the quote sections. The quote cannot be converted again once confirmed.`
+    )
+    if (!ok) return
+    startTransition(async () => {
+      const result = await convertQuoteToProject(quote.id)
+      if (result?.error) {
+        toast.error(result.error)
+      }
+    })
+  }
+
   return (
     <Card>
       <CardContent className="flex flex-col gap-4">
@@ -198,6 +232,15 @@ function HeaderCard({ quote, editable }: { quote: QuoteData; editable: boolean }
             <div className="flex items-center gap-2.5">
               <span className="font-mono text-lg font-semibold">{quote.number}</span>
               <StatusBadge status={quote.status} />
+              {quote.converted_to && quote.converted_id && (
+                <a
+                  href={`/${quote.converted_to === 'job' ? 'jobs' : 'projects'}/${quote.converted_id}`}
+                  className="inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700 transition-colors hover:bg-green-100 dark:border-green-800 dark:bg-green-950 dark:text-green-300"
+                >
+                  <ExternalLinkIcon className="size-3" />
+                  Converted &rarr; {quote.converted_number ?? (quote.converted_to === 'job' ? 'Job' : 'Project')}
+                </a>
+              )}
             </div>
             {editable ? (
               <Input
@@ -233,6 +276,18 @@ function HeaderCard({ quote, editable }: { quote: QuoteData; editable: boolean }
                 <Button variant="destructive" onClick={handleLost} disabled={pending}>
                   <XIcon />
                   Lost
+                </Button>
+              </>
+            )}
+            {quote.status === 'accepted' && !quote.converted_id && (
+              <>
+                <Button variant="outline" onClick={handleConvertToJob} disabled={pending}>
+                  <BriefcaseIcon />
+                  Convert to Job
+                </Button>
+                <Button variant="outline" onClick={handleConvertToProject} disabled={pending}>
+                  <FolderOpenIcon />
+                  Convert to Project
                 </Button>
               </>
             )}

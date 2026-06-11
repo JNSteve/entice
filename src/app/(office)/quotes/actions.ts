@@ -1,10 +1,12 @@
 'use server'
 
+import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { lineSell } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
+import { jobPayloadFromQuote, projectPayloadFromQuote } from '@/lib/convert'
 import {
   quoteCreateSchema,
   quoteHeaderSchema,
@@ -513,6 +515,157 @@ export async function moveLine(id: string, dir: 'up' | 'down'): Promise<Result> 
 
   revalidateQuote(line.quote_id)
   return {}
+}
+
+// ─── Conversion ──────────────────────────────────────────────────────────────
+
+export async function convertQuoteToJob(quoteId: string): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+
+  // Re-fetch the quote — server-side guard against double conversion.
+  const { data: quote, error: qErr } = await supabase
+    .from('quotes')
+    .select('id, status, converted_id, client_id, site_id, title, description')
+    .eq('id', quoteId)
+    .single()
+
+  if (qErr || !quote) return { error: 'Quote not found' }
+  if (quote.status !== 'accepted') return { error: 'Only accepted quotes can be converted' }
+  if (quote.converted_id) return { error: 'Quote has already been converted' }
+
+  let number: string
+  try {
+    number = await nextNumber(supabase, 'job')
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to allocate job number' }
+  }
+
+  const payload = jobPayloadFromQuote(
+    {
+      id: quote.id,
+      client_id: quote.client_id,
+      site_id: quote.site_id,
+      title: quote.title,
+      description: quote.description,
+      gst_rate: 0, // not needed for job payload
+    },
+    number
+  )
+
+  const { data: job, error: jobErr } = await supabase
+    .from('jobs')
+    .insert(payload)
+    .select('id')
+    .single()
+
+  if (jobErr || !job) return { error: jobErr?.message ?? 'Failed to create job' }
+
+  const { error: updateErr } = await supabase
+    .from('quotes')
+    .update({ converted_to: 'job', converted_id: job.id })
+    .eq('id', quoteId)
+
+  if (updateErr) return { error: updateErr.message }
+
+  revalidatePath('/quotes')
+  revalidatePath(`/quotes/${quoteId}`)
+  redirect(`/jobs/${job.id}`)
+}
+
+export async function convertQuoteToProject(quoteId: string): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+
+  // Re-fetch the quote — server-side guard against double conversion.
+  const { data: quote, error: qErr } = await supabase
+    .from('quotes')
+    .select('id, status, converted_id, client_id, site_id, title, description, gst_rate')
+    .eq('id', quoteId)
+    .single()
+
+  if (qErr || !quote) return { error: 'Quote not found' }
+  if (quote.status !== 'accepted') return { error: 'Only accepted quotes can be converted' }
+  if (quote.converted_id) return { error: 'Quote has already been converted' }
+
+  // Fetch sections and lines for budget computation.
+  const [{ data: sections }, { data: lines }] = await Promise.all([
+    supabase
+      .from('quote_sections')
+      .select('id, title, position')
+      .eq('quote_id', quoteId)
+      .order('position')
+      .order('id'),
+    supabase
+      .from('quote_lines')
+      .select('section_id, qty, unit_sell')
+      .eq('quote_id', quoteId),
+  ])
+
+  // Fetch the "Other" cost code (code = '99').
+  const { data: otherCode } = await supabase
+    .from('cost_codes')
+    .select('id')
+    .eq('code', '99')
+    .single()
+
+  if (!otherCode) return { error: 'Cost code "99 – Other" not found; cannot create budget lines' }
+
+  let number: string
+  try {
+    number = await nextNumber(supabase, 'project')
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to allocate project number' }
+  }
+
+  const { project: projectPayload, budgetLines } = projectPayloadFromQuote(
+    {
+      id: quote.id,
+      client_id: quote.client_id,
+      site_id: quote.site_id,
+      title: quote.title,
+      description: quote.description,
+      gst_rate: Number(quote.gst_rate),
+    },
+    sections ?? [],
+    (lines ?? []).map((l) => ({
+      section_id: l.section_id,
+      qty: Number(l.qty),
+      unit_sell: Number(l.unit_sell),
+    })),
+    otherCode.id
+  )
+
+  // Insert the project with the allocated number.
+  const { data: project, error: projErr } = await supabase
+    .from('projects')
+    .insert({ ...projectPayload, number })
+    .select('id')
+    .single()
+
+  if (projErr || !project) return { error: projErr?.message ?? 'Failed to create project' }
+
+  // Insert budget lines (if any).
+  if (budgetLines.length > 0) {
+    const { error: blErr } = await supabase
+      .from('budget_lines')
+      .insert(budgetLines.map((bl) => ({ ...bl, project_id: project.id })))
+
+    if (blErr) return { error: blErr.message }
+  }
+
+  const { error: updateErr } = await supabase
+    .from('quotes')
+    .update({ converted_to: 'project', converted_id: project.id })
+    .eq('id', quoteId)
+
+  if (updateErr) return { error: updateErr.message }
+
+  revalidatePath('/quotes')
+  revalidatePath(`/quotes/${quoteId}`)
+  redirect(`/projects/${project.id}`)
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
