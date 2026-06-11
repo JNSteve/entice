@@ -760,6 +760,45 @@ export const packageCreateSchema = z.object({
 
 export type PackageCreateInput = z.infer<typeof packageCreateSchema>
 
+export const RFQ_STATUSES = ['invited', 'quoted', 'declined'] as const
+export type RfqStatus = (typeof RFQ_STATUSES)[number]
+
+export const rfqSendSchema = z.object({
+  vendor_ids: z.array(z.uuid()).min(1, 'Select at least one vendor'),
+  email_snapshot: z.string().min(1, 'Email body is required'),
+})
+
+export type RfqSendInput = z.infer<typeof rfqSendSchema>
+
+export const rfqStatusSchema = z.object({
+  status: z.enum(RFQ_STATUSES),
+})
+
+export type RfqStatusInput = z.infer<typeof rfqStatusSchema>
+
+export const packageQuoteSchema = z.object({
+  vendor_id: z.uuid('Pick a vendor'),
+  amount: z.coerce.number().min(0, 'Amount cannot be negative'),
+  inclusions: optionalText,
+  exclusions: optionalText,
+  notes: optionalText,
+  received_at: z.string().min(1, 'Received date is required'),
+})
+
+export type PackageQuoteInput = z.infer<typeof packageQuoteSchema>
+
+export const packageAwardSchema = z.object({
+  vendor_id: z.uuid('Pick a vendor'),
+  amount: z.coerce.number().positive('Amount must be positive'),
+  cost_code_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  description: z.string().min(1, 'Description is required'),
+})
+
+export type PackageAwardInput = z.infer<typeof packageAwardSchema>
+
 export const packageUpdateSchema = z.object({
   name: z.string().min(1, 'Package name is required').optional(),
   budget_amount: z.coerce.number().min(0).optional(),
