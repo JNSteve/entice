@@ -527,3 +527,63 @@ export const projectCostSchema = z.object({
 })
 
 export type ProjectCostInput = z.infer<typeof projectCostSchema>
+
+// ─── Purchase orders ──────────────────────────────────────────────────────────
+
+export const PO_STATUSES = ['draft', 'issued', 'closed', 'cancelled'] as const
+export type PoStatus = (typeof PO_STATUSES)[number]
+
+export const poCreateSchema = z.object({
+  project_id: z.uuid(),
+  vendor_id: z.uuid('Pick a vendor'),
+  notes: optionalText.optional(),
+})
+
+export type PoCreateInput = z.infer<typeof poCreateSchema>
+
+export const poHeaderSchema = z.object({
+  vendor_id: z.uuid().optional(),
+  notes: optionalText.optional(),
+})
+
+export type PoHeaderInput = z.infer<typeof poHeaderSchema>
+
+export const poLineCreateSchema = z.object({
+  po_id: z.uuid(),
+  description: z.string().min(1, 'Description is required'),
+  cost_code_id: z.uuid().nullish().transform((v) => v ?? null),
+  qty: z.coerce.number().min(0),
+  unit: z.string().min(1, 'Unit is required'),
+  unit_cost: z.coerce.number().min(0),
+})
+
+export type PoLineCreateInput = z.infer<typeof poLineCreateSchema>
+
+export const poLineUpdateSchema = z.object({
+  description: z.string().min(1, 'Description is required').optional(),
+  cost_code_id: z.uuid().nullish().transform((v) => v ?? null).optional(),
+  qty: z.coerce.number().min(0).optional(),
+  unit: z.string().min(1, 'Unit is required').optional(),
+  unit_cost: z.coerce.number().min(0).optional(),
+})
+
+export type PoLineUpdateInput = z.infer<typeof poLineUpdateSchema>
+
+export const poStatusSchema = z.object({
+  status: z.enum(['issued', 'closed', 'cancelled'] as const),
+})
+
+export type PoStatusInput = z.infer<typeof poStatusSchema>
+
+// ─── Vendors ─────────────────────────────────────────────────────────────────
+
+export const vendorQuickSchema = z.object({
+  name: z.string().min(1, 'Vendor name is required'),
+  email: optionalText.refine(
+    (v) => v === null || z.email().safeParse(v).success,
+    'Invalid email address'
+  ).optional(),
+  trade: optionalText.optional(),
+})
+
+export type VendorQuickInput = z.infer<typeof vendorQuickSchema>

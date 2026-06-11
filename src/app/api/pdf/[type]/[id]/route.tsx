@@ -1,10 +1,11 @@
 import { renderToBuffer } from '@react-pdf/renderer'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { docTotals, round2 } from '@/lib/money'
+import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
 import { QuotePdf, type QuotePdfSection } from '@/pdf/QuotePdf'
 import { InvoicePdf } from '@/pdf/InvoicePdf'
+import { PoPdf } from '@/pdf/PoPdf'
 import type { DocCompany } from '@/pdf/DocShell'
 
 export const runtime = 'nodejs'
@@ -71,7 +72,9 @@ export async function GET(
       return quotePdf(id)
     case 'invoice':
       return invoicePdf(id)
-    // claim | po | diary | swms land in later tasks
+    case 'po':
+      return poPdf(id)
+    // claim | diary | swms land in later tasks
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -253,6 +256,93 @@ async function quotePdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${quote.number}.pdf"`,
+    },
+  })
+}
+
+async function poPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: po }, { data: poLines }, { data: settings }] = await Promise.all([
+    supabase
+      .from('purchase_orders')
+      .select(
+        `id, number, status, issue_date, notes, created_at,
+         vendors(name, email, phone),
+         projects(name, sites(name, address, suburb, state, postcode))`
+      )
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('po_lines')
+      .select('position, description, qty, unit, unit_cost, cost_codes(code, name)')
+      .eq('po_id', id)
+      .order('position')
+      .order('id'),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path, gst_rate')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  if (!po) return new Response('Not found', { status: 404 })
+
+  const vendorRel = po.vendors as unknown as { name: string; email: string | null; phone: string | null } | null
+  const projectRel = po.projects as unknown as {
+    name: string
+    sites: { name: string; address: string | null; suburb: string | null; state: string | null; postcode: string | null } | null
+  } | null
+
+  const site = projectRel?.sites ?? null
+  const siteAddress =
+    [site?.address, [site?.suburb, site?.state, site?.postcode].filter(Boolean).join(' ')]
+      .filter(Boolean)
+      .join(', ') || null
+  const deliverTo = siteAddress ?? (site?.name ? `${site.name}` : null) ?? projectRel?.name ?? '—'
+
+  const pdfLines = (poLines ?? []).map((l) => {
+    const codeRel = l.cost_codes as unknown as { code: string; name: string } | null
+    return {
+      description: l.description as string,
+      cost_code: codeRel ? `${codeRel.code}` : null,
+      qty: Number(l.qty),
+      unit: l.unit as string,
+      unit_cost: Number(l.unit_cost),
+    }
+  })
+
+  const subtotal = round2(pdfLines.reduce((s, l) => s + lineTotal(l.qty, l.unit_cost), 0))
+  const gstRate = Number(settings?.gst_rate ?? 10)
+  const gst = round2(subtotal * gstRate / 100)
+  const total = round2(subtotal + gst)
+
+  const docDate = po.issue_date
+    ? fmtDate(po.issue_date)
+    : fmtDate(po.created_at)
+
+  const buffer = await renderToBuffer(
+    <PoPdf
+      po={{
+        number: po.number,
+        date: docDate,
+        vendorName: vendorRel?.name ?? '—',
+        vendorEmail: vendorRel?.email,
+        vendorPhone: vendorRel?.phone,
+        deliverTo,
+        notes: po.notes,
+        status: po.status,
+      }}
+      company={toCompany(settings)}
+      lines={pdfLines}
+      totals={{ subtotal, gst, gstRate, total }}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${po.number}.pdf"`,
     },
   })
 }
