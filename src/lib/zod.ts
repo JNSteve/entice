@@ -283,3 +283,101 @@ export const checklistTemplateSchema = z.object({
 })
 
 export type ChecklistTemplateInput = z.infer<typeof checklistTemplateSchema>
+
+// ─── Jobs ────────────────────────────────────────────────────────────────────
+
+export const JOB_STATUSES = [
+  'quote',
+  'scheduled',
+  'in_progress',
+  'completed',
+  'invoiced',
+  'paid',
+  'lost',
+] as const
+export type JobStatus = (typeof JOB_STATUSES)[number]
+
+export const jobCreateSchema = z.object({
+  client_id: z.uuid('Pick a client'),
+  site_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  title: z.string().min(1, 'Title is required'),
+  description: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+  supervisor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type JobCreateInput = z.infer<typeof jobCreateSchema>
+
+export const jobUpdateSchema = z.object({
+  title: z.string().min(1, 'Title is required').optional(),
+  description: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  site_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  supervisor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  scheduled_start: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  scheduled_end: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+})
+
+export type JobUpdateInput = z.infer<typeof jobUpdateSchema>
+
+export const jobStatusSchema = z.object({
+  status: z.enum(['scheduled', 'in_progress', 'completed', 'lost']),
+  scheduled_start: z.string().nullish().optional(),
+})
+
+export type JobStatusInput = z.infer<typeof jobStatusSchema>
+
+export const checklistItemSchema = z.object({
+  job_id: z.uuid(),
+  text: z.string().min(1, 'Item text is required'),
+})
+
+export type ChecklistItemInput = z.infer<typeof checklistItemSchema>
+
+export const workLogSchema = z.object({
+  job_id: z.uuid(),
+  date: z.string().min(1, 'Date is required'),
+  notes: z.string().min(1, 'Notes are required'),
+})
+
+export type WorkLogInput = z.infer<typeof workLogSchema>
+
+export const jobCostSchema = z.object({
+  job_id: z.uuid(),
+  date: z.string().min(1, 'Date is required'),
+  description: z.string().min(1, 'Description is required'),
+  amount: z.coerce.number().positive('Amount must be positive'),
+  cost_code_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type JobCostInput = z.infer<typeof jobCostSchema>
