@@ -2,20 +2,9 @@ import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
-import { StatusBadge } from '@/components/StatusBadge'
-import { Button } from '@/components/ui/button'
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
-import { aud, fmtDate } from '@/lib/format'
-import { docTotals } from '@/lib/money'
 import { cn } from '@/lib/utils'
-import { FileDownIcon } from 'lucide-react'
+import { docTotals } from '@/lib/money'
+import { InvoiceTableWithExport, type InvoiceRow } from './xero-export-button'
 
 const FILTER_TABS = [
   { value: 'all', label: 'All' },
@@ -42,7 +31,7 @@ export default async function MoneyPage({
   let query = supabase
     .from('invoices')
     .select(
-      'id, number, status, gst_rate, issue_date, due_date, paid_at, clients(name), jobs(id, number), invoice_lines(qty, unit_sell)'
+      'id, number, status, gst_rate, issue_date, due_date, paid_at, clients(name), jobs(id, number), invoice_lines(description, qty, unit_sell)'
     )
     .order('created_at', { ascending: false })
   if (filter === 'unpaid') query = query.in('status', ['draft', 'sent'])
@@ -50,39 +39,53 @@ export default async function MoneyPage({
 
   const { data: invoices } = await query
 
-  const rows = (invoices ?? []).map((inv) => {
-    const { total } = docTotals(
-      ((inv.invoice_lines ?? []) as { qty: number; unit_sell: number }[]).map((l) => ({
+  const rows: InvoiceRow[] = (invoices ?? []).map((inv) => {
+    const lines = ((inv.invoice_lines ?? []) as { description: string; qty: number; unit_sell: number }[]).map(
+      (l) => ({
         qty: Number(l.qty),
         unitSell: Number(l.unit_sell),
-      })),
-      Number(inv.gst_rate)
+      })
     )
+    const { total } = docTotals(lines, Number(inv.gst_rate))
+    const job = inv.jobs as unknown as { id: string; number: string } | null
+
     return {
       id: inv.id,
       number: inv.number,
       client_name: (inv.clients as unknown as { name: string } | null)?.name ?? '—',
-      job: inv.jobs as unknown as { id: string; number: string } | null,
+      job,
       status: inv.status as string,
       total,
       issue_date: inv.issue_date as string,
       due_date: inv.due_date as string | null,
       paid_at: inv.paid_at as string | null,
+      xero: {
+        number: inv.number,
+        contactName: (inv.clients as unknown as { name: string } | null)?.name ?? '',
+        invoiceDate: inv.issue_date as string,
+        dueDate: (inv.due_date ?? inv.issue_date) as string,
+        reference: job?.number,
+        lines: ((inv.invoice_lines ?? []) as { description: string; qty: number; unit_sell: number }[]).map(
+          (l) => ({
+            description: l.description ?? '',
+            qty: Number(l.qty),
+            unitAmount: Number(l.unit_sell),
+          })
+        ),
+      },
     }
   })
+
+  const emptyMessage =
+    filter === 'all'
+      ? 'No invoices yet. Create one from a job card.'
+      : 'No invoices match this filter.'
 
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Money"
         description="Invoices, claims and payments."
-        actions={
-          // Xero CSV export lands in the next task.
-          <Button variant="outline" disabled title="Coming soon">
-            <FileDownIcon />
-            Export to Xero CSV
-          </Button>
-        }
       />
 
       <div className="flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
@@ -102,70 +105,7 @@ export default async function MoneyPage({
         ))}
       </div>
 
-      {rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">
-          {filter === 'all'
-            ? 'No invoices yet. Create one from a job card.'
-            : 'No invoices match this filter.'}
-        </p>
-      ) : (
-        <div className="rounded-xl border">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Client</TableHead>
-                <TableHead>Job</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Total (inc GST)</TableHead>
-                <TableHead>Issued</TableHead>
-                <TableHead>Due</TableHead>
-                <TableHead>Paid</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {rows.map((r) => (
-                <TableRow key={r.id}>
-                  <TableCell>
-                    <Link
-                      href={`/invoices/${r.id}`}
-                      className="font-mono text-xs font-medium underline underline-offset-2 hover:text-muted-foreground"
-                    >
-                      {r.number}
-                    </Link>
-                  </TableCell>
-                  <TableCell>{r.client_name}</TableCell>
-                  <TableCell>
-                    {r.job ? (
-                      <Link
-                        href={`/jobs/${r.job.id}`}
-                        className="font-mono text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
-                      >
-                        {r.job.number}
-                      </Link>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={r.status} />
-                  </TableCell>
-                  <TableCell className="text-right tabular-nums">{aud(r.total)}</TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">
-                    {fmtDate(r.issue_date)}
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">
-                    {r.due_date ? fmtDate(r.due_date) : '—'}
-                  </TableCell>
-                  <TableCell className="tabular-nums text-muted-foreground">
-                    {r.paid_at ? fmtDate(r.paid_at) : '—'}
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <InvoiceTableWithExport rows={rows} emptyMessage={emptyMessage} />
     </div>
   )
 }
