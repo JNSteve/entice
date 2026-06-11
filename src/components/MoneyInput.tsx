@@ -47,12 +47,6 @@ export function MoneyInput({
     }
   }, [value, focused])
 
-  // Initialise display value on mount
-  useEffect(() => {
-    setRawText(formatDisplay(value))
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
   function handleFocus() {
     setFocused(true)
     // Show raw number without formatting when focused

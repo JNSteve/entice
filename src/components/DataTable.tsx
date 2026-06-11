@@ -64,7 +64,10 @@ export function DataTable<T>({
               <TableRow
                 key={getRowKey(row)}
                 className={href ? 'cursor-pointer hover:bg-muted/50' : undefined}
-                onClick={href ? () => router.push(href) : undefined}
+                onClick={href ? (e) => {
+                  if ((e.target as HTMLElement).closest('button,a,input,select,textarea,[role="menuitem"],[role="checkbox"]')) return
+                  router.push(href)
+                } : undefined}
               >
                 {columns.map((col) => (
                   <TableCell key={col.key} className={col.className}>
