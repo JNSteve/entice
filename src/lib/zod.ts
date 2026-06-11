@@ -575,6 +575,55 @@ export const poStatusSchema = z.object({
 
 export type PoStatusInput = z.infer<typeof poStatusSchema>
 
+// ─── Variations ──────────────────────────────────────────────────────────────
+
+export const VARIATION_STATUSES = [
+  'notified',
+  'priced',
+  'submitted',
+  'approved',
+  'rejected',
+] as const
+export type VariationStatus = (typeof VARIATION_STATUSES)[number]
+
+export const variationCreateSchema = z.object({
+  project_id: z.uuid(),
+  title: z.string().min(1, 'Title is required'),
+  description: optionalText,
+  cost_estimate: z.coerce.number().min(0).nullable().default(null),
+  sell_amount: z.coerce.number().min(0).nullable().default(null),
+  client_ref: optionalText,
+  time_bar_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+  notes: optionalText,
+})
+
+export type VariationCreateInput = z.infer<typeof variationCreateSchema>
+
+export const variationUpdateSchema = z.object({
+  title: z.string().min(1, 'Title is required').optional(),
+  description: optionalText.optional(),
+  cost_estimate: z.coerce.number().min(0).nullable().optional(),
+  sell_amount: z.coerce.number().min(0).nullable().optional(),
+  client_ref: optionalText.optional(),
+  time_bar_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  notes: optionalText.optional(),
+})
+
+export type VariationUpdateInput = z.infer<typeof variationUpdateSchema>
+
+export const variationStatusSchema = z.object({
+  status: z.enum(VARIATION_STATUSES),
+})
+
+export type VariationStatusInput = z.infer<typeof variationStatusSchema>
+
 // ─── Vendors ─────────────────────────────────────────────────────────────────
 
 export const vendorQuickSchema = z.object({
