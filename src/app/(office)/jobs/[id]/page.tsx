@@ -10,6 +10,9 @@ import { EditJobDialog } from './edit-job-dialog'
 import { ChecklistSection } from './checklist-section'
 import { WorkLogSection } from './work-log-section'
 import { CostsSection } from './costs-section'
+import { PhotoUpload } from '@/components/PhotoUpload'
+import { AttachmentList } from '@/components/AttachmentList'
+import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 
 export default async function JobDetailPage({
   params,
@@ -30,6 +33,7 @@ export default async function JobDetailPage({
     { data: supervisors },
     { data: templates },
     { data: costCodes },
+    attachments,
   ] = await Promise.all([
     supabase
       .from('jobs')
@@ -71,6 +75,7 @@ export default async function JobDetailPage({
       .select('id, code, name')
       .eq('active', true)
       .order('code'),
+    fetchAttachmentsWithUrls(supabase, 'job', id),
   ])
 
   if (!job) notFound()
@@ -115,6 +120,10 @@ export default async function JobDetailPage({
 
   const canMutate = profile.role === 'admin' || profile.role === 'office' || profile.role === 'supervisor'
   const canSeeCosts = profile.role === 'admin' || profile.role === 'office'
+  const canDeleteAttachment = profile.role === 'admin' || profile.role === 'office'
+
+  const photoItems = attachments.filter((a) => a.kind === 'photo')
+  const docItems = attachments.filter((a) => a.kind !== 'photo')
 
   const dateRange = job.scheduled_start
     ? `${fmtDate(job.scheduled_start)}${job.scheduled_end ? ` – ${fmtDate(job.scheduled_end)}` : ''}`
@@ -219,6 +228,39 @@ export default async function JobDetailPage({
           />
         </>
       )}
+
+      {/* Photos */}
+      <div className="border-t" />
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">Photos</h2>
+        <PhotoUpload
+          parentType="job"
+          parentId={job.id}
+          kind="photo"
+          capture
+          multiple
+        />
+        <AttachmentList
+          items={photoItems}
+          canDelete={canDeleteAttachment}
+        />
+      </section>
+
+      {/* Documents */}
+      <div className="border-t" />
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">Documents</h2>
+        <PhotoUpload
+          parentType="job"
+          parentId={job.id}
+          kind="document"
+          multiple
+        />
+        <AttachmentList
+          items={docItems}
+          canDelete={canDeleteAttachment}
+        />
+      </section>
     </div>
   )
 }
