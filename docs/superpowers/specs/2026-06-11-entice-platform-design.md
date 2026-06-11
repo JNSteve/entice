@@ -109,6 +109,7 @@ Both attach to the same Clients/Sites, appear on the same schedule board, and us
 - Cost codes list (seeded with a sensible civil/remediation default set)
 - SWMS template library
 - Job checklist templates
+- **Plant register:** company plant/equipment list (name, type, rego, owned/hired, hourly rate). Referenced by site diaries ("plant on site") and schedule notes; pre-starts and service tracking are phase 2
 - Numbering sequences (quotes Q-xxxx, jobs J-xxxx, projects P-xxxx, POs, claims, invoices, variations per project)
 
 ## 5. Out of scope for v1 (phase 2 backlog)
@@ -127,7 +128,7 @@ Both attach to the same Clients/Sites, appear on the same schedule board, and us
 
 ## 6. Data model (core entities)
 
-`profiles` (user, role) · `clients` · `contacts` · `sites` · `rate_items` · `cost_codes` · `quotes` + `quote_sections` + `quote_lines` · `jobs` (+ checklist items, work logs) · `projects` · `budget_lines` · `purchase_orders` + `po_lines` · `variations` · `claims` + `claim_lines` · `retention_entries` · `vendors` + `vendor_compliance_docs` · `packages` + `package_rfqs` (per-vendor) + `package_quotes` · `commitments` (subcontracts; POs roll up too) · `invoices` + `invoice_lines` + `payments` · `assignments` (schedule) · `timesheet_entries` · `diaries` + diary child rows (labour, plant, photos) · `swms_templates` + `swms_instances` + `swms_signatures` · `attachments` (polymorphic: parent_type + parent_id) · `costs` (actual costs recorded against jobs/projects/cost codes) · `settings` / `sequences`
+`profiles` (user, role) · `clients` · `contacts` · `sites` · `rate_items` · `cost_codes` · `quotes` + `quote_sections` + `quote_lines` · `jobs` (+ checklist items, work logs) · `projects` · `budget_lines` · `purchase_orders` + `po_lines` · `variations` · `claims` + `claim_lines` · `retention_entries` · `vendors` + `vendor_compliance_docs` · `packages` + `package_rfqs` (per-vendor) + `package_quotes` · `commitments` (subcontracts; POs roll up too) · `invoices` + `invoice_lines` + `payments` · `assignments` (schedule) · `timesheet_entries` · `diaries` + diary child rows (labour, plant, photos) · `swms_templates` + `swms_instances` + `swms_signatures` · `attachments` (polymorphic: parent_type + parent_id) · `plant` · `costs` (actual costs recorded against jobs/projects/cost codes) · `settings` / `sequences`
 
 Single-tenant (one company). All tables carry created_by/created_at. Money stored as numeric cents-safe (numeric(12,2)), GST handled at document level (10% AU, ex-GST entry convention).
 
