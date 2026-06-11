@@ -284,26 +284,39 @@ export function EditClientDialog({ client }: { client: ClientRow }) {
 
 // ─── Archive Client Button ────────────────────────────────────────────────────
 
-export function ArchiveClientButton({ clientId }: { clientId: string }) {
+export function ArchiveClientButton({
+  clientId,
+  archived = false,
+}: {
+  clientId: string
+  archived?: boolean
+}) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
-  function handleArchive() {
-    if (!confirm('Archive this client? They will no longer appear in the client list.')) return
+  function handleToggle() {
+    const message = archived
+      ? 'Unarchive this client? They will appear in the client list again.'
+      : 'Archive this client? They will no longer appear in the client list.'
+    if (!confirm(message)) return
     startTransition(async () => {
-      const result = await archiveClient(clientId)
+      const result = await archiveClient(clientId, !archived)
       if (result.error) {
         toast.error(result.error)
         return
       }
-      toast.success('Client archived')
-      router.push('/clients')
+      toast.success(archived ? 'Client unarchived' : 'Client archived')
+      if (!archived) {
+        router.push('/clients')
+      }
     })
   }
 
   return (
-    <Button variant="destructive" onClick={handleArchive} disabled={pending}>
-      {pending ? 'Archiving…' : 'Archive'}
+    <Button variant="destructive" onClick={handleToggle} disabled={pending}>
+      {pending
+        ? archived ? 'Unarchiving…' : 'Archiving…'
+        : archived ? 'Unarchive' : 'Archive'}
     </Button>
   )
 }

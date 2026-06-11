@@ -19,11 +19,15 @@ export default async function ClientsPage() {
     .eq('archived', false)
     .order('name')
 
-  // Fetch first site suburb per client
-  const { data: firstSites } = await supabase
-    .from('sites')
-    .select('client_id, suburb')
-    .order('created_at', { ascending: true })
+  // Fetch first site suburb per client (scoped to the fetched client list)
+  const clientIds = (clients ?? []).map((c) => c.id)
+  const { data: firstSites } = clientIds.length > 0
+    ? await supabase
+        .from('sites')
+        .select('client_id, suburb')
+        .in('client_id', clientIds)
+        .order('created_at', { ascending: true })
+    : { data: [] }
 
   // Build a map of client_id -> first suburb
   const suburbMap: Record<string, string | null> = {}

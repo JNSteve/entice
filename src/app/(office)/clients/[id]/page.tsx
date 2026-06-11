@@ -71,21 +71,26 @@ export default async function ClientDetailPage({
         title={client.name}
         description={TYPE_LABELS[client.type] ?? client.type}
         actions={
-          canEdit ? (
-            <div className="flex items-center gap-2">
-              <EditClientDialog
-                client={{
-                  id: client.id,
-                  name: client.name,
-                  type: client.type,
-                  abn: client.abn,
-                  payment_terms_days: client.payment_terms_days ?? 30,
-                  notes: client.notes,
-                }}
-              />
-              <ArchiveClientButton clientId={client.id} />
-            </div>
-          ) : undefined
+          <div className="flex items-center gap-2">
+            {client.archived && (
+              <Badge variant="destructive">Archived</Badge>
+            )}
+            {canEdit && (
+              <>
+                <EditClientDialog
+                  client={{
+                    id: client.id,
+                    name: client.name,
+                    type: client.type,
+                    abn: client.abn,
+                    payment_terms_days: client.payment_terms_days ?? 30,
+                    notes: client.notes,
+                  }}
+                />
+                <ArchiveClientButton clientId={client.id} archived={client.archived ?? false} />
+              </>
+            )}
+          </div>
         }
       />
 

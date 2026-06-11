@@ -55,14 +55,15 @@ export async function updateClient(
 }
 
 export async function archiveClient(
-  id: string
+  id: string,
+  archived: boolean = true
 ): Promise<{ error?: string }> {
   await requireRole('admin', 'office')
 
   const supabase = await createSupabaseClient()
   const { error } = await supabase
     .from('clients')
-    .update({ archived: true })
+    .update({ archived })
     .eq('id', id)
 
   if (error) return { error: error.message }
@@ -92,6 +93,7 @@ export async function upsertContact(
       .from('contacts')
       .update(rest)
       .eq('id', id)
+      .eq('client_id', rest.client_id)
     if (error) return { error: error.message }
   } else {
     const { error } = await supabase.from('contacts').insert(rest)
@@ -109,7 +111,11 @@ export async function deleteContact(
   await requireRole('admin', 'office')
 
   const supabase = await createSupabaseClient()
-  const { error } = await supabase.from('contacts').delete().eq('id', id)
+  const { error } = await supabase
+    .from('contacts')
+    .delete()
+    .eq('id', id)
+    .eq('client_id', clientId)
 
   if (error) return { error: error.message }
 
@@ -137,6 +143,7 @@ export async function upsertSite(
       .from('sites')
       .update(rest)
       .eq('id', id)
+      .eq('client_id', rest.client_id)
     if (error) return { error: error.message }
   } else {
     const { error } = await supabase.from('sites').insert(rest)
@@ -154,7 +161,11 @@ export async function deleteSite(
   await requireRole('admin', 'office')
 
   const supabase = await createSupabaseClient()
-  const { error } = await supabase.from('sites').delete().eq('id', id)
+  const { error } = await supabase
+    .from('sites')
+    .delete()
+    .eq('id', id)
+    .eq('client_id', clientId)
 
   if (error) return { error: error.message }
 
