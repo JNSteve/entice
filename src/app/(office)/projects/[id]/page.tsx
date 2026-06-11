@@ -1,5 +1,4 @@
 import { notFound } from 'next/navigation'
-import { addMonths } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -10,6 +9,7 @@ import {
 } from '@/components/ui/card'
 import { round2, lineTotal } from '@/lib/money'
 import { aud, fmtDate, pct } from '@/lib/format'
+import { RetentionCard, type RetentionEntry } from './retention-card'
 
 /** Claim day of the current month if not yet passed, otherwise next month. */
 function nextClaimReferenceDate(claimDay: number, today: Date): Date {
@@ -37,7 +37,7 @@ export default async function ProjectOverviewPage({
     supabase
       .from('projects')
       .select(
-        'id, contract_sum, claim_day, status, practical_completion_date, pc_release_fraction, dlp_months'
+        'id, contract_sum, claim_day, status, practical_completion_date, pc_release_fraction, dlp_months, retention_cap_pct'
       )
       .eq('id', id)
       .single(),
@@ -62,6 +62,7 @@ export default async function ProjectOverviewPage({
   let committedTotal = 0
   let actualTotal = 0
   let retentionHeld = 0
+  let retentionEntriesForCard: RetentionEntry[] = []
   let openVariationsCount = 0
   let timeBarWarnings = 0
   let claimThisMonth: 'drafted' | 'submitted' | null = null
@@ -102,8 +103,9 @@ export default async function ProjectOverviewPage({
         .eq('status', 'active'),
       supabase
         .from('retention_entries')
-        .select('kind, amount')
-        .eq('project_id', id),
+        .select('id, kind, amount, date, notes, claims(number)')
+        .eq('project_id', id)
+        .order('date', { ascending: true }),
     ])
 
     approvedVoTotal = round2(
@@ -137,6 +139,24 @@ export default async function ProjectOverviewPage({
       )
     )
 
+    retentionEntriesForCard = (retentionEntries ?? []).map((e) => {
+      const claimsData = e.claims
+      const claimNumber =
+        claimsData != null && !Array.isArray(claimsData)
+          ? (claimsData as { number: number }).number
+          : Array.isArray(claimsData) && claimsData.length > 0
+            ? (claimsData[0] as { number: number }).number
+            : null
+      return {
+        id: e.id as string,
+        kind: e.kind as 'withheld' | 'release_pc' | 'release_final',
+        amount: Number(e.amount),
+        date: e.date as string,
+        notes: e.notes as string | null,
+        claim_number: claimNumber,
+      }
+    })
+
     const openStatuses = ['notified', 'priced', 'submitted']
     const openVariations = (variations ?? []).filter((v) =>
       openStatuses.includes(v.status)
@@ -165,13 +185,6 @@ export default async function ProjectOverviewPage({
   const remaining = round2(adjustedSum - claimedToDate)
   const pctClaimed =
     adjustedSum > 0 ? Math.min(100, round2((claimedToDate / adjustedSum) * 100)) : 0
-
-  const pcRelease = round2(retentionHeld * Number(project.pc_release_fraction))
-  const finalRelease = round2(retentionHeld - pcRelease)
-  const pcDate = project.practical_completion_date
-    ? new Date(project.practical_completion_date)
-    : null
-  const finalReleaseDate = pcDate ? addMonths(pcDate, Number(project.dlp_months)) : null
 
   const barMax = Math.max(budgetTotal, committedTotal, actualTotal, 1)
   const bars = [
@@ -257,35 +270,17 @@ export default async function ProjectOverviewPage({
             </CardContent>
           </Card>
 
-          {/* Retention held */}
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle className="text-sm text-muted-foreground">
-                Retention held
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex flex-col gap-1">
-              <span className="text-2xl font-semibold tabular-nums">
-                {aud(retentionHeld)}
-              </span>
-              {retentionHeld > 0 ? (
-                <div className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-                  <span className="tabular-nums">
-                    Expected at PC: {aud(pcRelease)}
-                    {pcDate ? ` (${fmtDate(pcDate)})` : ''}
-                  </span>
-                  <span className="tabular-nums">
-                    Final release: {aud(finalRelease)}
-                    {finalReleaseDate ? ` (${fmtDate(finalReleaseDate)})` : ''}
-                  </span>
-                </div>
-              ) : (
-                <span className="text-xs text-muted-foreground">
-                  No retention withheld yet.
-                </span>
-              )}
-            </CardContent>
-          </Card>
+          {/* Retention held — rich ledger card */}
+          <RetentionCard
+            projectId={id}
+            entries={retentionEntriesForCard}
+            retentionHeld={retentionHeld}
+            retentionCapPct={Number(project.retention_cap_pct)}
+            adjustedSum={adjustedSum}
+            pcReleaseFraction={Number(project.pc_release_fraction)}
+            practicalCompletionDate={project.practical_completion_date ?? null}
+            dlpMonths={Number(project.dlp_months)}
+          />
 
           {/* Open variations */}
           <Card size="sm">

@@ -659,3 +659,17 @@ export const vendorQuickSchema = z.object({
 })
 
 export type VendorQuickInput = z.infer<typeof vendorQuickSchema>
+
+// ─── Retention ────────────────────────────────────────────────────────────────
+
+export const RETENTION_RELEASE_KINDS = ['release_pc', 'release_final'] as const
+export type RetentionReleaseKind = (typeof RETENTION_RELEASE_KINDS)[number]
+
+export const retentionReleaseSchema = z.object({
+  kind: z.enum(RETENTION_RELEASE_KINDS),
+  amount: z.coerce.number().positive('Amount must be positive'),
+  date: z.string().min(1, 'Date is required'),
+  notes: optionalText.optional(),
+})
+
+export type RetentionReleaseInput = z.infer<typeof retentionReleaseSchema>
