@@ -59,6 +59,15 @@ export async function createQuote(
 
   const supabase = await createClient()
 
+  // Verify client exists and is not archived.
+  const { data: client } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('id', parsed.data.client_id)
+    .eq('archived', false)
+    .single()
+  if (!client) return { error: 'Client not found or archived' }
+
   // GST rate snapshot from company settings (falls back to the column default).
   const { data: settings } = await supabase
     .from('settings')
@@ -243,6 +252,27 @@ export async function deleteSection(id: string): Promise<Result> {
   const { error } = await supabase.from('quote_sections').delete().eq('id', id)
   if (error) return { error: error.message }
 
+  // Renormalise sibling section positions to close the gap.
+  const { data: siblings } = await supabase
+    .from('quote_sections')
+    .select('id, position')
+    .eq('quote_id', section.quote_id)
+    .order('position')
+    .order('id')
+  if (siblings?.length) {
+    const renumError = await renumberSiblings(
+      siblings,
+      async (rowId, position) => {
+        const { error: e } = await supabase
+          .from('quote_sections')
+          .update({ position })
+          .eq('id', rowId)
+        return e?.message
+      }
+    )
+    if (renumError) return { error: renumError }
+  }
+
   revalidateQuote(section.quote_id)
   return {}
 }
@@ -403,7 +433,7 @@ export async function deleteLine(id: string): Promise<Result> {
   const supabase = await createClient()
   const { data: line } = await supabase
     .from('quote_lines')
-    .select('id, quote_id')
+    .select('id, quote_id, section_id')
     .eq('id', id)
     .single()
   if (!line) return { error: 'Line not found' }
@@ -413,6 +443,29 @@ export async function deleteLine(id: string): Promise<Result> {
 
   const { error } = await supabase.from('quote_lines').delete().eq('id', id)
   if (error) return { error: error.message }
+
+  // Renormalise sibling positions to close the gap.
+  let siblingsQuery = supabase
+    .from('quote_lines')
+    .select('id, position')
+    .eq('quote_id', line.quote_id)
+  siblingsQuery = line.section_id
+    ? siblingsQuery.eq('section_id', line.section_id)
+    : siblingsQuery.is('section_id', null)
+  const { data: siblings } = await siblingsQuery.order('position').order('id')
+  if (siblings?.length) {
+    const renumError = await renumberSiblings(
+      siblings,
+      async (rowId, position) => {
+        const { error: e } = await supabase
+          .from('quote_lines')
+          .update({ position })
+          .eq('id', rowId)
+        return e?.message
+      }
+    )
+    if (renumError) return { error: renumError }
+  }
 
   revalidateQuote(line.quote_id)
   return {}
@@ -465,6 +518,24 @@ export async function moveLine(id: string, dir: 'up' | 'down'): Promise<Result> 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 /**
+ * Rewrites sequential 0-based positions for every sibling row whose current
+ * position doesn't already match its ordinal index.  Call this after a delete
+ * to close the gap left behind.
+ */
+async function renumberSiblings(
+  ordered: { id: string; position: number }[],
+  write: (id: string, position: number) => Promise<string | undefined>
+): Promise<string | undefined> {
+  for (let i = 0; i < ordered.length; i++) {
+    if (ordered[i].position !== i) {
+      const error = await write(ordered[i].id, i)
+      if (error) return error
+    }
+  }
+  return undefined
+}
+
+/**
  * Swaps the target row with its neighbour, then writes back normalised
  * sequential positions (repairs any duplicate/gappy positions on the way).
  */
@@ -483,11 +554,5 @@ async function swapAndReindex(
   const next = [...ordered]
   ;[next[index], next[swapWith]] = [next[swapWith], next[index]]
 
-  for (let i = 0; i < next.length; i++) {
-    if (next[i].position !== i) {
-      const error = await write(next[i].id, i)
-      if (error) return error
-    }
-  }
-  return undefined
+  return renumberSiblings(next, write)
 }
