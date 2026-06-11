@@ -11,6 +11,7 @@ import {
   costCodeSchema,
   plantSchema,
   checklistTemplateSchema,
+  swmsTemplateSchema,
 } from '@/lib/zod'
 
 // ─── Company settings ────────────────────────────────────────────────────────
@@ -264,6 +265,70 @@ export async function deleteChecklistTemplate(
   const { error } = await supabase
     .from('checklist_templates')
     .delete()
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+// ─── SWMS templates ──────────────────────────────────────────────────────────
+
+export async function upsertSwmsTemplate(
+  data: unknown
+): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const parsed = swmsTemplateSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { id, ...rest } = parsed.data
+
+  if (id) {
+    const { data: current } = await supabase
+      .from('swms_templates')
+      .select('title, body, hazards, version')
+      .eq('id', id)
+      .single()
+    if (!current) return { error: 'SWMS template not found' }
+
+    // Bump the version only when the content actually changed.
+    const changed =
+      current.title !== rest.title ||
+      (current.body ?? null) !== rest.body ||
+      JSON.stringify(current.hazards) !== JSON.stringify(rest.hazards)
+
+    const { error } = await supabase
+      .from('swms_templates')
+      .update({
+        ...rest,
+        version: changed ? Number(current.version) + 1 : Number(current.version),
+      })
+      .eq('id', id)
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await supabase.from('swms_templates').insert(rest)
+    if (error) return { error: error.message }
+  }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+export async function setSwmsTemplateActive(
+  id: string,
+  active: boolean
+): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('swms_templates')
+    .update({ active })
     .eq('id', id)
 
   if (error) return { error: error.message }

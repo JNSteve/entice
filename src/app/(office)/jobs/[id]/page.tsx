@@ -15,6 +15,8 @@ import { docTotals } from '@/lib/money'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList } from '@/components/AttachmentList'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
+import { fetchSwmsInstances } from '@/lib/swms-queries'
+import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 
 export default async function JobDetailPage({
   params,
@@ -36,6 +38,8 @@ export default async function JobDetailPage({
     { data: templates },
     { data: costCodes },
     attachments,
+    swmsInstances,
+    { data: swmsTemplates },
   ] = await Promise.all([
     supabase
       .from('jobs')
@@ -78,6 +82,12 @@ export default async function JobDetailPage({
       .eq('active', true)
       .order('code'),
     fetchAttachmentsWithUrls(supabase, 'job', id),
+    fetchSwmsInstances(supabase, 'job', id),
+    supabase
+      .from('swms_templates')
+      .select('id, title, version')
+      .eq('active', true)
+      .order('title'),
   ])
 
   if (!job) notFound()
@@ -253,6 +263,17 @@ export default async function JobDetailPage({
 
       {/* Work log */}
       <WorkLogSection jobId={job.id} entries={workLogData} />
+
+      {/* SWMS */}
+      <div className="border-t" />
+      <SwmsInstancesSection
+        parentType="job"
+        parentId={job.id}
+        instances={swmsInstances}
+        templates={swmsTemplates ?? []}
+        canManage={canMutate}
+        canSupersede={canSeeCosts}
+      />
 
       {/* Costs — admin/office only */}
       {canSeeCosts && (

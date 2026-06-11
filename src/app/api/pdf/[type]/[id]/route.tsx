@@ -10,15 +10,17 @@ import { InvoicePdf } from '@/pdf/InvoicePdf'
 import { PoPdf } from '@/pdf/PoPdf'
 import { ClaimPdf, type ClaimPdfLine } from '@/pdf/ClaimPdf'
 import { DiaryPdf, type DiaryPdfDay, type DiaryPdfPhoto } from '@/pdf/DiaryPdf'
+import { SwmsPdf, type SwmsPdfSignature } from '@/pdf/SwmsPdf'
+import type { SwmsHazard } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
 
 export const runtime = 'nodejs'
 
 // /api/* is excluded from the auth proxy, so this route enforces auth itself.
-// Money documents are office/admin only; site diaries are operational, so
-// supervisors may export them too (field cannot).
+// Money documents are office/admin only; site diaries and SWMS are
+// operational, so supervisors may export them too (field cannot).
 const MONEY_ROLES = ['admin', 'office']
-const DIARY_ROLES = ['admin', 'office', 'supervisor']
+const OPS_ROLES = ['admin', 'office', 'supervisor']
 
 // react-pdf's <Image> can only decode PNG/JPEG.
 const LOGO_EXTENSIONS = ['png', 'jpg', 'jpeg']
@@ -70,7 +72,8 @@ export async function GET(
 
   const { type, id } = await params
 
-  const allowedRoles = type.startsWith('diary') ? DIARY_ROLES : MONEY_ROLES
+  const allowedRoles =
+    type.startsWith('diary') || type === 'swms' ? OPS_ROLES : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
     return new Response('Forbidden', { status: 403 })
   }
@@ -92,7 +95,8 @@ export async function GET(
       const url = new URL(request.url)
       return diaryRangePdf(id, url.searchParams.get('from'), url.searchParams.get('to'))
     }
-    // swms lands in a later task
+    case 'swms':
+      return swmsPdf(id)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -694,6 +698,102 @@ async function diaryPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="diary-${projectRel.number}-${diary.date}.pdf"`,
+    },
+  })
+}
+
+// ─── SWMS ────────────────────────────────────────────────────────────────────
+
+async function swmsPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: instance }, { data: signatures }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('swms_instances')
+        .select(
+          `id, title, body, hazards, version, status, created_at,
+           projects(number, name), jobs(number, title)`
+        )
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('swms_signatures')
+        .select('name, signature_path, version, signed_at')
+        .eq('swms_instance_id', id)
+        .order('signed_at'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  if (!instance) return new Response('Not found', { status: 404 })
+
+  const projectRel = instance.projects as unknown as {
+    number: string
+    name: string
+  } | null
+  const jobRel = instance.jobs as unknown as { number: string; title: string } | null
+  const parentLabel = projectRel
+    ? `${projectRel.number} — ${projectRel.name}`
+    : jobRel
+      ? `${jobRel.number} — ${jobRel.title}`
+      : '—'
+
+  const currentVersion = Number(instance.version)
+  const currentSigs = (signatures ?? []).filter(
+    (s) => Number(s.version) === currentVersion
+  )
+  const earlierSignatureCount = (signatures ?? []).length - currentSigs.length
+
+  // Batch-sign signature image URLs — react-pdf fetches them at render time.
+  // Missing objects (e.g. seeded rows) simply render without an image.
+  const urlByPath = new Map<string, string>()
+  if (currentSigs.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from('attachments')
+      .createSignedUrls(currentSigs.map((s) => s.signature_path as string), 3600)
+    for (const entry of signed ?? []) {
+      if (entry.signedUrl && entry.path) urlByPath.set(entry.path, entry.signedUrl)
+    }
+  }
+
+  const pdfSignatures: SwmsPdfSignature[] = currentSigs.map((s) => ({
+    name: s.name as string,
+    date: fmtDate(s.signed_at),
+    version: Number(s.version),
+    imageUrl: urlByPath.get(s.signature_path as string) ?? null,
+  }))
+
+  const buffer = await renderToBuffer(
+    <SwmsPdf
+      swms={{
+        title: instance.title,
+        parentLabel,
+        version: currentVersion,
+        status: instance.status,
+        date: fmtDate(instance.created_at),
+      }}
+      company={toCompany(settings)}
+      body={instance.body ?? null}
+      hazards={((instance.hazards as SwmsHazard[] | null) ?? []).map((h) => ({
+        task: h.task,
+        hazards: h.hazards,
+        risk: h.risk,
+        controls: h.controls,
+        residual_risk: h.residual_risk,
+      }))}
+      signatures={pdfSignatures}
+      earlierSignatureCount={earlierSignatureCount}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="swms-v${currentVersion}.pdf"`,
     },
   })
 }

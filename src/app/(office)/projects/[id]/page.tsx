@@ -9,6 +9,8 @@ import {
 } from '@/components/ui/card'
 import { round2, lineTotal } from '@/lib/money'
 import { aud, fmtDate, pct } from '@/lib/format'
+import { fetchSwmsInstances } from '@/lib/swms-queries'
+import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import { RetentionCard, type RetentionEntry } from './retention-card'
 
 /** Claim day of the current month if not yet passed, otherwise next month. */
@@ -33,21 +35,28 @@ export default async function ProjectOverviewPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: project }, { data: diaries }] = await Promise.all([
-    supabase
-      .from('projects')
-      .select(
-        'id, contract_sum, claim_day, status, practical_completion_date, pc_release_fraction, dlp_months, retention_cap_pct'
-      )
-      .eq('id', id)
-      .single(),
-    supabase
-      .from('diaries')
-      .select('id, date, work_performed')
-      .eq('project_id', id)
-      .order('date', { ascending: false })
-      .limit(3),
-  ])
+  const [{ data: project }, { data: diaries }, swmsInstances, { data: swmsTemplates }] =
+    await Promise.all([
+      supabase
+        .from('projects')
+        .select(
+          'id, contract_sum, claim_day, status, practical_completion_date, pc_release_fraction, dlp_months, retention_cap_pct'
+        )
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('diaries')
+        .select('id, date, work_performed')
+        .eq('project_id', id)
+        .order('date', { ascending: false })
+        .limit(3),
+      fetchSwmsInstances(supabase, 'project', id),
+      supabase
+        .from('swms_templates')
+        .select('id, title, version')
+        .eq('active', true)
+        .order('title'),
+    ])
 
   if (!project) notFound()
 
@@ -194,7 +203,8 @@ export default async function ProjectOverviewPage({
   ]
 
   return (
-    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+    <div className="flex flex-col gap-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
       {showMoney && (
         <>
           {/* Adjusted contract sum */}
@@ -357,6 +367,17 @@ export default async function ProjectOverviewPage({
           )}
         </CardContent>
       </Card>
+      </div>
+
+      {/* SWMS — ops-visible incl supervisor */}
+      <SwmsInstancesSection
+        parentType="project"
+        parentId={id}
+        instances={swmsInstances}
+        templates={swmsTemplates ?? []}
+        canManage
+        canSupersede={showMoney}
+      />
     </div>
   )
 }

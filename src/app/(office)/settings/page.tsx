@@ -10,6 +10,7 @@ const VALID_TABS: SettingsTab[] = [
   'cost-codes',
   'plant',
   'checklists',
+  'swms',
 ]
 
 export default async function SettingsPage({
@@ -34,6 +35,7 @@ export default async function SettingsPage({
     { data: costCodes },
     { data: plant },
     { data: checklists },
+    { data: swmsTemplates },
   ] = await Promise.all([
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
@@ -57,6 +59,10 @@ export default async function SettingsPage({
       .from('checklist_templates')
       .select('id, title, items, created_at')
       .order('title'),
+    supabase
+      .from('swms_templates')
+      .select('id, title, body, hazards, version, active')
+      .order('title'),
   ])
 
   return (
@@ -74,6 +80,7 @@ export default async function SettingsPage({
         costCodes={costCodes ?? []}
         plant={plant ?? []}
         checklists={checklists ?? []}
+        swmsTemplates={swmsTemplates ?? []}
       />
     </div>
   )

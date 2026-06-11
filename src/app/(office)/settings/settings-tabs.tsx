@@ -11,6 +11,7 @@ import {
   ChecklistsSection,
   type ChecklistTemplateRow,
 } from './checklists-section'
+import { SwmsSection, type SwmsTemplateRow } from './swms-section'
 
 export type SettingsTab =
   | 'company'
@@ -19,6 +20,7 @@ export type SettingsTab =
   | 'cost-codes'
   | 'plant'
   | 'checklists'
+  | 'swms'
 
 const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'company', label: 'Company' },
@@ -27,6 +29,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'cost-codes', label: 'Cost codes' },
   { value: 'plant', label: 'Plant' },
   { value: 'checklists', label: 'Checklists' },
+  { value: 'swms', label: 'SWMS' },
 ]
 
 interface SettingsTabsProps {
@@ -38,6 +41,7 @@ interface SettingsTabsProps {
   costCodes: CostCodeRow[]
   plant: PlantRow[]
   checklists: ChecklistTemplateRow[]
+  swmsTemplates: SwmsTemplateRow[]
 }
 
 export function SettingsTabs({
@@ -49,6 +53,7 @@ export function SettingsTabs({
   costCodes,
   plant,
   checklists,
+  swmsTemplates,
 }: SettingsTabsProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab)
 
@@ -85,6 +90,9 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="checklists" className="pt-4">
         <ChecklistsSection checklists={checklists} />
+      </TabsContent>
+      <TabsContent value="swms" className="pt-4">
+        <SwmsSection templates={swmsTemplates} />
       </TabsContent>
     </Tabs>
   )

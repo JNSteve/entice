@@ -892,6 +892,67 @@ export const plantRowSchema = z.object({
 
 export type PlantRowInput = z.infer<typeof plantRowSchema>
 
+// ─── SWMS ────────────────────────────────────────────────────────────────────
+
+export const RISK_LEVELS = ['H', 'M', 'L'] as const
+export type RiskLevel = (typeof RISK_LEVELS)[number]
+
+export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
+  H: 'High',
+  M: 'Medium',
+  L: 'Low',
+}
+
+export const swmsHazardSchema = z.object({
+  task: z.string().min(1, 'Task is required'),
+  hazards: z.string().min(1, 'Hazards are required'),
+  risk: z.enum(RISK_LEVELS),
+  controls: z.string().min(1, 'Controls are required'),
+  residual_risk: z.enum(RISK_LEVELS),
+})
+
+export type SwmsHazard = z.infer<typeof swmsHazardSchema>
+
+export const swmsTemplateSchema = z.object({
+  id: z.string().uuid().optional(),
+  title: z.string().min(1, 'Title is required'),
+  body: optionalText,
+  hazards: z.array(swmsHazardSchema).min(1, 'Add at least one hazard row'),
+  active: z.boolean().default(true),
+})
+
+export type SwmsTemplateInput = z.infer<typeof swmsTemplateSchema>
+
+export const swmsInstanceCreateSchema = z
+  .object({
+    template_id: z.uuid('Pick a template'),
+    project_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    job_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+  })
+  .refine(
+    (d) => d.project_id !== null || d.job_id !== null,
+    'Attach the SWMS to a project or job'
+  )
+
+export type SwmsInstanceCreateInput = z.infer<typeof swmsInstanceCreateSchema>
+
+export const swmsSignSchema = z.object({
+  instance_id: z.uuid(),
+  name: z.string().min(1, 'Name is required'),
+  /** PNG data URL exported from the signature pad. */
+  signature: z
+    .string()
+    .startsWith('data:image/png;base64,', 'Signature must be a PNG image'),
+})
+
+export type SwmsSignInput = z.infer<typeof swmsSignSchema>
+
 // ─── Assignments ─────────────────────────────────────────────────────────────
 
 export const assignmentSchema = z.object({
