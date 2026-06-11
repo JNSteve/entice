@@ -271,6 +271,49 @@ export const quoteLineUpdateSchema = z.object({
 
 export type QuoteLineUpdateInput = z.infer<typeof quoteLineUpdateSchema>
 
+// ─── Invoices ────────────────────────────────────────────────────────────────
+
+export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'void'] as const
+export type InvoiceStatus = (typeof INVOICE_STATUSES)[number]
+
+export const INVOICE_BASES = ['quote', 'costs', 'blank'] as const
+export type InvoiceBasis = (typeof INVOICE_BASES)[number]
+
+export const invoiceBasisSchema = z.enum(INVOICE_BASES)
+
+export const invoiceHeaderSchema = z.object({
+  issue_date: z.string().min(1, 'Issue date is required').optional(),
+  due_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+})
+
+export type InvoiceHeaderInput = z.infer<typeof invoiceHeaderSchema>
+
+export const invoiceLineUpdateSchema = z.object({
+  description: z.string(),
+  qty: z.coerce.number().min(0),
+  unit: z.string().min(1, 'Unit is required'),
+  unit_sell: z.coerce.number().min(0),
+})
+
+export type InvoiceLineUpdateInput = z.infer<typeof invoiceLineUpdateSchema>
+
+export const PAYMENT_METHODS = ['cash', 'eft', 'card', 'cheque', 'other'] as const
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number]
+
+export const paymentSchema = z.object({
+  invoice_id: z.uuid(),
+  date: z.string().min(1, 'Date is required'),
+  amount: z.coerce.number().positive('Amount must be positive'),
+  method: z.enum(PAYMENT_METHODS),
+  reference: optionalText.optional(),
+})
+
+export type PaymentInput = z.infer<typeof paymentSchema>
+
 // ─── Checklist templates ─────────────────────────────────────────────────────
 
 export const checklistTemplateSchema = z.object({

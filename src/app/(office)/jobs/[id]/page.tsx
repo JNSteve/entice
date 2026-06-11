@@ -10,6 +10,8 @@ import { EditJobDialog } from './edit-job-dialog'
 import { ChecklistSection } from './checklist-section'
 import { WorkLogSection } from './work-log-section'
 import { CostsSection } from './costs-section'
+import { InvoiceSection, type JobInvoiceRow } from './invoice-section'
+import { docTotals } from '@/lib/money'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList } from '@/components/AttachmentList'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
@@ -122,6 +124,45 @@ export default async function JobDetailPage({
   const canSeeCosts = profile.role === 'admin' || profile.role === 'office'
   const canDeleteAttachment = profile.role === 'admin' || profile.role === 'office'
 
+  // Invoices — admin/office only (money data).
+  let invoiceRows: JobInvoiceRow[] = []
+  let hasQuoteBasis = false
+  if (canSeeCosts) {
+    const [{ data: invoices }, { count: quoteLineCount }] = await Promise.all([
+      supabase
+        .from('invoices')
+        .select('id, number, status, gst_rate, issue_date, paid_at, invoice_lines(qty, unit_sell)')
+        .eq('job_id', id)
+        .order('created_at'),
+      job.quote_id
+        ? supabase
+            .from('quote_lines')
+            .select('id', { count: 'exact', head: true })
+            .eq('quote_id', job.quote_id)
+        : Promise.resolve({ count: 0 }),
+    ])
+
+    invoiceRows = (invoices ?? []).map((inv) => {
+      const { total } = docTotals(
+        ((inv.invoice_lines ?? []) as { qty: number; unit_sell: number }[]).map((l) => ({
+          qty: Number(l.qty),
+          unitSell: Number(l.unit_sell),
+        })),
+        Number(inv.gst_rate)
+      )
+      return {
+        id: inv.id,
+        number: inv.number,
+        status: inv.status,
+        total,
+        issue_date: inv.issue_date,
+        paid_at: inv.paid_at,
+      }
+    })
+
+    hasQuoteBasis = quoteRel?.status === 'accepted' && (quoteLineCount ?? 0) > 0
+  }
+
   const photoItems = attachments.filter((a) => a.kind === 'photo')
   const docItems = attachments.filter((a) => a.kind !== 'photo')
 
@@ -225,6 +266,19 @@ export default async function JobDetailPage({
               code: cc.code,
               name: cc.name,
             }))}
+          />
+        </>
+      )}
+
+      {/* Invoices — admin/office only */}
+      {canSeeCosts && (
+        <>
+          <div className="border-t" />
+          <InvoiceSection
+            jobId={job.id}
+            jobStatus={job.status}
+            hasQuoteBasis={hasQuoteBasis}
+            invoices={invoiceRows}
           />
         </>
       )}
