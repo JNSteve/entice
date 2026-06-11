@@ -997,6 +997,34 @@ export const assignmentUpdateSchema = z.object({
 
 export type AssignmentUpdateInput = z.infer<typeof assignmentUpdateSchema>
 
+// ─── Docket / cost-from-docket ────────────────────────────────────────────────
+
+/** Validates docket metadata stored in attachment.meta. */
+export const docketMetaSchema = z.object({
+  supplier: z.string().min(1, 'Supplier is required'),
+  docket_no: z.string().min(1, 'Docket number is required'),
+  docket_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date (YYYY-MM-DD)'),
+  /** Set after a cost row is created from this docket. */
+  cost_id: z.string().uuid().optional().nullable(),
+})
+
+export type DocketMeta = z.infer<typeof docketMetaSchema>
+
+export const costFromDocketSchema = z.object({
+  attachment_id: z.string().uuid(),
+  parent_type: z.enum(['job', 'project']),
+  parent_id: z.string().uuid(),
+  date: z.string().min(1, 'Date is required'),
+  description: z.string().min(1, 'Description is required'),
+  amount: z.coerce.number().positive('Amount must be positive'),
+  cost_code_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type CostFromDocketInput = z.infer<typeof costFromDocketSchema>
+
 export const packageUpdateSchema = z.object({
   name: z.string().min(1, 'Package name is required').optional(),
   budget_amount: z.coerce.number().min(0).optional(),

@@ -17,6 +17,7 @@ import { AttachmentList } from '@/components/AttachmentList'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 import { fetchSwmsInstances } from '@/lib/swms-queries'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
+import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
 
 export default async function JobDetailPage({
   params,
@@ -174,7 +175,8 @@ export default async function JobDetailPage({
   }
 
   const photoItems = attachments.filter((a) => a.kind === 'photo')
-  const docItems = attachments.filter((a) => a.kind !== 'photo')
+  const docketItems = attachments.filter((a) => a.kind === 'docket')
+  const docItems = attachments.filter((a) => a.kind !== 'photo' && a.kind !== 'docket')
 
   const dateRange = job.scheduled_start
     ? `${fmtDate(job.scheduled_start)}${job.scheduled_end ? ` – ${fmtDate(job.scheduled_end)}` : ''}`
@@ -318,6 +320,31 @@ export default async function JobDetailPage({
         <AttachmentList
           items={photoItems}
           canDelete={canDeleteAttachment}
+        />
+      </section>
+
+      {/* Dockets */}
+      <div className="border-t" />
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">Dockets</h2>
+        <DocketTable
+          rows={docketItems.map((a) => ({
+            id: a.id,
+            filename: a.filename,
+            caption: a.caption,
+            signedUrl: a.signedUrl,
+            created_at: a.created_at,
+            created_by_name: a.created_by_name,
+            meta: a.meta as DocketRow['meta'],
+          }))}
+          parentType="job"
+          parentId={job.id}
+          costCodes={(costCodes ?? []).map<CostCodeOption>((cc) => ({
+            id: cc.id,
+            code: cc.code,
+            name: cc.name,
+          }))}
+          canCreateCost={canSeeCosts}
         />
       </section>
 
