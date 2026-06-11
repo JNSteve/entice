@@ -799,6 +799,37 @@ export const packageAwardSchema = z.object({
 
 export type PackageAwardInput = z.infer<typeof packageAwardSchema>
 
+// ─── Timesheet entries ───────────────────────────────────────────────────────
+
+export const checkInSchema = z.object({
+  assignment_id: z.uuid(),
+  job_id: z.uuid().nullable(),
+  project_id: z.uuid().nullable(),
+  date: z.string().min(1, 'Date is required'),
+})
+
+export type CheckInInput = z.infer<typeof checkInSchema>
+
+export const manualEntrySchema = z
+  .object({
+    assignment_id: z.uuid(),
+    job_id: z.uuid().nullable(),
+    project_id: z.uuid().nullable(),
+    date: z.string().min(1, 'Date is required'),
+    start_time: z.string().regex(/^\d{2}:\d{2}$/, 'Invalid time (HH:MM)'),
+    end_time: z.string().regex(/^\d{2}:\d{2}$/, 'Invalid time (HH:MM)'),
+  })
+  .refine(
+    (d) => {
+      const [sh, sm] = d.start_time.split(':').map(Number)
+      const [eh, em] = d.end_time.split(':').map(Number)
+      return eh * 60 + em > sh * 60 + sm
+    },
+    { message: 'End time must be after start time', path: ['end_time'] }
+  )
+
+export type ManualEntryInput = z.infer<typeof manualEntrySchema>
+
 // ─── Assignments ─────────────────────────────────────────────────────────────
 
 export const assignmentSchema = z.object({

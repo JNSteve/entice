@@ -9,12 +9,16 @@ export default async function FieldLayout({
 }: {
   children: React.ReactNode
 }) {
-  await requireRole('admin', 'office', 'supervisor', 'field')
+  const profile = await requireRole('admin', 'office', 'supervisor', 'field')
+  const firstName = profile.full_name.split(' ')[0] ?? profile.full_name
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col">
       <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background px-4">
-        <span className="text-lg font-bold tracking-tight">Entice</span>
+        <div className="flex flex-col leading-tight">
+          <span className="text-lg font-bold tracking-tight">Entice</span>
+          <span className="text-xs text-muted-foreground">{firstName}</span>
+        </div>
         <form action={signOut}>
           <Button type="submit" variant="ghost" size="icon">
             <LogOutIcon />
