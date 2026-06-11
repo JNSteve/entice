@@ -799,6 +799,50 @@ export const packageAwardSchema = z.object({
 
 export type PackageAwardInput = z.infer<typeof packageAwardSchema>
 
+// ─── Assignments ─────────────────────────────────────────────────────────────
+
+export const assignmentSchema = z.object({
+  user_id: z.uuid('Pick a person'),
+  date: z.string().min(1, 'Date is required'),
+  job_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  project_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  note: optionalText.optional(),
+  /** Optional: create rows for every Mon–Sun day in range (capped 14 days, skip dupes). */
+  repeat_until: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+}).refine(
+  (d) => d.job_id !== null || d.project_id !== null,
+  'Assign to a job or project'
+)
+
+export type AssignmentInput = z.infer<typeof assignmentSchema>
+
+export const assignmentUpdateSchema = z.object({
+  date: z.string().min(1, 'Date is required').optional(),
+  job_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  project_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  note: optionalText.optional(),
+})
+
+export type AssignmentUpdateInput = z.infer<typeof assignmentUpdateSchema>
+
 export const packageUpdateSchema = z.object({
   name: z.string().min(1, 'Package name is required').optional(),
   budget_amount: z.coerce.number().min(0).optional(),
