@@ -45,6 +45,14 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(url)
   }
 
+  // Redirect authenticated users away from /login
+  if (user && request.nextUrl.pathname.startsWith('/login')) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/'
+    url.search = ''
+    return NextResponse.redirect(url)
+  }
+
   // IMPORTANT: return the supabaseResponse object as-is so refreshed
   // auth cookies stay in sync between browser and server.
   return supabaseResponse
