@@ -1154,6 +1154,96 @@ export const formTemplateSchema = z
 
 export type FormTemplateInput = z.infer<typeof formTemplateSchema>
 
+// ─── Form submissions (field) ────────────────────────────────────────────────
+
+/**
+ * Envelope for a dynamic form submission. The jsonb `data` payload is
+ * validated separately against the template schema via
+ * validateSubmissionData() in src/lib/form-validate.ts.
+ */
+export const formSubmissionSchema = z
+  .object({
+    template_id: z.uuid(),
+    project_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    job_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    plant_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    data: z.record(z.string(), z.unknown()).default({}),
+  })
+  .refine(
+    (d) => d.project_id !== null || d.job_id !== null,
+    'Pick a project or job'
+  )
+
+export type FormSubmissionInput = z.infer<typeof formSubmissionSchema>
+
+export const formSignonSchema = z.object({
+  submission_id: z.uuid(),
+  name: z.string().min(1, 'Name is required'),
+  company: optionalText.optional(),
+  /** PNG data URL exported from the signature pad. */
+  signature: z
+    .string()
+    .startsWith('data:image/png;base64,', 'Signature must be a PNG image')
+    .max(140000, 'Signature image is too large'),
+  /** true = the signed-in user signing for themselves; false = pass-the-phone. */
+  self: z.boolean(),
+})
+
+export type FormSignonInput = z.infer<typeof formSignonSchema>
+
+// ─── Incidents ───────────────────────────────────────────────────────────────
+
+export const INCIDENT_TYPES = [
+  'injury',
+  'near_miss',
+  'property',
+  'environmental',
+] as const
+export type IncidentType = (typeof INCIDENT_TYPES)[number]
+
+export const INCIDENT_TYPE_LABELS: Record<IncidentType, string> = {
+  injury: 'Injury',
+  near_miss: 'Near miss',
+  property: 'Property damage',
+  environmental: 'Environmental',
+}
+
+export const incidentCreateSchema = z
+  .object({
+    project_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    job_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    type: z.enum(INCIDENT_TYPES),
+    severity: z.coerce.number().int().min(1).max(5),
+    /** datetime-local value: YYYY-MM-DDTHH:MM */
+    occurred_at: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, 'When it happened is required'),
+    location: optionalText,
+    description: z.string().min(1, 'Describe what happened'),
+    immediate_action: optionalText,
+  })
+  .refine(
+    (d) => d.project_id !== null || d.job_id !== null,
+    'Pick a project or job'
+  )
+
+export type IncidentCreateInput = z.infer<typeof incidentCreateSchema>
+
 // ─── Hold points ─────────────────────────────────────────────────────────────
 
 export const holdPointSchema = z.object({

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-const PREFIX = { quote: 'Q', job: 'J', project: 'P', po: 'PO', invoice: 'INV' } as const
+const PREFIX = { quote: 'Q', job: 'J', project: 'P', po: 'PO', invoice: 'INV', incident: 'INC' } as const
 export type SequenceKey = keyof typeof PREFIX
 
 export async function nextNumber(supabase: SupabaseClient, key: SequenceKey): Promise<string> {

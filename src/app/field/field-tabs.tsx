@@ -4,8 +4,8 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   CameraIcon,
+  HardHatIcon,
   NotebookPenIcon,
-  ShieldCheckIcon,
   SunIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -13,7 +13,7 @@ import { cn } from '@/lib/utils'
 const TABS = [
   { label: 'My Day', href: '/field', icon: SunIcon },
   { label: 'Diary', href: '/field/diary', icon: NotebookPenIcon },
-  { label: 'SWMS', href: '/field/swms', icon: ShieldCheckIcon },
+  { label: 'Safety', href: '/field/safety', icon: HardHatIcon },
   { label: 'Photos', href: '/field/photo', icon: CameraIcon },
 ]
 
@@ -27,7 +27,11 @@ export function FieldTabs() {
           const active =
             tab.href === '/field'
               ? pathname === '/field'
-              : pathname === tab.href || pathname.startsWith(`${tab.href}/`)
+              : pathname === tab.href ||
+                pathname.startsWith(`${tab.href}/`) ||
+                // SWMS pages live under /field/swms but belong to Safety.
+                (tab.href === '/field/safety' &&
+                  pathname.startsWith('/field/swms'))
           const Icon = tab.icon
           return (
             <Link
