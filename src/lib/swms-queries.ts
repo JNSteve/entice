@@ -123,6 +123,14 @@ export interface SwmsRegisterRow {
   signed_at: string | null
 }
 
+/** External (no-login) signature captured via a share link, current version. */
+export interface SwmsExternalSigner {
+  id: string
+  name: string
+  company: string | null
+  signed_at: string
+}
+
 export interface SwmsInstanceListRow {
   id: string
   title: string
@@ -133,6 +141,7 @@ export interface SwmsInstanceListRow {
   signedCount: number
   registerTotal: number
   register: SwmsRegisterRow[]
+  externalSigners: SwmsExternalSigner[]
 }
 
 /**
@@ -166,7 +175,7 @@ export async function fetchSwmsInstances(
 
   const { data: signatures } = await supabase
     .from('swms_signatures')
-    .select('swms_instance_id, user_id, version, signed_at')
+    .select('id, swms_instance_id, user_id, version, signed_at, name, company, external')
     .in(
       'swms_instance_id',
       instances.map((i) => i.id as string)
@@ -179,7 +188,9 @@ export async function fetchSwmsInstances(
         Number(s.version) === Number(instance.version)
     )
     const signedAtByUser = new Map(
-      currentSigs.map((s) => [s.user_id as string, s.signed_at as string])
+      currentSigs
+        .filter((s) => s.user_id !== null)
+        .map((s) => [s.user_id as string, s.signed_at as string])
     )
 
     const register: SwmsRegisterRow[] = (crew ?? []).map((p) => ({
@@ -188,6 +199,16 @@ export async function fetchSwmsInstances(
       role: p.role as 'supervisor' | 'field',
       signed_at: signedAtByUser.get(p.id as string) ?? null,
     }))
+
+    const externalSigners: SwmsExternalSigner[] = currentSigs
+      .filter((s) => s.external === true || s.user_id === null)
+      .map((s) => ({
+        id: s.id as string,
+        name: (s.name as string | null) ?? '—',
+        company: (s.company as string | null) ?? null,
+        signed_at: s.signed_at as string,
+      }))
+      .sort((a, b) => a.signed_at.localeCompare(b.signed_at))
 
     return {
       id: instance.id as string,
@@ -199,6 +220,7 @@ export async function fetchSwmsInstances(
       signedCount: register.filter((r) => r.signed_at !== null).length,
       registerTotal: register.length,
       register,
+      externalSigners,
     }
   })
 }

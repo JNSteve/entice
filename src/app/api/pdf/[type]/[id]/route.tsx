@@ -1,4 +1,5 @@
 import { renderToBuffer } from '@react-pdf/renderer'
+import QRCode from 'qrcode'
 import { format, parseISO } from 'date-fns'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
@@ -14,6 +15,7 @@ import { SwmsPdf, type SwmsPdfSignature } from '@/pdf/SwmsPdf'
 import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
 import { FormPdf, type FormPdfSignon } from '@/pdf/FormPdf'
 import { IncidentPdf, type IncidentPdfAction } from '@/pdf/IncidentPdf'
+import { QrPosterPdf } from '@/pdf/QrPosterPdf'
 import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
 
@@ -76,7 +78,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'qr-poster'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -109,6 +111,9 @@ export async function GET(
       return formPdf(id)
     case 'incident':
       return incidentPdf(id)
+    case 'qr-poster':
+      // [id] = share_links row id
+      return qrPosterPdf(id, request)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -731,7 +736,7 @@ async function swmsPdf(id: string): Promise<Response> {
         .single(),
       supabase
         .from('swms_signatures')
-        .select('name, signature_path, version, signed_at')
+        .select('name, company, external, signature_path, signature_data, version, signed_at')
         .eq('swms_instance_id', id)
         .order('signed_at'),
       supabase
@@ -762,22 +767,32 @@ async function swmsPdf(id: string): Promise<Response> {
 
   // Batch-sign signature image URLs — react-pdf fetches them at render time.
   // Missing objects (e.g. seeded rows) simply render without an image.
+  // External rows store the PNG inline (signature_data) instead of a path.
+  const pathSigs = currentSigs.filter((s) => s.signature_path)
   const urlByPath = new Map<string, string>()
-  if (currentSigs.length > 0) {
+  if (pathSigs.length > 0) {
     const { data: signed } = await supabase.storage
       .from('attachments')
-      .createSignedUrls(currentSigs.map((s) => s.signature_path as string), 3600)
+      .createSignedUrls(pathSigs.map((s) => s.signature_path as string), 3600)
     for (const entry of signed ?? []) {
       if (entry.signedUrl && entry.path) urlByPath.set(entry.path, entry.signedUrl)
     }
   }
 
-  const pdfSignatures: SwmsPdfSignature[] = currentSigs.map((s) => ({
-    name: s.name as string,
-    date: fmtDate(s.signed_at),
-    version: Number(s.version),
-    imageUrl: urlByPath.get(s.signature_path as string) ?? null,
-  }))
+  const pdfSignatures: SwmsPdfSignature[] = currentSigs.map((s) => {
+    const company = s.company as string | null
+    const external = Boolean(s.external)
+    return {
+      name: external
+        ? `${s.name as string} (External${company ? ` — ${company}` : ''})`
+        : (s.name as string),
+      date: fmtDate(s.signed_at),
+      version: Number(s.version),
+      imageUrl: s.signature_path
+        ? (urlByPath.get(s.signature_path as string) ?? null)
+        : ((s.signature_data as string | null) ?? null),
+    }
+  })
 
   const buffer = await renderToBuffer(
     <SwmsPdf
@@ -1139,6 +1154,77 @@ async function incidentPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${incident.number as string}.pdf"`,
+    },
+  })
+}
+
+// ─── QR sign-on poster ────────────────────────────────────────────────────────
+
+async function qrPosterPdf(id: string, request: Request): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: link }, { data: settings }] = await Promise.all([
+    supabase
+      .from('share_links')
+      .select(
+        `id, token, kind, label, active,
+         swms_instances(title, projects(number, name), jobs(number, title)),
+         form_submissions(form_templates(name), projects(number, name), jobs(number, title))`
+      )
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  if (!link || link.kind !== 'signon') return new Response('Not found', { status: 404 })
+
+  type ParentRefs = {
+    projects: { number: string; name: string } | null
+    jobs: { number: string; title: string } | null
+  }
+  const swmsRel = link.swms_instances as unknown as
+    | ({ title: string } & ParentRefs)
+    | null
+  const submissionRel = link.form_submissions as unknown as
+    | ({ form_templates: { name: string } | null } & ParentRefs)
+    | null
+
+  const parent = swmsRel ?? submissionRel
+  const projectName = parent?.projects
+    ? `${parent.projects.number} — ${parent.projects.name}`
+    : parent?.jobs
+      ? `${parent.jobs.number} — ${parent.jobs.title}`
+      : null
+
+  const label =
+    link.label ??
+    swmsRel?.title ??
+    submissionRel?.form_templates?.name ??
+    'Site sign-on'
+
+  const origin =
+    process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
+  const url = `${origin.replace(/\/$/, '')}/sign/${link.token}`
+  const qrDataUrl = await QRCode.toDataURL(url, { width: 600, margin: 1 })
+
+  const buffer = await renderToBuffer(
+    <QrPosterPdf
+      company={toCompany(settings)}
+      label={label}
+      projectName={projectName}
+      qrDataUrl={qrDataUrl}
+      url={url}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="sign-on-poster.pdf"`,
     },
   })
 }

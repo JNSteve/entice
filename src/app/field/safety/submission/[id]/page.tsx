@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 import { AttachmentList } from '@/components/AttachmentList'
 import { PhotoUpload } from '@/components/PhotoUpload'
+import { ShareLinkDialog } from '@/components/ShareLinkDialog'
 import { Button } from '@/components/ui/button'
 import type { FormField, FormTemplateKind } from '@/lib/zod'
 import { SignonSection } from './signon-section'
@@ -227,9 +228,19 @@ export default async function FormSubmissionPage({
       {/* Sign-on */}
       {requiresSignon && (
         <section className="flex flex-col gap-3 border-t pt-4">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Sign-on ({signons.length})
-          </h2>
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Sign-on ({signons.length})
+            </h2>
+            {(profile.role === 'admin' ||
+              profile.role === 'office' ||
+              profile.role === 'supervisor') && (
+              <ShareLinkDialog
+                target={{ formSubmissionId: id }}
+                defaultLabel={`${template?.name ?? KIND_LABELS[submission.kind as FormTemplateKind]} — ${fmtDateTime(submission.submitted_at as string).slice(0, 10)}`}
+              />
+            )}
+          </div>
           {signons.length === 0 ? (
             <p className="text-sm text-muted-foreground">No sign-ons yet.</p>
           ) : (

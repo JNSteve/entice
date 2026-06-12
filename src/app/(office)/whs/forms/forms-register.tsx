@@ -30,6 +30,7 @@ import { Input } from '@/components/ui/input'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { FormDataView } from '@/components/FormDataView'
+import { ShareLinkDialog } from '@/components/ShareLinkDialog'
 import { downloadCsv } from '@/lib/csv'
 import { createClient } from '@/lib/supabase/client'
 import type { FormField, FormTemplateKind } from '@/lib/zod'
@@ -294,6 +295,12 @@ function SubmissionDrawer({
             <FileTextIcon className="size-4" />
             PDF
           </Button>
+          {row.requiresSignon && (
+            <ShareLinkDialog
+              target={{ formSubmissionId: row.id }}
+              defaultLabel={`${row.templateName} — ${format(parseISO(row.submittedAt), 'dd/MM/yyyy')}`}
+            />
+          )}
         </div>
       </DialogContent>
     </Dialog>

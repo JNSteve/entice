@@ -35,6 +35,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { EmptyState } from '@/components/EmptyState'
+import { ShareLinkDialog } from '@/components/ShareLinkDialog'
 import { StatusBadge } from '@/components/StatusBadge'
 import { fmtDate } from '@/lib/format'
 import {
@@ -166,6 +167,8 @@ function SwmsInstanceCard({
             aria-expanded={open}
           >
             {instance.signedCount} of {instance.registerTotal} field staff signed
+            {instance.externalSigners.length > 0 &&
+              ` · ${instance.externalSigners.length} external`}
             {open ? (
               <ChevronUpIcon className="size-3.5" />
             ) : (
@@ -174,6 +177,12 @@ function SwmsInstanceCard({
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-1">
+          {canManage && isActive && (
+            <ShareLinkDialog
+              target={{ swmsInstanceId: instance.id }}
+              defaultLabel={instance.title}
+            />
+          )}
           <Button
             type="button"
             variant="outline"
@@ -212,7 +221,7 @@ function SwmsInstanceCard({
       {/* Sign-on register */}
       {open && (
         <div className="border-t px-4 py-3">
-          {instance.register.length === 0 ? (
+          {instance.register.length === 0 && instance.externalSigners.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No active field or supervisor staff to sign on.
             </p>
@@ -241,6 +250,27 @@ function SwmsInstanceCard({
                             Outstanding
                           </span>
                         )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {instance.externalSigners.map((signer) => (
+                    <TableRow key={signer.id}>
+                      <TableCell>
+                        <span className="flex flex-wrap items-center gap-2">
+                          {signer.name}
+                          <Badge
+                            variant="outline"
+                            className="border-slate-200 bg-slate-50 text-xs text-slate-600 dark:bg-slate-900 dark:text-slate-400"
+                          >
+                            External
+                          </Badge>
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {signer.company ?? '—'}
+                      </TableCell>
+                      <TableCell>
+                        <span className="tabular-nums">{fmtDate(signer.signed_at)}</span>
                       </TableCell>
                     </TableRow>
                   ))}
