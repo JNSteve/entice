@@ -658,3 +658,37 @@ insert into hold_points (id, project_id, task_id, title, required_by, date, stat
   ('e9000000-0000-4000-a000-000000000003', 'a1000000-0000-4000-a000-000000000002', 'e7000000-0000-4000-a000-000000000011',
    'Membrane substrate inspection', 'Remedial Engineer', '2026-06-10', 'released', '2026-06-08 14:00+10', '2026-06-10 10:30+10',
    'R. Chen — Remedial Engineer', 'HP-002-A', null);
+
+-- ─── 21. WHS demo — forms register top-up ────────────────────────────────────
+-- whs demo
+-- Live registers: two Excavator 13t pre-starts by Mia (yesterday + today,
+-- all checks pass, hour meter advancing), two Take 5s by Jack on P-0001 and
+-- a site induction run by Sam with one internal + two external sign-ons.
+-- Dates are relative to the demo "today" (2026-06-12). Signatures reuse the
+-- shared placeholder PNG (see upload-signature-placeholder.mjs above).
+insert into form_submissions (id, template_id, template_version, kind, project_id, plant_id, data, submitted_by, submitted_at) values
+  ('fb000002-0000-4000-a000-000000000001', 'fa000000-0000-4000-a000-000000000001', 1, 'prestart',
+   'a1000000-0000-4000-a000-000000000001', 'bb000000-0000-4000-a000-000000000002',
+   '{"fluids":"OK","brakes":"OK","lights":"OK","rops":"OK","attachments_secure":"OK","leaks":"OK","hour_meter":4212,"defects":"","safe_to_operate":true}'::jsonb,
+   'aa000000-0000-4000-a000-000000000003', '2026-06-11 06:45+10'),
+  ('fb000003-0000-4000-a000-000000000001', 'fa000000-0000-4000-a000-000000000001', 1, 'prestart',
+   'a1000000-0000-4000-a000-000000000001', 'bb000000-0000-4000-a000-000000000002',
+   '{"fluids":"OK","brakes":"OK","lights":"OK","rops":"OK","attachments_secure":"OK","leaks":"OK","hour_meter":4219,"defects":"","safe_to_operate":true}'::jsonb,
+   'aa000000-0000-4000-a000-000000000003', '2026-06-12 06:40+10'),
+  ('fb000004-0000-4000-a000-000000000001', 'fa000000-0000-4000-a000-000000000002', 1, 'take5',
+   'a1000000-0000-4000-a000-000000000001', null,
+   '{"stop_think":true,"look_hazards":true,"assess_risk":true,"control_hazards":true,"proceed_safely":true,"hazards_identified":"Wet ground near river edge after overnight rain; slippery batters.","controls":"Kept clear of the batter crest, walked the access track first, footwear checked.","ppe_checked":true}'::jsonb,
+   'aa000000-0000-4000-a000-000000000002', '2026-06-11 07:05+10'),
+  ('fb000005-0000-4000-a000-000000000001', 'fa000000-0000-4000-a000-000000000002', 1, 'take5',
+   'a1000000-0000-4000-a000-000000000001', null,
+   '{"stop_think":true,"look_hazards":true,"assess_risk":true,"control_hazards":true,"proceed_safely":true,"hazards_identified":"Working near 13t excavator during gabion basket placement.","controls":"Agreed exclusion zone and hand signals with operator; high-vis and hard hat on.","ppe_checked":true}'::jsonb,
+   'aa000000-0000-4000-a000-000000000002', '2026-06-12 07:10+10'),
+  ('fb000006-0000-4000-a000-000000000001', 'fa000000-0000-4000-a000-000000000004', 1, 'induction',
+   'a1000000-0000-4000-a000-000000000001', null,
+   '{"visitor_type":"Worker","ack_amenities":true,"ack_emergency":true,"ack_first_aid":true,"ack_exclusion":true,"ack_ppe":true,"emergency_contact":"Sam Field 0412 700 154"}'::jsonb,
+   'aa000000-0000-4000-a000-000000000001', '2026-06-10 07:30+10');
+
+insert into form_signons (id, submission_id, profile_id, name, company, signature_path, signed_at) values
+  ('fc000003-0000-4000-a000-000000000001', 'fb000006-0000-4000-a000-000000000001', 'aa000000-0000-4000-a000-000000000001', 'Sam Field',   'Entice Civil Pty Ltd', 'seed/sig-placeholder.png', '2026-06-10 07:40+10'),
+  ('fc000004-0000-4000-a000-000000000001', 'fb000006-0000-4000-a000-000000000001', null,                                   'Liam Chen',   'DigDeep Earthmoving',  'seed/sig-placeholder.png', '2026-06-10 07:42+10'),
+  ('fc000005-0000-4000-a000-000000000001', 'fb000006-0000-4000-a000-000000000001', null,                                   'Pete Howard', 'GreenTip Waste',       'seed/sig-placeholder.png', '2026-06-10 07:45+10');

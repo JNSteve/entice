@@ -11,8 +11,6 @@ import {
 } from '@/components/ui/card'
 import { round2, lineTotal } from '@/lib/money'
 import { aud, fmtDate, pct } from '@/lib/format'
-import { fetchSwmsInstances } from '@/lib/swms-queries'
-import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import { RetentionCard, type RetentionEntry } from './retention-card'
 
 /** Claim day of the current month if not yet passed, otherwise next month. */
@@ -40,8 +38,9 @@ export default async function ProjectOverviewPage({
   const [
     { data: project },
     { data: diaries },
-    swmsInstances,
-    { data: swmsTemplates },
+    { count: swmsCount },
+    { count: formsCount },
+    { count: incidentsCount },
     { data: programmeTasks },
     { data: holdPoints },
   ] = await Promise.all([
@@ -58,12 +57,18 @@ export default async function ProjectOverviewPage({
       .eq('project_id', id)
       .order('date', { ascending: false })
       .limit(3),
-    fetchSwmsInstances(supabase, 'project', id),
     supabase
-      .from('swms_templates')
-      .select('id, title, version')
-      .eq('active', true)
-      .order('title'),
+      .from('swms_instances')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', id),
+    supabase
+      .from('form_submissions')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', id),
+    supabase
+      .from('incidents')
+      .select('id', { count: 'exact', head: true })
+      .eq('project_id', id),
     supabase
       .from('programme_tasks')
       .select('end_date, progress_pct')
@@ -406,6 +411,26 @@ export default async function ProjectOverviewPage({
         </CardContent>
       </Card>
 
+      {/* WHS summary — visible to all roles; full management on the WHS tab */}
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle className="text-sm text-muted-foreground">WHS</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-1">
+          <span className="text-sm">
+            {swmsCount ?? 0} SWMS · {formsCount ?? 0} form
+            {(formsCount ?? 0) === 1 ? '' : 's'} · {incidentsCount ?? 0} incident
+            {(incidentsCount ?? 0) === 1 ? '' : 's'}
+          </span>
+          <Link
+            href={`/projects/${id}/whs`}
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            Open WHS tab
+          </Link>
+        </CardContent>
+      </Card>
+
       {/* Recent diary entries — visible to all roles */}
       <Card size="sm">
         <CardHeader>
@@ -433,16 +458,6 @@ export default async function ProjectOverviewPage({
         </CardContent>
       </Card>
       </div>
-
-      {/* SWMS — ops-visible incl supervisor */}
-      <SwmsInstancesSection
-        parentType="project"
-        parentId={id}
-        instances={swmsInstances}
-        templates={swmsTemplates ?? []}
-        canManage
-        canSupersede={showMoney}
-      />
     </div>
   )
 }
