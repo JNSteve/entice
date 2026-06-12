@@ -11,6 +11,7 @@ const STATUS_META: Record<string, StatusMeta> = {
   draft:               { label: 'Draft',               className: 'bg-gray-100 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300' },
   void:                { label: 'Void',                className: 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400 line-through' },
   superseded:          { label: 'Superseded',          className: 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400' },
+  archived:            { label: 'Archived',            className: 'bg-gray-100 text-gray-500 border-gray-200 dark:bg-gray-800 dark:text-gray-400' },
   planned:             { label: 'Planned',             className: 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-300' },
   idle:                { label: 'Idle',                className: 'bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-800 dark:text-gray-300' },
 
@@ -40,6 +41,7 @@ const STATUS_META: Record<string, StatusMeta> = {
   paid:                { label: 'Paid',                className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   completed:           { label: 'Completed',           className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   active:              { label: 'Active',              className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
+  current:             { label: 'Current',             className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   invoiced:            { label: 'Invoiced',            className: 'bg-green-50 text-green-600 border-green-200 dark:bg-green-950 dark:text-green-300' },
   certified:           { label: 'Certified',           className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   released:            { label: 'Released',            className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },

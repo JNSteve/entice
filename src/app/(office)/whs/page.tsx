@@ -84,6 +84,7 @@ export default async function WhsOverviewPage() {
     { data: recentSubmissions },
     { data: overdueHoldPoints },
     { data: expiredCompliance },
+    { data: overdueDocReviews },
     { data: auditRows },
   ] = await Promise.all([
     supabase.from('incidents').select('id, status, severity'),
@@ -124,6 +125,14 @@ export default async function WhsOverviewPage() {
       .select('id, vendor_id, kind, expiry_date, vendors(name)')
       .lt('expiry_date', todayStr)
       .order('expiry_date', { ascending: true }),
+    // Current library documents past their review date.
+    supabase
+      .from('whs_documents')
+      .select('id, title, doc_number, review_due')
+      .eq('status', 'current')
+      .not('review_due', 'is', null)
+      .lt('review_due', todayStr)
+      .order('review_due', { ascending: true }),
     supabase
       .from('audit_log')
       .select('id, at, actor_id, actor_name, entity_type, entity_id, project_id, action, detail')
@@ -186,8 +195,21 @@ export default async function WhsOverviewPage() {
     expiry: d.expiry_date as string,
   }))
 
+  const docReviewRows = (overdueDocReviews ?? []).map((d) => ({
+    id: d.id as string,
+    title: d.title as string,
+    docNumber: (d.doc_number as string | null) ?? null,
+    daysOverdue: Math.max(
+      0,
+      differenceInCalendarDays(today, parseISO(d.review_due as string))
+    ),
+  }))
+
   const needsAttentionCount =
-    overdueActionRows.length + holdPointRows.length + complianceRows.length
+    overdueActionRows.length +
+    holdPointRows.length +
+    complianceRows.length +
+    docReviewRows.length
 
   const recentActivity: AuditRow[] = ((auditRows ?? []) as Record<string, unknown>[]).map(
     (r) => ({
@@ -262,8 +284,8 @@ export default async function WhsOverviewPage() {
           <CardContent className="flex flex-col gap-2">
             {needsAttentionCount === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Nothing outstanding — corrective actions, hold points and vendor
-                compliance are all in order.
+                Nothing outstanding — corrective actions, hold points, vendor
+                compliance and document reviews are all in order.
               </p>
             ) : (
               <>
@@ -327,6 +349,27 @@ export default async function WhsOverviewPage() {
                     </div>
                     <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
                       {fmtDate(d.expiry)}
+                    </span>
+                  </div>
+                ))}
+                {docReviewRows.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href="/whs/documents"
+                        className="truncate hover:underline"
+                      >
+                        {d.title}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Document review due{d.docNumber ? ` · ${d.docNumber}` : ''}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                      {d.daysOverdue}d overdue
                     </span>
                   </div>
                 ))}

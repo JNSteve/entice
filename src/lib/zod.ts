@@ -1374,3 +1374,86 @@ export const subbieSwmsStatusSchema = z
   )
 
 export type SubbieSwmsStatusInput = z.infer<typeof subbieSwmsStatusSchema>
+
+// ─── WHS document library ────────────────────────────────────────────────────
+
+export const WHS_DOC_CATEGORIES = [
+  'policy',
+  'procedure',
+  'plan',
+  'sds',
+  'register',
+  'form',
+  'other',
+] as const
+export type WhsDocCategory = (typeof WHS_DOC_CATEGORIES)[number]
+
+export const WHS_DOC_CATEGORY_LABELS: Record<WhsDocCategory, string> = {
+  policy: 'Policy',
+  procedure: 'Procedure',
+  plan: 'Plan',
+  sds: 'SDS',
+  register: 'Register',
+  form: 'Form',
+  other: 'Other',
+}
+
+export const WHS_DOC_STATUSES = ['current', 'superseded', 'archived'] as const
+export type WhsDocStatus = (typeof WHS_DOC_STATUSES)[number]
+
+/**
+ * New document (or new version) in the WHS document library. The file is
+ * uploaded by the browser client to attachments/whs-documents/ first; this
+ * validates the row the server action records afterwards. When
+ * supersedes_id is set the action also flips the old row to 'superseded'.
+ */
+export const whsDocumentSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  category: z.enum(WHS_DOC_CATEGORIES),
+  doc_number: optionalText,
+  version: z.string().min(1, 'Version is required').transform((v) => v.trim()),
+  file_path: z
+    .string()
+    .min(1, 'File path is required')
+    .regex(/^whs-documents\//, 'Invalid file path')
+    .refine((v) => !v.includes('..'), 'Invalid file path'),
+  filename: z.string().min(1, 'Filename is required'),
+  content_type: optionalText,
+  size: z.coerce
+    .number()
+    .int()
+    .positive()
+    .nullish()
+    .transform((v) => v ?? null),
+  review_due: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+  notes: optionalText,
+  supersedes_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type WhsDocumentInput = z.infer<typeof whsDocumentSchema>
+
+/** Metadata-only edit of an existing library document (no file change). */
+export const whsDocumentUpdateSchema = z.object({
+  title: z.string().min(1, 'Title is required').optional(),
+  category: z.enum(WHS_DOC_CATEGORIES).optional(),
+  doc_number: optionalText.optional(),
+  version: z
+    .string()
+    .min(1, 'Version is required')
+    .transform((v) => v.trim())
+    .optional(),
+  review_due: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  notes: optionalText.optional(),
+})
+
+export type WhsDocumentUpdateInput = z.infer<typeof whsDocumentUpdateSchema>
