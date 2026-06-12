@@ -40,7 +40,7 @@ export default async function MyDayPage() {
         site_id,
         client_id,
         sites:site_id ( name, address, suburb, state, postcode ),
-        contacts:client_id ( name, phone )
+        clients:client_id ( contacts ( phone ) )
       ),
       projects:project_id (
         number,
@@ -48,7 +48,7 @@ export default async function MyDayPage() {
         site_id,
         client_id,
         sites:site_id ( name, address, suburb, state, postcode ),
-        contacts:client_id ( name, phone )
+        clients:client_id ( contacts ( phone ) )
       )
     `)
     .eq('user_id', profile.id)
@@ -103,11 +103,8 @@ export default async function MyDayPage() {
 
     if (job) {
       const site = Array.isArray(job.sites) ? job.sites[0] : job.sites
-      const contacts: Array<{ phone?: string | null }> = Array.isArray(job.contacts)
-        ? job.contacts
-        : job.contacts
-          ? [job.contacts]
-          : []
+      const client = Array.isArray(job.clients) ? job.clients[0] : job.clients
+      const contacts: Array<{ phone?: string | null }> = client?.contacts ?? []
       const addressParts = [site?.address, site?.suburb, site?.state, site?.postcode].filter(Boolean)
       return {
         id: row.id,
@@ -126,11 +123,8 @@ export default async function MyDayPage() {
 
     const proj = project!
     const site = Array.isArray(proj.sites) ? proj.sites[0] : proj.sites
-    const contacts: Array<{ phone?: string | null }> = Array.isArray(proj.contacts)
-      ? proj.contacts
-      : proj.contacts
-        ? [proj.contacts]
-        : []
+    const client = Array.isArray(proj.clients) ? proj.clients[0] : proj.clients
+    const contacts: Array<{ phone?: string | null }> = client?.contacts ?? []
     const addressParts = [site?.address, site?.suburb, site?.state, site?.postcode].filter(Boolean)
     return {
       id: row.id,
