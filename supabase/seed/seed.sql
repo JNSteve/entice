@@ -622,3 +622,39 @@ insert into programme_tasks (id, project_id, name, phase, start_date, end_date, 
   ('e7000000-0000-4000-a000-000000000011', 'a1000000-0000-4000-a000-000000000002', 'Substrate repairs',       'Remediation',   '2026-06-08', '2026-06-19',  10, 3),
   ('e7000000-0000-4000-a000-000000000012', 'a1000000-0000-4000-a000-000000000002', 'New membrane install',    'Remediation',   '2026-06-22', '2026-07-03',   0, 4),
   ('e7000000-0000-4000-a000-000000000013', 'a1000000-0000-4000-a000-000000000002', 'Line marking & handover', 'Completion',    '2026-07-06', '2026-07-10',   0, 5);
+
+-- ─── 20. Programme extras (dependencies, baseline, hold points) ──────────────
+-- programme extras
+-- P-0001: FS chain through the critical path plus dewatering feeding the walls.
+-- Baseline mirrors current dates except Gabion walls / Revegetation, whose
+-- baselines sit 1 week earlier — both show a red +7d slip against baseline.
+insert into programme_links (id, project_id, predecessor_id, successor_id) values
+  -- P-0001 Riverbank Stabilisation Stage 2
+  ('e8000000-0000-4000-a000-000000000001', 'a1000000-0000-4000-a000-000000000001', 'e7000000-0000-4000-a000-000000000002', 'e7000000-0000-4000-a000-000000000003'), -- Survey → Bulk excavation
+  ('e8000000-0000-4000-a000-000000000002', 'a1000000-0000-4000-a000-000000000001', 'e7000000-0000-4000-a000-000000000003', 'e7000000-0000-4000-a000-000000000004'), -- Bulk excavation → Rock excavation
+  ('e8000000-0000-4000-a000-000000000003', 'a1000000-0000-4000-a000-000000000001', 'e7000000-0000-4000-a000-000000000004', 'e7000000-0000-4000-a000-000000000006'), -- Rock excavation → Gabion walls
+  ('e8000000-0000-4000-a000-000000000004', 'a1000000-0000-4000-a000-000000000001', 'e7000000-0000-4000-a000-000000000006', 'e7000000-0000-4000-a000-000000000007'), -- Gabion walls → Revegetation
+  ('e8000000-0000-4000-a000-000000000005', 'a1000000-0000-4000-a000-000000000001', 'e7000000-0000-4000-a000-000000000005', 'e7000000-0000-4000-a000-000000000006'), -- Dewatering → Gabion walls
+  -- P-0002 Carpark Remediation — Harbourview
+  ('e8000000-0000-4000-a000-000000000006', 'a1000000-0000-4000-a000-000000000002', 'e7000000-0000-4000-a000-000000000010', 'e7000000-0000-4000-a000-000000000011'), -- Membrane removal → Substrate repairs
+  ('e8000000-0000-4000-a000-000000000007', 'a1000000-0000-4000-a000-000000000002', 'e7000000-0000-4000-a000-000000000011', 'e7000000-0000-4000-a000-000000000012'); -- Substrate repairs → New membrane install
+
+-- Baseline on P-0001 only (P-0002 has none — shows the "no baseline" state).
+update programme_tasks set baseline_start = start_date, baseline_end = end_date
+  where project_id = 'a1000000-0000-4000-a000-000000000001';
+update programme_tasks set baseline_start = '2026-05-11', baseline_end = '2026-06-12'
+  where id = 'e7000000-0000-4000-a000-000000000006'; -- Gabion walls slipped a week
+update programme_tasks set baseline_start = '2026-06-15', baseline_end = '2026-06-26'
+  where id = 'e7000000-0000-4000-a000-000000000007'; -- Revegetation slipped with it
+
+-- Hold points: one notified-but-overdue (release warning fires), one pending
+-- in the future, one fully released on P-0002.
+insert into hold_points (id, project_id, task_id, title, required_by, date, status, notified_at, released_at, released_by, release_ref, notes) values
+  ('e9000000-0000-4000-a000-000000000001', 'a1000000-0000-4000-a000-000000000001', 'e7000000-0000-4000-a000-000000000006',
+   'Subgrade inspection — gabion foundation', 'Superintendent', '2026-06-07', 'notified', '2026-06-05 09:00+10', null, null, null,
+   'Foundation level + bearing to be witnessed before first gabion course.'),
+  ('e9000000-0000-4000-a000-000000000002', 'a1000000-0000-4000-a000-000000000001', 'e7000000-0000-4000-a000-000000000008',
+   'Final inspection & survey conformance', 'Superintendent', '2026-07-15', 'pending', null, null, null, null, null),
+  ('e9000000-0000-4000-a000-000000000003', 'a1000000-0000-4000-a000-000000000002', 'e7000000-0000-4000-a000-000000000011',
+   'Membrane substrate inspection', 'Remedial Engineer', '2026-06-10', 'released', '2026-06-08 14:00+10', '2026-06-10 10:30+10',
+   'R. Chen — Remedial Engineer', 'HP-002-A', null);

@@ -11,8 +11,9 @@ import {
   parseISO,
 } from 'date-fns'
 import { toast } from 'sonner'
-import { PlusIcon } from 'lucide-react'
+import { FileTextIcon, FlagIcon, PlusIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -24,21 +25,22 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { fmtDate } from '@/lib/format'
+import { getDescendants } from '@/lib/programme-logic'
 import {
   createProgrammeTask,
   deleteProgrammeTask,
+  setBaseline,
+  setTaskPredecessors,
   updateProgrammeTask,
 } from './actions'
+import {
+  HOLD_POINT_COLOUR,
+  type HoldPoint,
+  type ProgrammeLink,
+  type ProgrammeTask,
+} from './types'
 
-export type ProgrammeTask = {
-  id: string
-  name: string
-  phase: string | null
-  start_date: string // YYYY-MM-DD
-  end_date: string // YYYY-MM-DD
-  progress_pct: number
-  position: number
-}
+export type { ProgrammeTask } from './types'
 
 // ─── Layout constants ─────────────────────────────────────────────────────────
 
@@ -46,6 +48,9 @@ const COL_W: Record<Zoom, number> = { week: 24, month: 6 }
 const HEADER_H = 'h-8' // timeline header + left-pane header
 const PHASE_H = 'h-8' // phase group rows
 const TASK_H = 'h-12' // task rows
+const PHASE_H_PX = 32
+const TASK_H_PX = 48
+const BAR_CENTER_PX = 24 // bar occupies 10–38px of the 48px row
 
 type Zoom = 'week' | 'month'
 
@@ -79,21 +84,38 @@ function iso(d: Date): string {
   return format(d, 'yyyy-MM-dd')
 }
 
+function shiftToast(shifted: number | undefined) {
+  if (shifted && shifted > 0) {
+    toast.info(`Also shifted ${shifted} linked task(s)`)
+  }
+}
+
 // ─── Gantt ────────────────────────────────────────────────────────────────────
 
 export function Gantt({
   projectId,
   tasks: serverTasks,
+  links,
+  holdPoints,
   projectStartDate,
   canDelete,
+  canSetBaseline,
+  onHoldPointClick,
+  onAddHoldPoint,
 }: {
   projectId: string
   tasks: ProgrammeTask[]
+  links: ProgrammeLink[]
+  holdPoints: HoldPoint[]
   projectStartDate: string | null
   canDelete: boolean
+  canSetBaseline: boolean
+  onHoldPointClick: (hp: HoldPoint) => void
+  onAddHoldPoint: (task: ProgrammeTask) => void
 }) {
   const [tasks, setTasks] = useState(serverTasks)
   const [zoom, setZoom] = useState<Zoom>('week')
+  const [hoveredId, setHoveredId] = useState<string | null>(null)
   const [dialog, setDialog] = useState<{
     task: ProgrammeTask | null
     defaultPhase?: string
@@ -110,8 +132,10 @@ export function Gantt({
   }
 
   const colW = COL_W[zoom]
+  const baselineSet = tasks.some((t) => t.baseline_start && t.baseline_end)
 
-  // ── Range: min(start)−7d → max(end)+14d (empty: project start or today → +90d)
+  // ── Range: min(start)−7d → max(end)+14d, widened to cover baselines and
+  //    hold point markers (empty: project start or today → +90d)
   const { rangeStart, totalDays } = useMemo(() => {
     if (tasks.length === 0) {
       const base = projectStartDate ? parseISO(projectStartDate) : new Date()
@@ -122,6 +146,12 @@ export function Gantt({
     for (const t of tasks) {
       if (t.start_date < min) min = t.start_date
       if (t.end_date > max) max = t.end_date
+      if (t.baseline_start && t.baseline_start < min) min = t.baseline_start
+      if (t.baseline_end && t.baseline_end > max) max = t.baseline_end
+    }
+    for (const hp of holdPoints) {
+      if (hp.date < min) min = hp.date
+      if (hp.date > max) max = hp.date
     }
     const start = addDays(parseISO(min), -7)
     const end = addDays(parseISO(max), 14)
@@ -129,7 +159,7 @@ export function Gantt({
       rangeStart: start,
       totalDays: differenceInCalendarDays(end, start) + 1,
     }
-  }, [tasks, projectStartDate])
+  }, [tasks, holdPoints, projectStartDate])
 
   const days = useMemo(
     () => Array.from({ length: totalDays }, (_, i) => addDays(rangeStart, i)),
@@ -164,6 +194,22 @@ export function Gantt({
     [tasks]
   )
 
+  // ── Row geometry (pixel top per task) for the dependency-arrow overlay
+  const taskGeom = useMemo(() => {
+    const tops = new Map<string, number>()
+    let y = 0
+    for (const g of groups) {
+      y += PHASE_H_PX
+      for (const t of g.tasks) {
+        tops.set(t.id, y)
+        y += TASK_H_PX
+      }
+    }
+    return { tops, height: y }
+  }, [groups])
+
+  const taskById = useMemo(() => new Map(tasks.map((t) => [t.id, t])), [tasks])
+
   // Scroll so today sits about a quarter in from the left edge.
   useEffect(() => {
     const el = scrollRef.current
@@ -186,7 +232,23 @@ export function Gantt({
       if (res.error) {
         toast.error(res.error)
         setTasks(prev)
+        return
       }
+      shiftToast(res.shifted)
+    })
+  }
+
+  function handleSetBaseline() {
+    if (
+      !confirm(
+        'Set the baseline to the current programme dates? Overwrites any existing baseline.'
+      )
+    )
+      return
+    startTransition(async () => {
+      const res = await setBaseline(projectId)
+      if (res.error) toast.error(res.error)
+      else toast.success('Baseline set')
     })
   }
 
@@ -231,6 +293,30 @@ export function Gantt({
               </button>
             ))}
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() =>
+              window.open(`/api/pdf/programme/${projectId}`, '_blank')
+            }
+            disabled={tasks.length === 0}
+          >
+            <FileTextIcon className="size-4" />
+            Export PDF
+          </Button>
+          {canSetBaseline && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleSetBaseline}
+              disabled={tasks.length === 0}
+            >
+              <FlagIcon className="size-4" />
+              Set baseline
+            </Button>
+          )}
           <Button size="sm" onClick={() => setDialog({ task: null })}>
             <PlusIcon className="size-4" />
             Add task
@@ -245,10 +331,11 @@ export function Gantt({
           <div
             className={cn(
               HEADER_H,
-              'flex items-center border-b bg-muted/40 px-3 text-xs font-medium text-muted-foreground'
+              'flex items-center justify-between border-b bg-muted/40 px-3 text-xs font-medium text-muted-foreground'
             )}
           >
-            Task
+            <span>Task</span>
+            {baselineSet && <span>Slip</span>}
           </div>
           {groups.length === 0 && (
             <div className="px-3 py-6 text-xs text-muted-foreground">
@@ -294,10 +381,17 @@ export function Gantt({
                   )}
                 >
                   <span className="w-full truncate text-sm">{t.name}</span>
-                  <span className="text-[10px] text-muted-foreground tabular-nums">
-                    {format(parseISO(t.start_date), 'dd/MM')} –{' '}
-                    {format(parseISO(t.end_date), 'dd/MM')} ·{' '}
-                    {Math.round(t.progress_pct)}%
+                  <span className="flex w-full items-center gap-1.5 text-[10px] text-muted-foreground tabular-nums">
+                    <span className="truncate">
+                      {format(parseISO(t.start_date), 'dd/MM')} –{' '}
+                      {format(parseISO(t.end_date), 'dd/MM')} ·{' '}
+                      {Math.round(t.progress_pct)}%
+                    </span>
+                    {baselineSet && (
+                      <span className="ml-auto shrink-0">
+                        <SlipBadge task={t} />
+                      </span>
+                    )}
                   </span>
                 </button>
               ))}
@@ -350,15 +444,69 @@ export function Gantt({
                     <TaskBar
                       key={t.id}
                       task={t}
+                      holdPoints={holdPoints.filter((hp) => hp.task_id === t.id)}
                       colour={phaseColour(t.phase)}
                       rangeStart={rangeStart}
                       colW={colW}
                       onCommit={commitDates}
                       onOpen={(task) => setDialog({ task })}
+                      onHoldPointClick={onHoldPointClick}
+                      onHoverChange={setHoveredId}
                     />
                   ))}
                 </div>
               ))}
+
+              {/* Dependency arrows (elbow: out of predecessor end, into successor start) */}
+              {links.length > 0 && (
+                <svg
+                  className="pointer-events-none absolute left-0 top-0 z-10"
+                  width={totalDays * colW}
+                  height={taskGeom.height}
+                  aria-hidden
+                >
+                  {links.map((l) => {
+                    const pred = taskById.get(l.predecessor_id)
+                    const succ = taskById.get(l.successor_id)
+                    const predTop = taskGeom.tops.get(l.predecessor_id)
+                    const succTop = taskGeom.tops.get(l.successor_id)
+                    if (!pred || !succ || predTop === undefined || succTop === undefined)
+                      return null
+                    const sx =
+                      (differenceInCalendarDays(parseISO(pred.end_date), rangeStart) + 1) *
+                      colW
+                    const sy = predTop + BAR_CENTER_PX
+                    const ex =
+                      differenceInCalendarDays(parseISO(succ.start_date), rangeStart) *
+                      colW
+                    const ey = succTop + BAR_CENTER_PX
+                    const mx = Math.max(sx + 8, ex - 8)
+                    const active =
+                      hoveredId === l.predecessor_id || hoveredId === l.successor_id
+                    return (
+                      <g
+                        key={l.id}
+                        className={
+                          active
+                            ? 'text-foreground/70'
+                            : 'text-muted-foreground/50'
+                        }
+                      >
+                        <path
+                          d={`M ${sx} ${sy} H ${mx} V ${ey} H ${ex - 5}`}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={active ? 1.8 : 1.2}
+                        />
+                        <polygon
+                          points={`${ex},${ey} ${ex - 5},${ey - 3.5} ${ex - 5},${ey + 3.5}`}
+                          fill="currentColor"
+                        />
+                      </g>
+                    )
+                  })}
+                </svg>
+              )}
             </div>
           </div>
         </div>
@@ -366,7 +514,8 @@ export function Gantt({
 
       <p className="text-xs text-muted-foreground">
         Drag a bar to move it, drag its edges to change the dates, or click a
-        task to edit everything in a dialog.
+        task to edit everything in a dialog. Moving a task pushes its linked
+        successors forward. Diamonds are hold points — click one to manage it.
       </p>
 
       {dialog && (
@@ -374,14 +523,44 @@ export function Gantt({
           key={dialog.task?.id ?? 'new'}
           projectId={projectId}
           task={dialog.task}
+          tasks={tasks}
+          links={links}
           defaultPhase={dialog.defaultPhase}
           phases={phases}
           canDelete={canDelete}
+          onAddHoldPoint={onAddHoldPoint}
           onClose={() => setDialog(null)}
         />
       )}
     </div>
   )
+}
+
+// ─── Baseline slip badge (list pane) ──────────────────────────────────────────
+
+function SlipBadge({ task }: { task: ProgrammeTask }) {
+  if (!task.baseline_end) {
+    return <span className="text-muted-foreground/60">—</span>
+  }
+  const slip = differenceInCalendarDays(
+    parseISO(task.end_date),
+    parseISO(task.baseline_end)
+  )
+  if (slip > 0) {
+    return (
+      <span className="font-medium text-red-600 dark:text-red-400">
+        +{slip}d
+      </span>
+    )
+  }
+  if (slip < 0) {
+    return (
+      <span className="font-medium text-green-600 dark:text-green-400">
+        {slip}d
+      </span>
+    )
+  }
+  return null
 }
 
 // ─── Task bar (drag to move, edge handles to resize, click to edit) ──────────
@@ -390,18 +569,24 @@ type DragMode = 'move' | 'resize-l' | 'resize-r'
 
 function TaskBar({
   task,
+  holdPoints,
   colour,
   rangeStart,
   colW,
   onCommit,
   onOpen,
+  onHoldPointClick,
+  onHoverChange,
 }: {
   task: ProgrammeTask
+  holdPoints: HoldPoint[]
   colour: Colour
   rangeStart: Date
   colW: number
   onCommit: (id: string, start: string, end: string) => void
   onOpen: (task: ProgrammeTask) => void
+  onHoldPointClick: (hp: HoldPoint) => void
+  onHoverChange: (id: string | null) => void
 }) {
   const [preview, setPreview] = useState<{ start: Date; end: Date } | null>(null)
   const drag = useRef<{
@@ -420,6 +605,19 @@ function TaskBar({
   const width = dur * colW
   const labelInside = width >= 72
   const progress = Math.max(0, Math.min(100, task.progress_pct))
+
+  const hasBaseline = !!(task.baseline_start && task.baseline_end)
+  const baselineLeft = hasBaseline
+    ? differenceInCalendarDays(parseISO(task.baseline_start!), rangeStart) * colW
+    : 0
+  const baselineWidth = hasBaseline
+    ? (differenceInCalendarDays(
+        parseISO(task.baseline_end!),
+        parseISO(task.baseline_start!)
+      ) +
+        1) *
+      colW
+    : 0
 
   function applyDelta(mode: DragMode, origStart: Date, origEnd: Date, delta: number) {
     const durDays = differenceInCalendarDays(origEnd, origStart)
@@ -480,7 +678,11 @@ function TaskBar({
   }
 
   return (
-    <div className={cn(TASK_H, 'relative border-b border-border/60')}>
+    <div
+      className={cn(TASK_H, 'relative border-b border-border/60')}
+      onPointerEnter={() => onHoverChange(task.id)}
+      onPointerLeave={() => onHoverChange(null)}
+    >
       <div
         role="button"
         aria-label={`${task.name} — drag to reschedule, click to edit`}
@@ -524,6 +726,33 @@ function TaskBar({
           {task.name}
         </span>
       )}
+      {/* Baseline ghost (thin grey bar beneath the task bar) */}
+      {hasBaseline && (
+        <div
+          className="pointer-events-none absolute h-[5px] rounded-sm bg-zinc-400/60 dark:bg-zinc-500/50"
+          style={{ left: baselineLeft, width: baselineWidth, top: 40 }}
+          title={`Baseline: ${fmtDate(task.baseline_start!)} → ${fmtDate(task.baseline_end!)}`}
+        />
+      )}
+      {/* Hold point diamonds */}
+      {holdPoints.map((hp) => {
+        const x =
+          (differenceInCalendarDays(parseISO(hp.date), rangeStart) + 0.5) * colW
+        return (
+          <button
+            key={hp.id}
+            type="button"
+            title={`${hp.title} — ${hp.status} (${fmtDate(hp.date)})`}
+            aria-label={`Hold point: ${hp.title}`}
+            onClick={() => onHoldPointClick(hp)}
+            className={cn(
+              'absolute z-20 size-2.5 rotate-45 rounded-[1px] shadow ring-1 ring-background',
+              HOLD_POINT_COLOUR[hp.status]
+            )}
+            style={{ left: x - 5, top: BAR_CENTER_PX - 5 }}
+          />
+        )
+      })}
     </div>
   )
 }
@@ -533,16 +762,22 @@ function TaskBar({
 function TaskDialog({
   projectId,
   task,
+  tasks,
+  links,
   defaultPhase,
   phases,
   canDelete,
+  onAddHoldPoint,
   onClose,
 }: {
   projectId: string
   task: ProgrammeTask | null
+  tasks: ProgrammeTask[]
+  links: ProgrammeLink[]
   defaultPhase?: string
   phases: string[]
   canDelete: boolean
+  onAddHoldPoint: (task: ProgrammeTask) => void
   onClose: () => void
 }) {
   const [pending, startTransition] = useTransition()
@@ -558,6 +793,33 @@ function TaskDialog({
     task ? Math.round(task.progress_pct) : 0
   )
 
+  // ── Predecessors: candidates exclude self and anything reachable FROM this
+  //    task (linking a descendant back would create a cycle) — the server
+  //    re-validates with a full graph check.
+  const initialPredIds = useMemo(
+    () =>
+      task
+        ? links
+            .filter((l) => l.successor_id === task.id)
+            .map((l) => l.predecessor_id)
+        : [],
+    [links, task]
+  )
+  const [predIds, setPredIds] = useState<string[]>(initialPredIds)
+  const blocked = useMemo(
+    () => (task ? getDescendants(links, task.id) : new Set<string>()),
+    [links, task]
+  )
+  const candidates = tasks.filter(
+    (t) => t.id !== task?.id && !blocked.has(t.id)
+  )
+
+  function togglePred(id: string, checked: boolean) {
+    setPredIds((ids) =>
+      checked ? [...ids, id] : ids.filter((p) => p !== id)
+    )
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     startTransition(async () => {
@@ -568,14 +830,40 @@ function TaskDialog({
         end_date: endDate,
         progress_pct: progress,
       }
-      const result = task
-        ? await updateProgrammeTask(task.id, projectId, payload)
-        : await createProgrammeTask({ ...payload, project_id: projectId })
-      if (result.error) {
-        toast.error(result.error)
-        return
+      let taskId = task?.id
+      let shifted = 0
+      if (task) {
+        const result = await updateProgrammeTask(task.id, projectId, payload)
+        if (result.error) {
+          toast.error(result.error)
+          return
+        }
+        shifted += result.shifted ?? 0
+      } else {
+        const result = await createProgrammeTask({
+          ...payload,
+          project_id: projectId,
+        })
+        if (result.error) {
+          toast.error(result.error)
+          return
+        }
+        taskId = result.id
       }
+
+      const predsChanged =
+        [...predIds].sort().join(',') !== [...initialPredIds].sort().join(',')
+      if (taskId && predsChanged) {
+        const res = await setTaskPredecessors(taskId, projectId, predIds)
+        if (res.error) {
+          toast.error(res.error)
+          return
+        }
+        shifted += res.shifted ?? 0
+      }
+
       toast.success(task ? 'Task updated' : 'Task added')
+      shiftToast(shifted)
       onClose()
     })
   }
@@ -689,6 +977,53 @@ function TaskDialog({
               </div>
             </div>
           </div>
+
+          {candidates.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <Label>Predecessors</Label>
+              <div className="flex max-h-36 flex-col gap-1 overflow-y-auto rounded-md border p-2">
+                {candidates.map((t) => (
+                  <label
+                    key={t.id}
+                    className="flex cursor-pointer items-center gap-2 rounded px-1 py-0.5 text-sm hover:bg-muted/40"
+                  >
+                    <Checkbox
+                      checked={predIds.includes(t.id)}
+                      onCheckedChange={(checked) =>
+                        togglePred(t.id, checked === true)
+                      }
+                    />
+                    <span className="truncate">{t.name}</span>
+                    {t.phase && (
+                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                        {t.phase}
+                      </span>
+                    )}
+                  </label>
+                ))}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                This task starts after its predecessors finish. Tasks that
+                would create a circular dependency aren&apos;t listed.
+              </p>
+            </div>
+          )}
+
+          {task && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="self-start"
+              onClick={() => {
+                onClose()
+                onAddHoldPoint(task)
+              }}
+            >
+              <PlusIcon className="size-4" />
+              Add hold point
+            </Button>
+          )}
 
           <DialogFooter className="gap-2">
             {task && canDelete && (

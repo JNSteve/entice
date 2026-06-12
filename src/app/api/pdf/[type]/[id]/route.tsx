@@ -11,14 +11,15 @@ import { PoPdf } from '@/pdf/PoPdf'
 import { ClaimPdf, type ClaimPdfLine } from '@/pdf/ClaimPdf'
 import { DiaryPdf, type DiaryPdfDay, type DiaryPdfPhoto } from '@/pdf/DiaryPdf'
 import { SwmsPdf, type SwmsPdfSignature } from '@/pdf/SwmsPdf'
+import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
 import type { SwmsHazard } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
 
 export const runtime = 'nodejs'
 
 // /api/* is excluded from the auth proxy, so this route enforces auth itself.
-// Money documents are office/admin only; site diaries and SWMS are
-// operational, so supervisors may export them too (field cannot).
+// Money documents are office/admin only; site diaries, SWMS and the project
+// programme are operational, so supervisors may export them too (field cannot).
 const MONEY_ROLES = ['admin', 'office']
 const OPS_ROLES = ['admin', 'office', 'supervisor']
 
@@ -73,7 +74,9 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' ? OPS_ROLES : MONEY_ROLES
+    type.startsWith('diary') || type === 'swms' || type === 'programme'
+      ? OPS_ROLES
+      : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
     return new Response('Forbidden', { status: 403 })
   }
@@ -97,6 +100,9 @@ export async function GET(
     }
     case 'swms':
       return swmsPdf(id)
+    case 'programme':
+      // [id] = project id
+      return programmePdf(id)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -794,6 +800,87 @@ async function swmsPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="swms-v${currentVersion}.pdf"`,
+    },
+  })
+}
+
+// ─── Programme ───────────────────────────────────────────────────────────────
+
+async function programmePdf(projectId: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [
+    { data: project },
+    { data: tasks },
+    { data: links },
+    { data: holdPoints },
+    { data: settings },
+  ] = await Promise.all([
+    supabase.from('projects').select('name, number').eq('id', projectId).single(),
+    supabase
+      .from('programme_tasks')
+      .select(
+        'id, name, phase, start_date, end_date, progress_pct, baseline_start, baseline_end'
+      )
+      .eq('project_id', projectId)
+      .order('position', { ascending: true })
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('programme_links')
+      .select('predecessor_id, successor_id')
+      .eq('project_id', projectId),
+    supabase
+      .from('hold_points')
+      .select('task_id, title, date, status')
+      .eq('project_id', projectId)
+      .order('date'),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  if (!project) return new Response('Not found', { status: 404 })
+  if (!tasks || tasks.length === 0) {
+    return new Response('No programme tasks for this project', { status: 404 })
+  }
+
+  const pdfTasks = tasks.map((t) => ({
+    id: t.id as string,
+    name: t.name as string,
+    phase: (t.phase as string | null) ?? null,
+    start: t.start_date as string,
+    end: t.end_date as string,
+    progressPct: Number(t.progress_pct),
+    baselineStart: (t.baseline_start as string | null) ?? null,
+    baselineEnd: (t.baseline_end as string | null) ?? null,
+  }))
+
+  const buffer = await renderToBuffer(
+    <ProgrammePdf
+      project={{ name: project.name, number: project.number }}
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      baselineSet={pdfTasks.some((t) => t.baselineStart && t.baselineEnd)}
+      tasks={pdfTasks}
+      links={(links ?? []).map((l) => ({
+        predecessorId: l.predecessor_id as string,
+        successorId: l.successor_id as string,
+      }))}
+      holdPoints={(holdPoints ?? []).map((hp) => ({
+        taskId: hp.task_id as string,
+        title: hp.title as string,
+        date: hp.date as string,
+        status: hp.status as ProgrammePdfHoldPoint['status'],
+      }))}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="programme-${project.number}.pdf"`,
     },
   })
 }

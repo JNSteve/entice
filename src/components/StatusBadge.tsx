@@ -42,6 +42,7 @@ const STATUS_META: Record<string, StatusMeta> = {
   active:              { label: 'Active',              className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   invoiced:            { label: 'Invoiced',            className: 'bg-green-50 text-green-600 border-green-200 dark:bg-green-950 dark:text-green-300' },
   certified:           { label: 'Certified',           className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
+  released:            { label: 'Released',            className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   practical_completion:{ label: 'Practical Completion',className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
 
   // Red / bad
@@ -50,6 +51,7 @@ const STATUS_META: Record<string, StatusMeta> = {
   cancelled:           { label: 'Cancelled',           className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
   declined:            { label: 'Declined',            className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
   down:                { label: 'Down',                className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
+  pending:             { label: 'Pending',             className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
 
   // Purple / closed
   closed:              { label: 'Closed',              className: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300' },

@@ -20,6 +20,7 @@ import {
   ClaimsDueCard,
   ComplianceCard,
   DiariesMissingCard,
+  HoldPointsCard,
   QuotesAwaitingCard,
   RetentionDueCard,
   SwmsOutstandingCard,
@@ -30,6 +31,7 @@ import {
   type ClaimsDueData,
   type ComplianceRow,
   type DiaryMissingRow,
+  type HoldPointDueRow,
   type QuoteAwaitingRow,
   type RetentionDueRow,
   type SwmsOutstandingRow,
@@ -533,7 +535,37 @@ async function loadSwmsOutstanding(
   })
 }
 
-// ─── 10. Diaries missing ──────────────────────────────────────────────────────
+// ─── 10. Hold points ──────────────────────────────────────────────────────────
+
+async function loadHoldPoints(
+  supabase: Db,
+  today: Date
+): Promise<HoldPointDueRow[]> {
+  const { data, error } = await supabase
+    .from('hold_points')
+    .select('id, project_id, title, date, status, projects!inner(number, name, status)')
+    .neq('status', 'released')
+    .lte('date', dateStr(addDays(today, 7)))
+    .eq('projects.status', 'active')
+    .order('date', { ascending: true })
+  if (error) throw error
+
+  const todayStr = dateStr(today)
+  return (data ?? []).map((hp) => {
+    const project = hp.projects as unknown as { number: string; name: string } | null
+    return {
+      id: hp.id as string,
+      projectId: hp.project_id as string,
+      projectLabel: project ? `${project.number} — ${project.name}` : '—',
+      title: hp.title as string,
+      date: hp.date as string,
+      status: hp.status as string,
+      overdue: (hp.date as string) < todayStr,
+    }
+  })
+}
+
+// ─── 11. Diaries missing ──────────────────────────────────────────────────────
 
 async function loadDiariesMissing(
   supabase: Db,
@@ -593,6 +625,7 @@ export default async function DashboardPage() {
     activeWork,
     todayOnSite,
     swmsOutstanding,
+    holdPoints,
     diariesMissing,
   ] = await Promise.all([
     showMoney ? settle(() => loadClaimsDue(supabase, today)) : none,
@@ -604,6 +637,7 @@ export default async function DashboardPage() {
     showMoney ? settle(() => loadActiveWork(supabase)) : none,
     settle(() => loadTodayOnSite(supabase, today)),
     settle(() => loadSwmsOutstanding(supabase, showMoney ? null : profile.id)),
+    settle(() => loadHoldPoints(supabase, today)),
     settle(() => loadDiariesMissing(supabase, today)),
   ])
 
@@ -631,6 +665,7 @@ export default async function DashboardPage() {
         )}
         <TodayOnSiteCard data={todayOnSite ?? null} />
         <SwmsOutstandingCard data={swmsOutstanding ?? null} />
+        <HoldPointsCard data={holdPoints ?? null} />
         <DiariesMissingCard data={diariesMissing ?? null} />
       </div>
     </div>

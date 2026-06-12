@@ -43,6 +43,7 @@ export default async function ProjectOverviewPage({
     swmsInstances,
     { data: swmsTemplates },
     { data: programmeTasks },
+    { data: holdPoints },
   ] = await Promise.all([
     supabase
       .from('projects')
@@ -67,6 +68,11 @@ export default async function ProjectOverviewPage({
       .from('programme_tasks')
       .select('end_date, progress_pct')
       .eq('project_id', id),
+    supabase
+      .from('hold_points')
+      .select('date, status')
+      .eq('project_id', id)
+      .neq('status', 'released'),
   ])
 
   if (!project) notFound()
@@ -79,6 +85,9 @@ export default async function ProjectOverviewPage({
   const programmeCount = (programmeTasks ?? []).length
   const programmeBehind = (programmeTasks ?? []).filter(
     (t) => t.end_date < todayIso && Number(t.progress_pct) < 100
+  ).length
+  const holdPointsOverdue = (holdPoints ?? []).filter(
+    (hp) => hp.date < todayIso
   ).length
 
   // ── Money data (admin/office only — RLS blocks these tables for supervisors)
@@ -356,6 +365,12 @@ export default async function ProjectOverviewPage({
           ) : (
             <span className="text-xs text-muted-foreground">
               {programmeCount > 0 ? 'Nothing behind programme.' : 'No tasks yet.'}
+            </span>
+          )}
+          {holdPointsOverdue > 0 && (
+            <span className="text-xs font-medium text-red-600 dark:text-red-400">
+              {holdPointsOverdue} unreleased hold point
+              {holdPointsOverdue === 1 ? '' : 's'} past date
             </span>
           )}
           <Link

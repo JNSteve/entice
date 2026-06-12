@@ -1082,3 +1082,32 @@ export const programmeTaskUpdateSchema = z
   )
 
 export type ProgrammeTaskUpdateInput = z.infer<typeof programmeTaskUpdateSchema>
+
+export const programmePredecessorsSchema = z.object({
+  task_id: z.uuid(),
+  project_id: z.uuid(),
+  predecessor_ids: z.array(z.uuid()).max(50),
+})
+
+export type ProgrammePredecessorsInput = z.infer<typeof programmePredecessorsSchema>
+
+// ─── Hold points ─────────────────────────────────────────────────────────────
+
+export const holdPointSchema = z.object({
+  id: z.uuid().optional(),
+  project_id: z.uuid(),
+  task_id: z.uuid(),
+  title: z.string().min(1, 'Title is required'),
+  required_by: z.string().min(1, 'Required by is required').default('Superintendent'),
+  date: isoDate,
+  notes: optionalText,
+})
+
+export type HoldPointInput = z.infer<typeof holdPointSchema>
+
+export const holdPointReleaseSchema = z.object({
+  released_by: z.string().min(1, 'Released by is required'),
+  release_ref: optionalText,
+})
+
+export type HoldPointReleaseInput = z.infer<typeof holdPointReleaseSchema>

@@ -15,6 +15,7 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { aud, fmtDate } from '@/lib/format'
+import { StatusBadge } from '@/components/StatusBadge'
 
 /**
  * Dashboard card components (server components). Each card receives its data
@@ -671,7 +672,66 @@ export function SwmsOutstandingCard({
   )
 }
 
-// ─── 10. Diaries missing ──────────────────────────────────────────────────────
+// ─── 10. Hold points ──────────────────────────────────────────────────────────
+
+export type HoldPointDueRow = {
+  id: string
+  projectId: string
+  projectLabel: string
+  title: string
+  date: string
+  status: string
+  overdue: boolean
+}
+
+export function HoldPointsCard({ data }: { data: HoldPointDueRow[] | null }) {
+  return (
+    <DashboardCard title="Hold points" href="/projects">
+      {data === null ? (
+        <LoadError />
+      ) : data.length === 0 ? (
+        <Muted>No hold points due in the next 7 days.</Muted>
+      ) : (
+        <>
+          {data.slice(0, MAX_ROWS).map((hp) => (
+            <div
+              key={hp.id}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <div className="flex min-w-0 flex-col">
+                <Link
+                  href={`/projects/${hp.projectId}/programme`}
+                  className="truncate hover:underline"
+                >
+                  {hp.title}
+                </Link>
+                <span className="truncate text-xs text-muted-foreground">
+                  {hp.projectLabel}
+                </span>
+              </div>
+              <span
+                className={cn(
+                  'shrink-0 text-xs tabular-nums',
+                  hp.overdue
+                    ? 'font-medium text-red-600 dark:text-red-400'
+                    : 'text-muted-foreground'
+                )}
+              >
+                {fmtDate(hp.date)}
+              </span>
+              <span className="shrink-0">
+                <StatusBadge status={hp.status} />
+              </span>
+            </div>
+          ))}
+          <MoreNote total={data.length} />
+        </>
+      )}
+    </DashboardCard>
+  )
+}
+
+// ─── 11. Diaries missing ──────────────────────────────────────────────────────
 
 export type DiaryMissingRow = {
   projectId: string
