@@ -23,13 +23,21 @@ export default function LoginPage() {
   )
 
   return (
-    <div className="flex min-h-screen flex-1 items-center justify-center bg-muted/40 p-4">
+    <div className="flex min-h-screen flex-1 flex-col items-center justify-center bg-muted/40 p-4 gap-6">
+      <div className="w-full max-w-sm text-left">
+        <p className="text-3xl font-bold tracking-tight text-[#1e3a5f]">
+          Entice
+        </p>
+        <p className="text-sm text-muted-foreground mt-1">
+          Civil &amp; remediation operations
+        </p>
+      </div>
       <Card className="w-full max-w-sm">
         <CardHeader className="text-center">
-          <CardTitle className="text-3xl font-bold tracking-tight">
-            Entice
+          <CardTitle className="text-lg font-semibold">
+            Sign in to your account
           </CardTitle>
-          <CardDescription>Sign in to your account</CardDescription>
+          <CardDescription>Enter your email and password below</CardDescription>
         </CardHeader>
         <CardContent>
           <form action={formAction} className="flex flex-col gap-4">

@@ -1,36 +1,169 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Entice
 
-## Getting Started
+Entice is a complete construction operations platform for civil and remediation contractors. It covers the full project lifecycle — from quoting and scheduling through to progress claims and procurement — with a field-first mobile interface alongside an office management suite.
 
-First, run the development server:
+**Modules:**
+- Quotes (line-item builder, rate library, PDF)
+- Jobs (work logs, checklists, costs, invoices)
+- Projects (budget, variations, progress claims / time-bar, purchase orders, procurement packages / RFQ / comparison / award, retention, site diary)
+- Scheduling (crew assignment board)
+- Field app (mobile daily tasks, site diary)
+- Clients & Vendors
+- Settings (users, cost codes, plant, labour rates, checklists, SWMS, company)
+- Money (Xero-ready export)
+
+---
+
+## Architecture
+
+| Layer | Technology |
+|---|---|
+| Framework | Next.js 16 (App Router, React 19, TypeScript) |
+| Database / Auth | Supabase (Postgres + RLS + Auth) |
+| Hosting | Vercel (zero-config, Edge-ready) |
+| PDF generation | @react-pdf/renderer |
+| UI | Tailwind CSS v4 + shadcn/ui (Radix primitives) |
+
+**Repo layout:**
+```
+src/app/          # Next.js app router — (office)/ + field/ + login/ + api/
+src/components/   # Shared UI components (shadcn + custom)
+src/lib/          # Server utilities, Supabase clients, money/claims logic
+supabase/
+  migrations/     # Numbered SQL migrations (apply in order)
+  seed/           # Demo data seed + RLS checker + signature placeholder
+tests/            # Vitest unit tests
+```
+
+---
+
+## Local development
+
+### Environment variables
+
+Create a `.env.local` file in the project root:
+
+| Variable | Value | Where to find it |
+|---|---|---|
+| `NEXT_PUBLIC_SUPABASE_URL` | `https://<ref>.supabase.co` | Supabase dashboard → Project Settings → API |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | `eyJ...` | Supabase dashboard → Project Settings → API |
+| `SUPABASE_SERVICE_ROLE_KEY` | `eyJ...` | Supabase dashboard → Project Settings → API → service_role (keep secret — server-side only, never expose to the browser) |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | Set to your Vercel URL in production |
+
+### Norton / corporate SSL note (this machine only)
+
+On machines with Norton SSL inspection, prefix npm commands:
+
+```powershell
+$env:NODE_EXTRA_CA_CERTS='C:\Users\nickj\norton-ssl-root-ca.pem'; npm install
+$env:NODE_EXTRA_CA_CERTS='C:\Users\nickj\norton-ssl-root-ca.pem'; npm run dev
+```
+
+### Start the dev server
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000). The root `/` redirects to `/projects` (office) or `/field` depending on role.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+---
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Demo login accounts
 
-## Learn More
+All demo accounts use password **`Entice!234`**. Change passwords and email addresses in **Settings → Users** before any real use.
 
-To learn more about Next.js, take a look at the following resources:
+| Email | Role | Name | Notes |
+|---|---|---|---|
+| `admin@entice.local` | admin | Admin | Full access; created by Supabase seed bootstrap |
+| `office@entice.local` | office | Office User | Office suite access |
+| `super@entice.local` | supervisor | Sam Field | Can assign jobs + view field |
+| `field1@entice.local` | field | Jack Labour | Field app only |
+| `field2@entice.local` | field | Mia Operator | Field app only |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+> **Important:** These are demo credentials for local/staging use only. Update all passwords and use real email addresses before going live.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+---
 
-## Deploy on Vercel
+## Database
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Migrations
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Apply migrations in order against your Supabase project (Supabase dashboard → SQL Editor, or via the Supabase CLI):
+
+| File | Description |
+|---|---|
+| `supabase/migrations/0001_schema.sql` | Full schema — all tables, enums, indexes |
+| `supabase/migrations/0002_functions.sql` | Postgres functions and triggers |
+| `supabase/migrations/0003_rls.sql` | Row-level security policies |
+| `supabase/migrations/0004_profile_guard.sql` | Profile creation guard trigger |
+| `supabase/migrations/0005_storage.sql` | Storage buckets + policies |
+| `supabase/migrations/0006_checklists_costcodes.sql` | Default checklists and cost code seed |
+
+### Seed data
+
+`supabase/seed/seed.sql` populates a full demo company scenario ("Entice Civil") with clients, projects, quotes, jobs, POs, claims, and crew. Only run against a fresh (empty) install — the script aborts if any clients rows exist.
+
+After seeding, run:
+```bash
+node supabase/seed/upload-signature-placeholder.mjs
+```
+This uploads the shared signature placeholder image used by all seed diary signatures.
+
+### RLS checker
+
+```bash
+node supabase/seed/rls-check.mjs
+```
+Runs a series of role-impersonated queries to verify RLS policies are working as expected for all roles (admin, office, supervisor, field).
+
+---
+
+## PDFs
+
+The app generates PDFs server-side using `@react-pdf/renderer`. PDF types and their API route patterns:
+
+| Document | Route |
+|---|---|
+| Quote | `GET /api/quotes/[id]/pdf` |
+| Invoice | `GET /api/invoices/[id]/pdf` |
+| Purchase Order | `GET /api/projects/[id]/pos/[poId]/pdf` |
+| Progress Claim | `GET /api/projects/[id]/claims/[claimId]/pdf` |
+| SWMS | `GET /api/swms/[id]/pdf` |
+
+PDFs are streamed directly; no files are written to disk.
+
+---
+
+## Deploy to Vercel
+
+1. Push this repo to GitHub (any branch).
+2. Go to [vercel.com/new](https://vercel.com/new) and import the repository.
+3. Set the following environment variables in the Vercel project settings:
+
+   | Variable | Value |
+   |---|---|
+   | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key |
+   | `SUPABASE_SERVICE_ROLE_KEY` | Your Supabase service role key |
+   | `NEXT_PUBLIC_SITE_URL` | Your Vercel deployment URL (e.g. `https://entice.vercel.app`) |
+
+4. Leave the build command as the default (`next build`). Click **Deploy**.
+
+No Supabase auth redirect URL allowlist configuration is needed — the app uses password-only authentication with no OAuth redirects.
+
+---
+
+## Phase 2 backlog
+
+From the product specification §5 — planned for a future phase:
+
+- Xero API sync (live account push, not just CSV export)
+- ITPs (inspection & test plans), lots, and NCRs (non-conformance reports)
+- Plant pre-start checklists (mobile)
+- Subcontractor portal (self-service docket submission)
+- Approval workflows (multi-level sign-off for variations, POs, claims)
+- Offline PWA (service worker + background sync for no-signal field use)
+- Client portal (read-only claim/variation visibility)
+- SMS notifications (claim submissions, approvals)
+- Payroll export (integration with payroll providers)
