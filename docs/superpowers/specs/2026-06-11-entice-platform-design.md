@@ -200,3 +200,25 @@ v1 is done when, using seeded + real data:
 5. **Procurement:** vendors, packages, RFQs, comparison, award → commitments
 6. **Schedule & Field:** schedule board, My Day, check-in/timesheets, diary, SWMS, photos
 7. **Dashboard & Reports:** dashboards, reports, polish, seed-data walkthrough, deploy
+
+---
+
+## Addendum — delivered post-v1 (2026-06-12)
+
+Two modules shipped after the v1 scope above, following the same stack, role model and RLS conventions.
+
+### Programme module (migrations 0008–0009)
+- Per-project Gantt tab: draggable timeline tasks with phases and % progress
+- Finish-start dependencies, baseline capture with slip highlighting
+- Hold points register (pending → notified → released) with release evidence; due/overdue hold points on the dashboard
+- Programme PDF export
+
+### WHS & Traceability module (migrations 0010–0011)
+- Forms engine: admin-built versioned templates (pre-start, Take 5, toolbox, induction, incident, custom); field Safety tab for submission; office forms register with filters + CSV
+- Incident register: INC numbering, severity 1–5, status workflow, corrective actions with due dates; dashboard Safety card; incident PDF
+- External participation without logins: tokenised share links for SWMS/form sign-on (`/sign/{token}`) and subbie SWMS upload (`/submit/{token}`), printable QR posters, expiry + revocation
+- Subbie SWMS review queue (submitted → under review → accepted/rejected) with vendor matching
+- Append-only `audit_log` fed by triggers on all WHS tables; filterable audit register with CSV export; per-record history cards; immutability enforced for all roles (regression-checked by `rls-check.mjs`)
+- WHS hub (`/whs`) with overview stats + needs-attention list, and a per-project WHS tab (SWMS, forms, incidents, subbie SWMS)
+
+ISO-style traceability is the design driver: versioned templates, records that pin the version they were captured against, no update/delete paths on submissions or sign-ons, and registers exportable for evidence packs.
