@@ -11,6 +11,7 @@ const VALID_TABS: SettingsTab[] = [
   'plant',
   'checklists',
   'swms',
+  'whs-forms',
 ]
 
 export default async function SettingsPage({
@@ -36,6 +37,8 @@ export default async function SettingsPage({
     { data: plant },
     { data: checklists },
     { data: swmsTemplates },
+    { data: rawFormTemplates },
+    { data: submissionCounts },
   ] = await Promise.all([
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
@@ -63,7 +66,26 @@ export default async function SettingsPage({
       .from('swms_templates')
       .select('id, title, body, hazards, version, active')
       .order('title'),
+    supabase
+      .from('form_templates')
+      .select('id, kind, name, description, schema, version, active, requires_signon')
+      .order('name'),
+    supabase
+      .from('form_submissions')
+      .select('template_id'),
   ])
+
+  // Build per-template submission counts
+  const countMap = new Map<string, number>()
+  for (const row of submissionCounts ?? []) {
+    const id = (row as { template_id: string }).template_id
+    countMap.set(id, (countMap.get(id) ?? 0) + 1)
+  }
+
+  const formTemplates = (rawFormTemplates ?? []).map((t) => ({
+    ...t,
+    submission_count: countMap.get(t.id) ?? 0,
+  }))
 
   return (
     <div className="flex flex-col gap-2">
@@ -81,6 +103,7 @@ export default async function SettingsPage({
         plant={plant ?? []}
         checklists={checklists ?? []}
         swmsTemplates={swmsTemplates ?? []}
+        formTemplates={formTemplates}
       />
     </div>
   )

@@ -1091,6 +1091,69 @@ export const programmePredecessorsSchema = z.object({
 
 export type ProgrammePredecessorsInput = z.infer<typeof programmePredecessorsSchema>
 
+// ─── WHS form templates ──────────────────────────────────────────────────────
+
+export const FORM_TEMPLATE_KINDS = [
+  'prestart',
+  'take5',
+  'toolbox',
+  'induction',
+  'incident',
+  'custom',
+] as const
+export type FormTemplateKind = (typeof FORM_TEMPLATE_KINDS)[number]
+
+export const FORM_FIELD_TYPES = [
+  'text',
+  'textarea',
+  'number',
+  'select',
+  'checkbox',
+  'date',
+  'time',
+  'photo',
+  'signature',
+  'rating',
+] as const
+export type FormFieldType = (typeof FORM_FIELD_TYPES)[number]
+
+const slugRegex = /^[a-z0-9_]+$/
+
+export const formFieldSchema = z.object({
+  key: z
+    .string()
+    .min(1, 'Key is required')
+    .regex(slugRegex, 'Key must be lowercase letters, numbers and underscores only'),
+  label: z.string().min(1, 'Label is required'),
+  type: z.enum(FORM_FIELD_TYPES),
+  options: z.array(z.string()).default([]),
+  required: z.boolean().default(false),
+})
+
+export type FormField = z.infer<typeof formFieldSchema>
+
+export const formTemplateSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    kind: z.enum(FORM_TEMPLATE_KINDS),
+    name: z.string().min(1, 'Name is required'),
+    description: optionalText,
+    schema: z
+      .array(formFieldSchema)
+      .min(1, 'Add at least one field')
+      .refine(
+        (fields) => {
+          const keys = fields.map((f) => f.key)
+          return keys.length === new Set(keys).size
+        },
+        'Field keys must be unique'
+      ),
+    requires_signon: z.boolean().default(false),
+    active: z.boolean().default(true),
+  })
+
+export type FormTemplateInput = z.infer<typeof formTemplateSchema>
+
 // ─── Hold points ─────────────────────────────────────────────────────────────
 
 export const holdPointSchema = z.object({

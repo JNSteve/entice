@@ -12,6 +12,7 @@ import {
   plantSchema,
   checklistTemplateSchema,
   swmsTemplateSchema,
+  formTemplateSchema,
 } from '@/lib/zod'
 
 // ─── Company settings ────────────────────────────────────────────────────────
@@ -328,6 +329,70 @@ export async function setSwmsTemplateActive(
   const supabase = await createSupabaseClient()
   const { error } = await supabase
     .from('swms_templates')
+    .update({ active })
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+// ─── Form templates (WHS) ────────────────────────────────────────────────────
+
+export async function upsertFormTemplate(
+  data: unknown
+): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const parsed = formTemplateSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { id, ...rest } = parsed.data
+
+  if (id) {
+    const { data: current } = await supabase
+      .from('form_templates')
+      .select('name, schema, requires_signon, version')
+      .eq('id', id)
+      .single()
+    if (!current) return { error: 'Form template not found' }
+
+    // Bump version when any content changes (not on active toggle alone)
+    const changed =
+      current.name !== rest.name ||
+      (current.requires_signon ?? false) !== rest.requires_signon ||
+      JSON.stringify(current.schema) !== JSON.stringify(rest.schema)
+
+    const { error } = await supabase
+      .from('form_templates')
+      .update({
+        ...rest,
+        version: changed ? Number(current.version) + 1 : Number(current.version),
+      })
+      .eq('id', id)
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await supabase.from('form_templates').insert({ ...rest, version: 1 })
+    if (error) return { error: error.message }
+  }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+export async function setFormTemplateActive(
+  id: string,
+  active: boolean
+): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('form_templates')
     .update({ active })
     .eq('id', id)
 

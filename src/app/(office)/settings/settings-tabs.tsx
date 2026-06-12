@@ -12,6 +12,7 @@ import {
   type ChecklistTemplateRow,
 } from './checklists-section'
 import { SwmsSection, type SwmsTemplateRow } from './swms-section'
+import { WhsFormsSection, type FormTemplateRow } from './whs-forms-section'
 
 export type SettingsTab =
   | 'company'
@@ -21,6 +22,7 @@ export type SettingsTab =
   | 'plant'
   | 'checklists'
   | 'swms'
+  | 'whs-forms'
 
 const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'company', label: 'Company' },
@@ -30,6 +32,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'plant', label: 'Plant' },
   { value: 'checklists', label: 'Checklists' },
   { value: 'swms', label: 'SWMS' },
+  { value: 'whs-forms', label: 'WHS Forms' },
 ]
 
 interface SettingsTabsProps {
@@ -42,6 +45,7 @@ interface SettingsTabsProps {
   plant: PlantRow[]
   checklists: ChecklistTemplateRow[]
   swmsTemplates: SwmsTemplateRow[]
+  formTemplates: FormTemplateRow[]
 }
 
 export function SettingsTabs({
@@ -54,6 +58,7 @@ export function SettingsTabs({
   plant,
   checklists,
   swmsTemplates,
+  formTemplates,
 }: SettingsTabsProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab)
 
@@ -93,6 +98,9 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="swms" className="pt-4">
         <SwmsSection templates={swmsTemplates} />
+      </TabsContent>
+      <TabsContent value="whs-forms" className="pt-4">
+        <WhsFormsSection templates={formTemplates} />
       </TabsContent>
     </Tabs>
   )
