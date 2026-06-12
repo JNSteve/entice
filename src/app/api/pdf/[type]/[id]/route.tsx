@@ -12,7 +12,8 @@ import { ClaimPdf, type ClaimPdfLine } from '@/pdf/ClaimPdf'
 import { DiaryPdf, type DiaryPdfDay, type DiaryPdfPhoto } from '@/pdf/DiaryPdf'
 import { SwmsPdf, type SwmsPdfSignature } from '@/pdf/SwmsPdf'
 import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
-import type { SwmsHazard } from '@/lib/zod'
+import { FormPdf, type FormPdfSignon } from '@/pdf/FormPdf'
+import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
 
 export const runtime = 'nodejs'
@@ -74,7 +75,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -103,6 +104,8 @@ export async function GET(
     case 'programme':
       // [id] = project id
       return programmePdf(id)
+    case 'form':
+      return formPdf(id)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -934,6 +937,113 @@ async function diaryRangePdf(
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="diary-${project.number}-${from}-to-${to}.pdf"`,
+    },
+  })
+}
+
+// ─── Form submission ──────────────────────────────────────────────────────────
+
+async function formPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: submission }, { data: settings }] = await Promise.all([
+    supabase
+      .from('form_submissions')
+      .select(
+        `id, kind, template_id, template_version, submitted_at, data,
+         projects(number, name),
+         jobs(number, title),
+         plant(name),
+         profiles!form_submissions_submitted_by_fkey(full_name),
+         form_templates(name, schema)`
+      )
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  if (!submission) return new Response('Not found', { status: 404 })
+
+  const projectRel = submission.projects as unknown as { number: string; name: string } | null
+  const jobRel = submission.jobs as unknown as { number: string; title: string } | null
+  const plantRel = submission.plant as unknown as { name: string } | null
+  const profileRel = submission.profiles as unknown as { full_name: string } | null
+  const templateRel = submission.form_templates as unknown as { name: string; schema: FormField[] } | null
+
+  const target = projectRel
+    ? `${projectRel.number} — ${projectRel.name}`
+    : jobRel
+      ? `${jobRel.number} — ${jobRel.title}`
+      : null
+
+  // Fetch signons and attachment count
+  const [{ data: signons }, { count: attachmentCount }] = await Promise.all([
+    supabase
+      .from('form_signons')
+      .select('name, company, profile_id, signed_at, signature_path, signature_data')
+      .eq('submission_id', id)
+      .order('signed_at'),
+    supabase
+      .from('attachments')
+      .select('id', { count: 'exact', head: true })
+      .eq('parent_type', 'form_submission')
+      .eq('parent_id', id),
+  ])
+
+  // Sign signature_path URLs (stored signatures)
+  const urlByPath = new Map<string, string>()
+  const pathSignons = (signons ?? []).filter((s) => s.signature_path)
+  if (pathSignons.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from('attachments')
+      .createSignedUrls(pathSignons.map((s) => s.signature_path as string), 3600)
+    for (const entry of signed ?? []) {
+      if (entry.signedUrl && entry.path) urlByPath.set(entry.path, entry.signedUrl)
+    }
+  }
+
+  const pdfSignons: FormPdfSignon[] = (signons ?? []).map((s) => ({
+    name: s.name as string,
+    company: (s.company as string | null) ?? null,
+    internal: s.profile_id !== null,
+    signedAt: format(parseISO(s.signed_at as string), 'dd/MM/yyyy HH:mm'),
+    imageUrl: s.signature_path
+      ? (urlByPath.get(s.signature_path as string) ?? null)
+      : (s.signature_data as string | null) ?? null,
+  }))
+
+  const schema = (templateRel?.schema ?? []) as FormField[]
+
+  const buffer = await renderToBuffer(
+    <FormPdf
+      submission={{
+        templateName: templateRel?.name ?? 'WHS Form',
+        kind: submission.kind as FormTemplateKind,
+        templateVersion: submission.template_version,
+        submittedAt: submission.submitted_at as string,
+        submittedBy: profileRel?.full_name ?? '—',
+        target,
+        plant: plantRel?.name ?? null,
+        attachmentCount: attachmentCount ?? 0,
+      }}
+      company={toCompany(settings)}
+      schema={schema}
+      data={(submission.data ?? {}) as Record<string, unknown>}
+      signons={pdfSignons}
+    />
+  )
+
+  const dateSlug = (submission.submitted_at as string).slice(0, 10)
+  const kindSlug = submission.kind as string
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="form-${kindSlug}-${dateSlug}.pdf"`,
     },
   })
 }

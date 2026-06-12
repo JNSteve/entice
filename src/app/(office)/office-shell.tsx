@@ -16,6 +16,7 @@ import {
   LogOutIcon,
   MenuIcon,
   SettingsIcon,
+  ShieldCheckIcon,
   TruckIcon,
   UsersIcon,
 } from 'lucide-react'
@@ -56,6 +57,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Projects', href: '/projects', icon: FolderKanbanIcon },
   { label: 'Vendors', href: '/vendors', icon: TruckIcon },
   { label: 'Schedule', href: '/schedule', icon: CalendarIcon },
+  { label: 'WHS', href: '/whs', icon: ShieldCheckIcon, roles: ['admin', 'office', 'supervisor'] },
   { label: 'Money', href: '/money', icon: DollarSignIcon, roles: ['admin', 'office'] },
   { label: 'Reports', href: '/reports', icon: BarChart3Icon, roles: ['admin', 'office', 'supervisor'] },
   { label: 'Settings', href: '/settings', icon: SettingsIcon, roles: ['admin'] },
