@@ -34,6 +34,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
+      // Browser extensions (screen recorders, password managers) inject
+      // attributes into <html> before React hydrates; suppress attribute
+      // mismatch warnings on this element only.
+      suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">

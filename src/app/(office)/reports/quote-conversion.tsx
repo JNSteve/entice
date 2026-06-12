@@ -17,14 +17,7 @@ import { downloadCsv } from '@/lib/csv'
 import { cn } from '@/lib/utils'
 import { format } from 'date-fns'
 
-export const PERIOD_TABS = [
-  { value: 'this-month', label: 'This month' },
-  { value: 'last-month', label: 'Last month' },
-  { value: 'this-quarter', label: 'This quarter' },
-  { value: 'all', label: 'All time' },
-] as const
-
-export type PeriodKey = (typeof PERIOD_TABS)[number]['value']
+import { PERIOD_TABS, type PeriodKey } from './periods'
 
 export type ConversionRow = {
   client: string

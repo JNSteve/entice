@@ -24,12 +24,8 @@ import {
   type ProfitabilityRow,
 } from './profitability'
 import { WipReport, type WipJobRow, type WipProjectRow } from './wip'
-import {
-  QuoteConversionReport,
-  PERIOD_TABS,
-  type ConversionRow,
-  type PeriodKey,
-} from './quote-conversion'
+import { QuoteConversionReport, type ConversionRow } from './quote-conversion'
+import { PERIOD_TABS, type PeriodKey } from './periods'
 import {
   OutstandingReport,
   type AgingBucket,

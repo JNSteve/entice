@@ -36,13 +36,29 @@ export async function proxy(request: NextRequest) {
   // supabase.auth.getUser() — it can cause random logouts.
   const {
     data: { user },
+    error: authError,
   } = await supabase.auth.getUser()
+
+  // A dead session (e.g. a stale refresh token from a previous login) would
+  // otherwise re-attempt refresh on every request, spamming auth errors in
+  // both server and browser consoles. Clear the auth cookies once so the
+  // browser stops presenting it. (No session at all → no cookies → no-op.)
+  const staleAuthCookies =
+    !user && authError
+      ? request.cookies
+          .getAll()
+          .filter((c) => /^sb-.+-auth-token/.test(c.name))
+      : []
+  const clearStale = <T extends NextResponse>(res: T): T => {
+    staleAuthCookies.forEach((c) => res.cookies.delete(c.name))
+    return res
+  }
 
   if (!user && !request.nextUrl.pathname.startsWith('/login')) {
     const url = request.nextUrl.clone()
     url.pathname = '/login'
     url.search = ''
-    return NextResponse.redirect(url)
+    return clearStale(NextResponse.redirect(url))
   }
 
   // Redirect authenticated users away from /login
@@ -55,7 +71,7 @@ export async function proxy(request: NextRequest) {
 
   // IMPORTANT: return the supabaseResponse object as-is so refreshed
   // auth cookies stay in sync between browser and server.
-  return supabaseResponse
+  return clearStale(supabaseResponse)
 }
 
 export const config = {
