@@ -28,6 +28,7 @@ test('qr poster pdf renders (%PDF magic, non-trivial size)', async () => {
   const buffer = await renderToBuffer(
     <QrPosterPdf
       company={company}
+      kind="signon"
       label="Excavation SWMS — site sign-on"
       projectName="P-0001 — Riverbank Stabilisation Stage 2"
       qrDataUrl={qrDataUrl}

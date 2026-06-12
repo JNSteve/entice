@@ -4,14 +4,32 @@ import { palette, fontSize, font, headerStyles } from './theme'
 
 export type QrPosterPdfProps = {
   company: DocCompany
+  /** Share-link kind — drives the headline/title copy. */
+  kind: 'signon' | 'subbie_swms'
   /** Share-link label, e.g. "Excavation SWMS — site sign-on". */
   label: string
   /** "P-0001 — Riverbank Stabilisation" or null. */
   projectName: string | null
   /** PNG data URL of the QR code (generated server-side via `qrcode`). */
   qrDataUrl: string
-  /** The public sign-on URL, printed under the QR for manual entry. */
+  /** The public sign-on/submission URL, printed under the QR for manual entry. */
   url: string
+}
+
+const POSTER_COPY: Record<
+  QrPosterPdfProps['kind'],
+  { headline: string; docTitle: string; cornerTitle: string }
+> = {
+  signon: {
+    headline: 'Sign on here',
+    docTitle: 'Sign-on poster',
+    cornerTitle: 'Sign-on',
+  },
+  subbie_swms: {
+    headline: 'Submit your SWMS here',
+    docTitle: 'SWMS submission poster',
+    cornerTitle: 'SWMS submission',
+  },
 }
 
 const styles = StyleSheet.create({
@@ -85,17 +103,20 @@ const styles = StyleSheet.create({
 })
 
 /**
- * A4 portrait sign-on poster for site walls: company header, big
- * "SIGN ON HERE" headline, the share-link label and project, a large QR
- * pointing at /sign/[token], and the URL for phones that can't scan.
+ * A4 portrait poster for site walls: company header, big "SIGN ON HERE"
+ * (or "SUBMIT YOUR SWMS HERE") headline, the share-link label and project,
+ * a large QR pointing at /sign/[token] (or /submit/[token]), and the URL
+ * for phones that can't scan.
  */
 export function QrPosterPdf({
   company,
+  kind,
   label,
   projectName,
   qrDataUrl,
   url,
 }: QrPosterPdfProps) {
+  const copy = POSTER_COPY[kind]
   const companyLines = [
     company.abn ? `ABN ${company.abn}` : null,
     company.address,
@@ -103,7 +124,7 @@ export function QrPosterPdf({
   ].filter((line): line is string => Boolean(line))
 
   return (
-    <Document title={`Sign-on poster — ${label}`} author={company.name}>
+    <Document title={`${copy.docTitle} — ${label}`} author={company.name}>
       <Page size="A4" style={styles.page}>
         <View style={headerStyles.bar}>
           <View style={headerStyles.companyBlock}>
@@ -119,12 +140,12 @@ export function QrPosterPdf({
             ))}
           </View>
           <View style={headerStyles.titleBlock}>
-            <Text style={headerStyles.title}>Sign-on</Text>
+            <Text style={headerStyles.title}>{copy.cornerTitle}</Text>
           </View>
         </View>
 
         <View style={styles.body}>
-          <Text style={styles.headline}>Sign on here</Text>
+          <Text style={styles.headline}>{copy.headline}</Text>
           <View>
             <Text style={styles.label}>{label}</Text>
             {projectName ? (

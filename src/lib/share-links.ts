@@ -7,17 +7,23 @@ import { createClient } from '@/lib/supabase/server'
 
 /**
  * Staff-side management of external share links (share_links table).
- * The public consumption side lives in /sign/[token] via anon RPCs.
+ * The public consumption side lives in /sign/[token] (kind 'signon') and
+ * /submit/[token] (kind 'subbie_swms') via anon RPCs.
  */
 
 const createShareLinkSchema = z
   .object({
-    kind: z.literal('signon'),
+    kind: z.enum(['signon', 'subbie_swms']),
     swmsInstanceId: z
       .uuid()
       .nullish()
       .transform((v) => v ?? null),
     formSubmissionId: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    /** Required for kind 'subbie_swms' (the project the SWMS is for). */
+    projectId: z
       .uuid()
       .nullish()
       .transform((v) => v ?? null),
@@ -36,8 +42,14 @@ const createShareLinkSchema = z
       .transform((v) => v ?? null),
   })
   .refine(
-    (v) => Boolean(v.swmsInstanceId) !== Boolean(v.formSubmissionId),
+    (v) =>
+      v.kind !== 'signon' ||
+      Boolean(v.swmsInstanceId) !== Boolean(v.formSubmissionId),
     'Pick exactly one target — a SWMS instance or a form submission'
+  )
+  .refine(
+    (v) => v.kind !== 'subbie_swms' || Boolean(v.projectId),
+    'Pick a project'
   )
 
 export type CreateShareLinkResult =
@@ -58,8 +70,10 @@ function safeOrigin(origin: string | null): string {
 }
 
 /**
- * Creates an external sign-on link for a SWMS instance or a form submission
- * (toolbox/induction). Returns the full public URL for copy/QR/mailto.
+ * Creates an external share link: a sign-on link for a SWMS instance or a
+ * form submission (kind 'signon'), or a subbie SWMS submission link for a
+ * project (kind 'subbie_swms'). Returns the full public URL for
+ * copy/QR/mailto.
  */
 export async function createShareLink(data: unknown): Promise<CreateShareLinkResult> {
   const profile = await requireRole('admin', 'office', 'supervisor')
@@ -80,8 +94,9 @@ export async function createShareLink(data: unknown): Promise<CreateShareLinkRes
     .insert({
       token,
       kind: parsed.data.kind,
-      swms_instance_id: parsed.data.swmsInstanceId,
-      form_submission_id: parsed.data.formSubmissionId,
+      swms_instance_id: parsed.data.kind === 'signon' ? parsed.data.swmsInstanceId : null,
+      form_submission_id: parsed.data.kind === 'signon' ? parsed.data.formSubmissionId : null,
+      project_id: parsed.data.kind === 'subbie_swms' ? parsed.data.projectId : null,
       label: parsed.data.label,
       expires_at: expiresAt,
       created_by: profile.id,
@@ -90,10 +105,11 @@ export async function createShareLink(data: unknown): Promise<CreateShareLinkRes
     .single()
   if (error || !row) return { error: error?.message ?? 'Could not create link' }
 
+  const path = parsed.data.kind === 'subbie_swms' ? 'submit' : 'sign'
   return {
     id: row.id as string,
     token,
-    url: `${safeOrigin(parsed.data.origin)}/sign/${token}`,
+    url: `${safeOrigin(parsed.data.origin)}/${path}/${token}`,
   }
 }
 

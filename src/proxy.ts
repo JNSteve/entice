@@ -63,13 +63,13 @@ export const config = {
     /*
      * Match all request paths except:
      * - api routes
-     * - /sign/* — public external sign-on pages (token-gated, no login).
-     *   Excluding them here also skips the proxy for their Server Function
-     *   POSTs, which submit via the anon-granted RPCs.
+     * - /sign/* and /submit/* — public external pages (token-gated, no
+     *   login). Excluding them here also skips the proxy for their Server
+     *   Function POSTs, which submit via the anon-granted RPCs.
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico and common static assets
      */
-    '/((?!api|sign/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|map)$).*)',
+    '/((?!api|sign/|submit/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|map)$).*)',
   ],
 }

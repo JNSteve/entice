@@ -1169,7 +1169,8 @@ async function qrPosterPdf(id: string, request: Request): Promise<Response> {
       .select(
         `id, token, kind, label, active,
          swms_instances(title, projects(number, name), jobs(number, title)),
-         form_submissions(form_templates(name), projects(number, name), jobs(number, title))`
+         form_submissions(form_templates(name), projects(number, name), jobs(number, title)),
+         projects(number, name)`
       )
       .eq('id', id)
       .single(),
@@ -1180,7 +1181,10 @@ async function qrPosterPdf(id: string, request: Request): Promise<Response> {
       .single(),
   ])
 
-  if (!link || link.kind !== 'signon') return new Response('Not found', { status: 404 })
+  if (!link || (link.kind !== 'signon' && link.kind !== 'subbie_swms')) {
+    return new Response('Not found', { status: 404 })
+  }
+  const kind = link.kind as 'signon' | 'subbie_swms'
 
   type ParentRefs = {
     projects: { number: string; name: string } | null
@@ -1192,10 +1196,16 @@ async function qrPosterPdf(id: string, request: Request): Promise<Response> {
   const submissionRel = link.form_submissions as unknown as
     | ({ form_templates: { name: string } | null } & ParentRefs)
     | null
+  // kind 'subbie_swms' targets a project directly.
+  const linkProjectRel = link.projects as unknown as {
+    number: string
+    name: string
+  } | null
 
   const parent = swmsRel ?? submissionRel
-  const projectName = parent?.projects
-    ? `${parent.projects.number} — ${parent.projects.name}`
+  const project = parent?.projects ?? linkProjectRel
+  const projectName = project
+    ? `${project.number} — ${project.name}`
     : parent?.jobs
       ? `${parent.jobs.number} — ${parent.jobs.title}`
       : null
@@ -1204,16 +1214,18 @@ async function qrPosterPdf(id: string, request: Request): Promise<Response> {
     link.label ??
     swmsRel?.title ??
     submissionRel?.form_templates?.name ??
-    'Site sign-on'
+    (kind === 'subbie_swms' ? 'SWMS submission' : 'Site sign-on')
 
   const origin =
     process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
-  const url = `${origin.replace(/\/$/, '')}/sign/${link.token}`
+  const path = kind === 'subbie_swms' ? 'submit' : 'sign'
+  const url = `${origin.replace(/\/$/, '')}/${path}/${link.token}`
   const qrDataUrl = await QRCode.toDataURL(url, { width: 600, margin: 1 })
 
   const buffer = await renderToBuffer(
     <QrPosterPdf
       company={toCompany(settings)}
+      kind={kind}
       label={label}
       projectName={projectName}
       qrDataUrl={qrDataUrl}
@@ -1221,10 +1233,12 @@ async function qrPosterPdf(id: string, request: Request): Promise<Response> {
     />
   )
 
+  const filename =
+    kind === 'subbie_swms' ? 'swms-submission-poster.pdf' : 'sign-on-poster.pdf'
   return new Response(new Uint8Array(buffer), {
     headers: {
       'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="sign-on-poster.pdf"`,
+      'Content-Disposition': `inline; filename="${filename}"`,
     },
   })
 }

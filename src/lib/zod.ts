@@ -1339,3 +1339,38 @@ export const holdPointReleaseSchema = z.object({
 })
 
 export type HoldPointReleaseInput = z.infer<typeof holdPointReleaseSchema>
+
+// ─── Subbie SWMS ─────────────────────────────────────────────────────────────
+
+export const SUBBIE_SWMS_STATUSES = [
+  'submitted',
+  'under_review',
+  'accepted',
+  'rejected',
+] as const
+export type SubbieSwmsStatus = (typeof SUBBIE_SWMS_STATUSES)[number]
+
+export const SUBBIE_SWMS_STATUS_LABELS: Record<SubbieSwmsStatus, string> = {
+  submitted: 'Submitted',
+  under_review: 'Under review',
+  accepted: 'Accepted',
+  rejected: 'Rejected',
+}
+
+/** Review transition for a subbie SWMS row (notes required when rejecting). */
+export const subbieSwmsStatusSchema = z
+  .object({
+    status: z.enum(['under_review', 'accepted', 'rejected'] as const),
+    notes: optionalText,
+    /** Optional vendor match, stored on accept. */
+    vendor_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+  })
+  .refine(
+    (v) => v.status !== 'rejected' || Boolean(v.notes),
+    'Notes are required when rejecting'
+  )
+
+export type SubbieSwmsStatusInput = z.infer<typeof subbieSwmsStatusSchema>

@@ -56,6 +56,7 @@ const STATUS_META: Record<string, StatusMeta> = {
 
   // Amber / investigating
   investigating:       { label: 'Investigating',       className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
+  under_review:        { label: 'Under Review',        className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
 
   // Green / done / closed
   done:                { label: 'Done',                className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
