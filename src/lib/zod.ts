@@ -1217,6 +1217,9 @@ export const INCIDENT_TYPE_LABELS: Record<IncidentType, string> = {
   environmental: 'Environmental',
 }
 
+export const INCIDENT_STATUSES = ['open', 'investigating', 'closed'] as const
+export type IncidentStatus = (typeof INCIDENT_STATUSES)[number]
+
 export const incidentCreateSchema = z
   .object({
     project_id: z
@@ -1236,6 +1239,11 @@ export const incidentCreateSchema = z
     location: optionalText,
     description: z.string().min(1, 'Describe what happened'),
     immediate_action: optionalText,
+    /** UUID of the reporting profile. */
+    reported_by: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
   })
   .refine(
     (d) => d.project_id !== null || d.job_id !== null,
@@ -1243,6 +1251,73 @@ export const incidentCreateSchema = z
   )
 
 export type IncidentCreateInput = z.infer<typeof incidentCreateSchema>
+
+export const incidentUpdateSchema = z.object({
+  type: z.enum(INCIDENT_TYPES).optional(),
+  severity: z.coerce.number().int().min(1).max(5).optional(),
+  occurred_at: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/, 'When it happened is required')
+    .optional(),
+  location: optionalText.optional(),
+  description: z.string().min(1, 'Describe what happened').optional(),
+  immediate_action: optionalText.optional(),
+  reported_by: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  project_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  job_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+})
+
+export type IncidentUpdateInput = z.infer<typeof incidentUpdateSchema>
+
+export const incidentStatusSchema = z.object({
+  status: z.enum(INCIDENT_STATUSES),
+})
+
+export type IncidentStatusInput = z.infer<typeof incidentStatusSchema>
+
+// ─── Corrective actions ───────────────────────────────────────────────────────
+
+export const correctiveActionSchema = z.object({
+  incident_id: z.uuid(),
+  description: z.string().min(1, 'Description is required'),
+  /** UUID of assigned profile (optional). */
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  due_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+})
+
+export type CorrectiveActionInput = z.infer<typeof correctiveActionSchema>
+
+export const correctiveActionUpdateSchema = z.object({
+  description: z.string().min(1, 'Description is required').optional(),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  due_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+})
 
 // ─── Hold points ─────────────────────────────────────────────────────────────
 

@@ -23,6 +23,7 @@ import {
   HoldPointsCard,
   QuotesAwaitingCard,
   RetentionDueCard,
+  SafetyCard,
   SwmsOutstandingCard,
   TimeBarCard,
   TodayOnSiteCard,
@@ -34,6 +35,8 @@ import {
   type HoldPointDueRow,
   type QuoteAwaitingRow,
   type RetentionDueRow,
+  type SafetyData,
+  type SafetyOverdueRow,
   type SwmsOutstandingRow,
   type TimeBarRow,
   type TodayOnSiteGroup,
@@ -565,6 +568,57 @@ async function loadHoldPoints(
   })
 }
 
+// ─── 12. Safety ───────────────────────────────────────────────────────────────
+
+async function loadSafety(
+  supabase: Db,
+  today: Date
+): Promise<SafetyData> {
+  const todayStr = dateStr(today)
+
+  const [incidentsRes, actionsRes] = await Promise.all([
+    supabase
+      .from('incidents')
+      .select('id, number, status, severity'),
+    supabase
+      .from('corrective_actions')
+      .select('id, incident_id, description, due_date, status, incidents(number)')
+      .eq('status', 'open')
+      .not('due_date', 'is', null)
+      .lt('due_date', todayStr),
+  ])
+  if (incidentsRes.error) throw incidentsRes.error
+  if (actionsRes.error) throw actionsRes.error
+
+  const incidents = incidentsRes.data ?? []
+  const openIncidents = incidents.filter((i) => i.status === 'open')
+  const investigatingIncidents = incidents.filter((i) => i.status === 'investigating')
+  const highSeverity = incidents.filter(
+    (i) => (i.status === 'open' || i.status === 'investigating') && Number(i.severity) >= 4
+  )
+
+  const overdueActions: SafetyOverdueRow[] = (actionsRes.data ?? []).map((a) => {
+    const incidentRel = a.incidents as unknown as { number: string } | null
+    return {
+      actionId: a.id as string,
+      incidentId: a.incident_id as string,
+      incidentNumber: incidentRel?.number ?? '—',
+      description: a.description as string,
+      daysOverdue: Math.max(
+        0,
+        differenceInCalendarDays(today, parseISO(a.due_date as string))
+      ),
+    }
+  }).sort((a, b) => b.daysOverdue - a.daysOverdue)
+
+  return {
+    openCount: openIncidents.length,
+    investigatingCount: investigatingIncidents.length,
+    highSeverityCount: highSeverity.length,
+    overdueActions,
+  }
+}
+
 // ─── 11. Diaries missing ──────────────────────────────────────────────────────
 
 async function loadDiariesMissing(
@@ -627,6 +681,7 @@ export default async function DashboardPage() {
     swmsOutstanding,
     holdPoints,
     diariesMissing,
+    safety,
   ] = await Promise.all([
     showMoney ? settle(() => loadClaimsDue(supabase, today)) : none,
     showMoney ? settle(() => loadQuotesAwaiting(supabase, today)) : none,
@@ -639,6 +694,7 @@ export default async function DashboardPage() {
     settle(() => loadSwmsOutstanding(supabase, showMoney ? null : profile.id)),
     settle(() => loadHoldPoints(supabase, today)),
     settle(() => loadDiariesMissing(supabase, today)),
+    settle(() => loadSafety(supabase, today)),
   ])
 
   return (
@@ -667,6 +723,7 @@ export default async function DashboardPage() {
         <SwmsOutstandingCard data={swmsOutstanding ?? null} />
         <HoldPointsCard data={holdPoints ?? null} />
         <DiariesMissingCard data={diariesMissing ?? null} />
+        <SafetyCard data={safety ?? null} />
       </div>
     </div>
   )

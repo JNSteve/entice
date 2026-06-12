@@ -731,6 +731,86 @@ export function HoldPointsCard({ data }: { data: HoldPointDueRow[] | null }) {
   )
 }
 
+// ─── 12. Safety ──────────────────────────────────────────────────────────────
+
+export type SafetyOverdueRow = {
+  actionId: string
+  incidentId: string
+  incidentNumber: string
+  description: string
+  daysOverdue: number
+}
+
+export type SafetyData = {
+  openCount: number
+  investigatingCount: number
+  highSeverityCount: number
+  overdueActions: SafetyOverdueRow[]
+}
+
+export function SafetyCard({ data }: { data: SafetyData | null }) {
+  return (
+    <DashboardCard title="Safety" href="/whs/incidents">
+      {data === null ? (
+        <LoadError />
+      ) : (
+        <>
+          <div className="flex items-center gap-4 text-sm">
+            {data.openCount > 0 ? (
+              <span className="font-medium text-red-600 dark:text-red-400">
+                {data.openCount} open
+              </span>
+            ) : null}
+            {data.investigatingCount > 0 ? (
+              <span className="font-medium text-amber-600 dark:text-amber-400">
+                {data.investigatingCount} investigating
+              </span>
+            ) : null}
+            {data.highSeverityCount > 0 ? (
+              <span className="font-medium text-red-600 dark:text-red-400">
+                {data.highSeverityCount} high severity
+              </span>
+            ) : null}
+            {data.openCount === 0 && data.investigatingCount === 0 ? (
+              <Muted>No open incidents.</Muted>
+            ) : null}
+          </div>
+
+          {data.overdueActions.length > 0 && (
+            <>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                Overdue corrective actions
+              </p>
+              {data.overdueActions.slice(0, MAX_ROWS).map((a) => (
+                <div
+                  key={a.actionId}
+                  className="flex items-start justify-between gap-2 text-sm"
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <Link
+                      href={`/whs/incidents/${a.incidentId}`}
+                      className="truncate hover:underline"
+                    >
+                      {a.description}
+                    </Link>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {a.incidentNumber}
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                    {a.daysOverdue}d overdue
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.overdueActions.length} />
+            </>
+          )}
+        </>
+      )}
+    </DashboardCard>
+  )
+}
+
 // ─── 11. Diaries missing ──────────────────────────────────────────────────────
 
 export type DiaryMissingRow = {

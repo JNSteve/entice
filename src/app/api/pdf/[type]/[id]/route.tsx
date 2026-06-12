@@ -13,6 +13,7 @@ import { DiaryPdf, type DiaryPdfDay, type DiaryPdfPhoto } from '@/pdf/DiaryPdf'
 import { SwmsPdf, type SwmsPdfSignature } from '@/pdf/SwmsPdf'
 import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
 import { FormPdf, type FormPdfSignon } from '@/pdf/FormPdf'
+import { IncidentPdf, type IncidentPdfAction } from '@/pdf/IncidentPdf'
 import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
 
@@ -75,7 +76,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -106,6 +107,8 @@ export async function GET(
       return programmePdf(id)
     case 'form':
       return formPdf(id)
+    case 'incident':
+      return incidentPdf(id)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -1044,6 +1047,98 @@ async function formPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="form-${kindSlug}-${dateSlug}.pdf"`,
+    },
+  })
+}
+
+// ─── Incident ─────────────────────────────────────────────────────────────────
+
+async function incidentPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: incident }, { data: actions }, { data: photoCount }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('incidents')
+        .select(
+          `id, number, type, severity, occurred_at, location, description,
+           immediate_action, reported_by, status, closed_at, project_id, job_id,
+           projects(number, name), jobs(number, title)`
+        )
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('corrective_actions')
+        .select(
+          'description, assigned_to, due_date, status, completed_at'
+        )
+        .eq('incident_id', id)
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .order('created_at'),
+      supabase
+        .from('attachments')
+        .select('id', { count: 'exact', head: true })
+        .eq('parent_type', 'incident')
+        .eq('parent_id', id)
+        .eq('kind', 'photo'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  if (!incident) return new Response('Not found', { status: 404 })
+
+  const projectRel = incident.projects as unknown as { number: string; name: string } | null
+  const jobRel = incident.jobs as unknown as { number: string; title: string } | null
+  const projectLabel = projectRel
+    ? `${projectRel.number} — ${projectRel.name}`
+    : jobRel
+      ? `${jobRel.number} — ${jobRel.title}`
+      : null
+
+  const { INCIDENT_TYPE_LABELS } = await import('@/lib/zod')
+
+  const pdfActions: IncidentPdfAction[] = (actions ?? []).map((a) => ({
+    description: a.description as string,
+    assigned_to: (a.assigned_to as string | null) ?? null,
+    due_date: (a.due_date as string | null) ?? null,
+    status: a.status as string,
+    completed_at: (a.completed_at as string | null) ?? null,
+  }))
+
+  const incidentType = incident.type as keyof typeof INCIDENT_TYPE_LABELS
+  const occurredDate = incident.occurred_at
+    ? format(parseISO(incident.occurred_at as string), 'dd/MM/yyyy HH:mm')
+    : '—'
+
+  const buffer = await renderToBuffer(
+    <IncidentPdf
+      incident={{
+        number: incident.number as string,
+        date: occurredDate,
+        type: INCIDENT_TYPE_LABELS[incidentType] ?? (incident.type as string),
+        severity: Number(incident.severity),
+        status: incident.status as string,
+        occurred: occurredDate,
+        location: (incident.location as string | null) ?? null,
+        project: projectLabel,
+        reportedBy: (incident.reported_by as string | null) ?? null,
+        closedAt: incident.closed_at ? fmtDate(incident.closed_at) : null,
+        description: incident.description as string,
+        immediateAction: (incident.immediate_action as string | null) ?? null,
+        photoCount: (photoCount as unknown as number) ?? 0,
+      }}
+      company={toCompany(settings)}
+      actions={pdfActions}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${incident.number as string}.pdf"`,
     },
   })
 }

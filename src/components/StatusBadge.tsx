@@ -45,13 +45,20 @@ const STATUS_META: Record<string, StatusMeta> = {
   released:            { label: 'Released',            className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   practical_completion:{ label: 'Practical Completion',className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
 
-  // Red / bad
+  // Red / bad / open alerts
   lost:                { label: 'Lost',                className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
   rejected:            { label: 'Rejected',            className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
   cancelled:           { label: 'Cancelled',           className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
   declined:            { label: 'Declined',            className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
   down:                { label: 'Down',                className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
   pending:             { label: 'Pending',             className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
+  open:                { label: 'Open',                className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
+
+  // Amber / investigating
+  investigating:       { label: 'Investigating',       className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
+
+  // Green / done / closed
+  done:                { label: 'Done',                className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
 
   // Purple / closed
   closed:              { label: 'Closed',              className: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300' },
