@@ -5,7 +5,7 @@ Entice is a complete construction operations platform for civil and remediation 
 **Modules:**
 - Quotes (line-item builder, rate library, PDF)
 - Jobs (work logs, checklists, costs, invoices)
-- Projects (budget, variations, progress claims / time-bar, purchase orders, procurement packages / RFQ / comparison / award, retention, site diary)
+- Projects (budget, programme (Gantt), variations, progress claims / time-bar, purchase orders, procurement packages / RFQ / comparison / award, retention, site diary)
 - Scheduling (crew assignment board)
 - Field app (mobile daily tasks, site diary)
 - Clients & Vendors

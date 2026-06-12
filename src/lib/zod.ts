@@ -1047,3 +1047,38 @@ export const packageUpdateSchema = z.object({
 })
 
 export type PackageUpdateInput = z.infer<typeof packageUpdateSchema>
+
+// ─── Programme (Gantt) ───────────────────────────────────────────────────────
+
+const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date (YYYY-MM-DD)')
+
+export const programmeTaskSchema = z
+  .object({
+    project_id: z.uuid(),
+    name: z.string().min(1, 'Task name is required'),
+    phase: optionalText,
+    start_date: isoDate,
+    end_date: isoDate,
+    progress_pct: z.coerce.number().min(0).max(100).default(0),
+  })
+  .refine((d) => d.end_date >= d.start_date, {
+    message: 'End date must be on or after the start date',
+    path: ['end_date'],
+  })
+
+export type ProgrammeTaskInput = z.infer<typeof programmeTaskSchema>
+
+export const programmeTaskUpdateSchema = z
+  .object({
+    name: z.string().min(1, 'Task name is required').optional(),
+    phase: optionalText.optional(),
+    start_date: isoDate.optional(),
+    end_date: isoDate.optional(),
+    progress_pct: z.coerce.number().min(0).max(100).optional(),
+  })
+  .refine(
+    (d) => !d.start_date || !d.end_date || d.end_date >= d.start_date,
+    { message: 'End date must be on or after the start date', path: ['end_date'] }
+  )
+
+export type ProgrammeTaskUpdateInput = z.infer<typeof programmeTaskUpdateSchema>

@@ -14,6 +14,7 @@ type Tab = {
 
 const TABS: Tab[] = [
   { label: 'Overview', suffix: '' },
+  { label: 'Programme', suffix: '/programme' },
   { label: 'Budget', suffix: '/budget', money: true },
   { label: 'POs', suffix: '/pos', money: true },
   { label: 'Variations', suffix: '/variations', money: true },

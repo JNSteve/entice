@@ -1,4 +1,6 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { format } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import {
@@ -35,33 +37,49 @@ export default async function ProjectOverviewPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: project }, { data: diaries }, swmsInstances, { data: swmsTemplates }] =
-    await Promise.all([
-      supabase
-        .from('projects')
-        .select(
-          'id, contract_sum, claim_day, status, practical_completion_date, pc_release_fraction, dlp_months, retention_cap_pct'
-        )
-        .eq('id', id)
-        .single(),
-      supabase
-        .from('diaries')
-        .select('id, date, work_performed')
-        .eq('project_id', id)
-        .order('date', { ascending: false })
-        .limit(3),
-      fetchSwmsInstances(supabase, 'project', id),
-      supabase
-        .from('swms_templates')
-        .select('id, title, version')
-        .eq('active', true)
-        .order('title'),
-    ])
+  const [
+    { data: project },
+    { data: diaries },
+    swmsInstances,
+    { data: swmsTemplates },
+    { data: programmeTasks },
+  ] = await Promise.all([
+    supabase
+      .from('projects')
+      .select(
+        'id, contract_sum, claim_day, status, practical_completion_date, pc_release_fraction, dlp_months, retention_cap_pct'
+      )
+      .eq('id', id)
+      .single(),
+    supabase
+      .from('diaries')
+      .select('id, date, work_performed')
+      .eq('project_id', id)
+      .order('date', { ascending: false })
+      .limit(3),
+    fetchSwmsInstances(supabase, 'project', id),
+    supabase
+      .from('swms_templates')
+      .select('id, title, version')
+      .eq('active', true)
+      .order('title'),
+    supabase
+      .from('programme_tasks')
+      .select('end_date, progress_pct')
+      .eq('project_id', id),
+  ])
 
   if (!project) notFound()
 
   const today = new Date()
   const nextClaimDate = nextClaimReferenceDate(Number(project.claim_day), today)
+
+  // ── Programme summary (ops-visible incl supervisor — op table under RLS)
+  const todayIso = format(today, 'yyyy-MM-dd')
+  const programmeCount = (programmeTasks ?? []).length
+  const programmeBehind = (programmeTasks ?? []).filter(
+    (t) => t.end_date < todayIso && Number(t.progress_pct) < 100
+  ).length
 
   // ── Money data (admin/office only — RLS blocks these tables for supervisors)
   let adjustedSum = 0
@@ -316,6 +334,38 @@ export default async function ProjectOverviewPage({
           </Card>
         </>
       )}
+
+      {/* Programme — visible to all roles */}
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle className="text-sm text-muted-foreground">
+            Programme
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-1">
+          <span className="text-2xl font-semibold tabular-nums">
+            {programmeCount}{' '}
+            <span className="text-sm font-normal text-muted-foreground">
+              task{programmeCount === 1 ? '' : 's'}
+            </span>
+          </span>
+          {programmeBehind > 0 ? (
+            <span className="text-xs font-medium text-red-600 dark:text-red-400">
+              {programmeBehind} behind programme
+            </span>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {programmeCount > 0 ? 'Nothing behind programme.' : 'No tasks yet.'}
+            </span>
+          )}
+          <Link
+            href={`/projects/${id}/programme`}
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            Open programme
+          </Link>
+        </CardContent>
+      </Card>
 
       {/* Next claim reference date — visible to all roles */}
       <Card size="sm">

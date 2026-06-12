@@ -599,3 +599,26 @@ update sequences set next_value = 7 where key = 'job';
 update sequences set next_value = 3 where key = 'project';
 update sequences set next_value = 5 where key = 'po';
 update sequences set next_value = 2 where key = 'invoice';
+
+-- ─── 19. Programme (Gantt) tasks ─────────────────────────────────────────────
+-- programme
+-- P-0001 started ~3.5 months before the demo "today" (2026-06-12): establishment
+-- and bulk excavation complete, rock excavation VO and dewatering finished late
+-- (behind programme), gabion walls under way, reveg + closeout still to come.
+-- P-0002 is ~3 weeks in: prelims done, membrane removal wrapping up.
+insert into programme_tasks (id, project_id, name, phase, start_date, end_date, progress_pct, position) values
+  -- P-0001 Riverbank Stabilisation Stage 2
+  ('e7000000-0000-4000-a000-000000000001', 'a1000000-0000-4000-a000-000000000001', 'Site establishment',      'Establishment', '2026-02-23', '2026-03-06', 100, 1),
+  ('e7000000-0000-4000-a000-000000000002', 'a1000000-0000-4000-a000-000000000001', 'Survey & set-out',        'Establishment', '2026-03-02', '2026-03-06', 100, 2),
+  ('e7000000-0000-4000-a000-000000000003', 'a1000000-0000-4000-a000-000000000001', 'Bulk excavation',         'Bulk works',    '2026-03-09', '2026-03-27', 100, 3),
+  ('e7000000-0000-4000-a000-000000000004', 'a1000000-0000-4000-a000-000000000001', 'Rock excavation (VO)',    'Bulk works',    '2026-03-30', '2026-04-10',  90, 4),
+  ('e7000000-0000-4000-a000-000000000005', 'a1000000-0000-4000-a000-000000000001', 'Dewatering',              'Bulk works',    '2026-04-06', '2026-05-15',  75, 5),
+  ('e7000000-0000-4000-a000-000000000006', 'a1000000-0000-4000-a000-000000000001', 'Gabion walls',            'Structures',    '2026-05-18', '2026-06-19',  40, 6),
+  ('e7000000-0000-4000-a000-000000000007', 'a1000000-0000-4000-a000-000000000001', 'Revegetation',            'Structures',    '2026-06-22', '2026-07-03',   0, 7),
+  ('e7000000-0000-4000-a000-000000000008', 'a1000000-0000-4000-a000-000000000001', 'Defects & handover',      'Closeout',      '2026-07-06', '2026-07-17',   0, 8),
+  -- P-0002 Carpark Remediation — Harbourview
+  ('e7000000-0000-4000-a000-000000000009', 'a1000000-0000-4000-a000-000000000002', 'Access & protection',     'Preliminaries', '2026-05-25', '2026-05-29', 100, 1),
+  ('e7000000-0000-4000-a000-000000000010', 'a1000000-0000-4000-a000-000000000002', 'Membrane removal',        'Remediation',   '2026-06-01', '2026-06-12',  60, 2),
+  ('e7000000-0000-4000-a000-000000000011', 'a1000000-0000-4000-a000-000000000002', 'Substrate repairs',       'Remediation',   '2026-06-08', '2026-06-19',  10, 3),
+  ('e7000000-0000-4000-a000-000000000012', 'a1000000-0000-4000-a000-000000000002', 'New membrane install',    'Remediation',   '2026-06-22', '2026-07-03',   0, 4),
+  ('e7000000-0000-4000-a000-000000000013', 'a1000000-0000-4000-a000-000000000002', 'Line marking & handover', 'Completion',    '2026-07-06', '2026-07-10',   0, 5);
