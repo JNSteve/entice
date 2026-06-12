@@ -31,9 +31,20 @@ function loadEnv() {
 // Money tables a field user must never see.
 const MONEY_TABLES = ['quotes', 'claims', 'invoices', 'costs', 'budget_lines']
 
-// Seeded demo login (created by seed.sql — demo password lives there too).
+// Seeded demo logins (created by seed.sql — demo passwords live there too).
 const FIELD_EMAIL = 'field1@entice.local'
 const FIELD_PASSWORD = 'Entice!234'
+
+// Non-field user for immutability checks. The supervisor role can select
+// audit_log rows (RLS: a/o/s), so they should be able to see rows but still
+// be blocked from modifying them. Uses the seeded super@entice.local user;
+// falls back gracefully if not present.
+const SUPER_EMAIL = 'super@entice.local'
+const SUPER_PASSWORD = 'Entice!234'
+
+// Legacy alias — keep if any code references it
+const ADMIN_EMAIL = SUPER_EMAIL
+const ADMIN_PASSWORD = SUPER_PASSWORD
 
 let failures = 0
 
@@ -90,6 +101,98 @@ async function main() {
     check('insert costs rejected', true, insertError.message)
   } else {
     check('insert costs rejected', false, `insert SUCCEEDED: ${JSON.stringify(inserted)}`)
+  }
+
+  await supabase.auth.signOut()
+
+  // ─── Audit log immutability checks ─────────────────────────────────────
+  // We need an admin-role user to test the UPDATE/DELETE restrictions because
+  // the field role has no SELECT on audit_log (zero rows) and thus cannot
+  // obtain a row ID to attempt modification.
+
+  console.log('\n── Audit log immutability ──')
+
+  const adminClient = createClient(
+    env.NEXT_PUBLIC_SUPABASE_URL,
+    env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+    { auth: { persistSession: false, autoRefreshToken: false } }
+  )
+
+  const { error: adminAuthError } = await adminClient.auth.signInWithPassword({
+    email: ADMIN_EMAIL,
+    password: ADMIN_PASSWORD,
+  })
+
+  if (adminAuthError) {
+    console.log(`SKIP  audit immutability — ${ADMIN_EMAIL} sign-in failed: ${adminAuthError.message}`)
+    console.log('      (requires super@entice.local seeded user — run seed.sql first)')
+  } else {
+    // Pick any existing audit_log row.
+    const { data: auditSample } = await adminClient
+      .from('audit_log')
+      .select('id')
+      .limit(1)
+      .single()
+
+    if (!auditSample) {
+      console.log('SKIP  audit immutability — no audit_log rows exist yet')
+    } else {
+      const rowId = auditSample.id
+
+      // Attempt UPDATE — must affect 0 rows or error.
+      const { error: updateError, count: updateCount } = await adminClient
+        .from('audit_log')
+        .update({ action: 'tampered' })
+        .eq('id', rowId)
+
+      if (updateError) {
+        check('audit_log UPDATE rejected (admin)', true, updateError.message)
+      } else {
+        check(
+          'audit_log UPDATE rejected (admin)',
+          (updateCount ?? 0) === 0,
+          `UPDATE affected ${updateCount ?? 0} row(s) — audit log is NOT immutable!`
+        )
+      }
+
+      // Attempt DELETE — must affect 0 rows or error.
+      const { error: deleteError, count: deleteCount } = await adminClient
+        .from('audit_log')
+        .delete()
+        .eq('id', rowId)
+
+      if (deleteError) {
+        check('audit_log DELETE rejected (admin)', true, deleteError.message)
+      } else {
+        check(
+          'audit_log DELETE rejected (admin)',
+          (deleteCount ?? 0) === 0,
+          `DELETE removed ${deleteCount ?? 0} row(s) — audit log is NOT immutable!`
+        )
+      }
+
+      // Field user SELECT on audit_log must return 0 rows (RLS: a/o/s only).
+      // Re-sign-in as field user.
+      await supabase.auth.signInWithPassword({
+        email: FIELD_EMAIL,
+        password: FIELD_PASSWORD,
+      })
+      const { data: fieldAudit, error: fieldSelectError } = await supabase
+        .from('audit_log')
+        .select('id')
+        .limit(10)
+      if (fieldSelectError) {
+        check('audit_log SELECT blocked for field', true, `error: ${fieldSelectError.message}`)
+      } else {
+        check(
+          'audit_log SELECT blocked for field',
+          (fieldAudit ?? []).length === 0,
+          `field user can see ${(fieldAudit ?? []).length} audit row(s)`
+        )
+      }
+    }
+
+    await adminClient.auth.signOut()
   }
 
   await supabase.auth.signOut()

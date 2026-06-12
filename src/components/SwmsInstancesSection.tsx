@@ -6,9 +6,13 @@ import {
   ChevronDownIcon,
   ChevronUpIcon,
   FileTextIcon,
+  HistoryIcon,
   PlusIcon,
   ShieldCheckIcon,
 } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { AuditHistory } from '@/components/AuditHistory'
+import type { AuditRow } from '@/lib/audit-queries'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
@@ -117,6 +121,35 @@ function SwmsInstanceCard({
 }) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
+  const [historyRows, setHistoryRows] = useState<AuditRow[] | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+
+  async function loadHistory() {
+    if (historyRows !== null) return // already loaded
+    setHistoryLoading(true)
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('audit_log')
+      .select('id, at, actor_id, actor_name, entity_type, entity_id, project_id, action, detail')
+      .eq('entity_type', 'swms_instances')
+      .eq('entity_id', instance.id)
+      .order('at', { ascending: false })
+      .limit(100)
+    setHistoryRows(
+      (data ?? []).map((r) => ({
+        id: r.id as string,
+        at: r.at as string,
+        actor_id: (r.actor_id as string | null) ?? null,
+        actor_name: (r.actor_name as string | null) ?? null,
+        entity_type: r.entity_type as string,
+        entity_id: r.entity_id as string,
+        project_id: (r.project_id as string | null) ?? null,
+        action: r.action as string,
+        detail: (r.detail ?? {}) as Record<string, unknown>,
+      }))
+    )
+    setHistoryLoading(false)
+  }
 
   const isActive = instance.status === 'active'
 
@@ -162,7 +195,11 @@ function SwmsInstanceCard({
           </div>
           <button
             type="button"
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => {
+              const next = !open
+              setOpen(next)
+              if (next) loadHistory()
+            }}
             className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground"
             aria-expanded={open}
           >
@@ -220,7 +257,7 @@ function SwmsInstanceCard({
 
       {/* Sign-on register */}
       {open && (
-        <div className="border-t px-4 py-3">
+        <div className="border-t px-4 py-3 flex flex-col gap-4">
           {instance.register.length === 0 && instance.externalSigners.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               No active field or supervisor staff to sign on.
@@ -278,6 +315,21 @@ function SwmsInstanceCard({
               </Table>
             </div>
           )}
+
+          {/* SWMS history */}
+          <div className="border-t pt-3">
+            <div className="flex items-center gap-2 mb-2">
+              <HistoryIcon className="size-3.5 text-muted-foreground" />
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                History
+              </span>
+            </div>
+            {historyLoading ? (
+              <p className="text-xs text-muted-foreground">Loading…</p>
+            ) : (
+              <AuditHistory rows={historyRows ?? []} heading="" />
+            )}
+          </div>
         </div>
       )}
     </div>

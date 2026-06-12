@@ -46,8 +46,10 @@ import {
 import { StatusBadge } from '@/components/StatusBadge'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList, type AttachmentItem } from '@/components/AttachmentList'
+import { AuditHistory } from '@/components/AuditHistory'
 import { fmtDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
+import type { AuditRow } from '@/lib/audit-queries'
 import {
   INCIDENT_TYPES,
   INCIDENT_TYPE_LABELS,
@@ -121,6 +123,7 @@ export interface IncidentDetailClientProps {
   profiles: ProfileOption[]
   projects: ProjectOption[]
   jobs: JobOption[]
+  auditHistory: AuditRow[]
 }
 
 // ─── Severity dots ────────────────────────────────────────────────────────────
@@ -497,6 +500,7 @@ export function IncidentDetailClient({
   profiles,
   projects,
   jobs,
+  auditHistory,
 }: IncidentDetailClientProps) {
   const [pending, startTransition] = useTransition()
   const [editOpen, setEditOpen] = useState(false)
@@ -819,15 +823,13 @@ export function IncidentDetailClient({
         </CardContent>
       </Card>
 
-      {/* History placeholder */}
+      {/* History */}
       <Card>
         <CardHeader>
           <CardTitle className="text-sm font-semibold">History</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-sm text-muted-foreground">
-            Full audit trail lands with the Audit tab (W8).
-          </p>
+          <AuditHistory rows={auditHistory} />
         </CardContent>
       </Card>
 

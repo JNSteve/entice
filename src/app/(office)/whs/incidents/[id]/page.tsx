@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
+import { fetchAuditFor } from '@/lib/audit-queries'
 import { ChevronLeftIcon } from 'lucide-react'
 import {
   IncidentDetailClient,
@@ -13,6 +14,7 @@ import {
   type ProfileOption,
 } from './incident-detail'
 import type { AttachmentItem } from '@/components/AttachmentList'
+import type { AuditRow } from '@/lib/audit-queries'
 import type { IncidentType, IncidentStatus } from '@/lib/zod'
 
 export default async function IncidentDetailPage({
@@ -31,6 +33,7 @@ export default async function IncidentDetailPage({
     { data: projects },
     { data: jobs },
     { data: profileRows },
+    auditHistory,
   ] = await Promise.all([
     supabase
       .from('incidents')
@@ -66,6 +69,7 @@ export default async function IncidentDetailPage({
       .select('id, full_name')
       .eq('active', true)
       .order('full_name'),
+    fetchAuditFor(supabase, 'incidents', id),
   ])
 
   if (!incident) notFound()
@@ -162,6 +166,7 @@ export default async function IncidentDetailPage({
         projects={projectOptions}
         jobs={jobOptions}
         profiles={profileOptions}
+        auditHistory={auditHistory as AuditRow[]}
       />
     </div>
   )

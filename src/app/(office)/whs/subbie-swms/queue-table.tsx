@@ -4,7 +4,10 @@ import React, { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
-import { FileCheckIcon, FileTextIcon, LinkIcon } from 'lucide-react'
+import { FileCheckIcon, FileTextIcon, HistoryIcon, LinkIcon } from 'lucide-react'
+import { createClient } from '@/lib/supabase/client'
+import { AuditHistory } from '@/components/AuditHistory'
+import type { AuditRow } from '@/lib/audit-queries'
 import {
   Table,
   TableBody,
@@ -209,6 +212,67 @@ function ReviewDialog({ row, verdict, vendors, onClose }: ReviewDialogProps) {
   )
 }
 
+// ─── History dialog ───────────────────────────────────────────────────────────
+
+function SubbieHistoryDialog({
+  rowId,
+  open,
+  onClose,
+}: {
+  rowId: string | null
+  open: boolean
+  onClose: () => void
+}) {
+  const [rows, setRows] = React.useState<AuditRow[]>([])
+  const [loading, setLoading] = React.useState(false)
+
+  // Fetch when opened — async to avoid synchronous setState in effect body
+  React.useEffect(() => {
+    if (!open || !rowId) return
+    async function fetchHistory() {
+      setLoading(true)
+      const supabase = createClient()
+      const { data } = await supabase
+        .from('audit_log')
+        .select('id, at, actor_id, actor_name, entity_type, entity_id, project_id, action, detail')
+        .eq('entity_type', 'subbie_swms')
+        .eq('entity_id', rowId!)
+        .order('at', { ascending: false })
+        .limit(100)
+      setRows(
+        (data ?? []).map((r) => ({
+          id: r.id as string,
+          at: r.at as string,
+          actor_id: (r.actor_id as string | null) ?? null,
+          actor_name: (r.actor_name as string | null) ?? null,
+          entity_type: r.entity_type as string,
+          entity_id: r.entity_id as string,
+          project_id: (r.project_id as string | null) ?? null,
+          action: r.action as string,
+          detail: (r.detail ?? {}) as Record<string, unknown>,
+        }))
+      )
+      setLoading(false)
+    }
+    void fetchHistory()
+  }, [open, rowId])
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Subbie SWMS History</DialogTitle>
+        </DialogHeader>
+        {loading ? (
+          <p className="text-sm text-muted-foreground py-4">Loading…</p>
+        ) : (
+          <AuditHistory rows={rows} />
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── Main queue ───────────────────────────────────────────────────────────────
 
 interface SubbieSwmsQueueProps {
@@ -232,6 +296,7 @@ export function SubbieSwmsQueue({
     row: SubbieSwmsRow
     verdict: 'accepted' | 'rejected'
   } | null>(null)
+  const [historyId, setHistoryId] = useState<string | null>(null)
 
   const filtered = rows.filter((r) => inTab(r, tab))
   const tabCounts = Object.fromEntries(
@@ -376,6 +441,15 @@ export function SubbieSwmsQueue({
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        title="History"
+                        onClick={() => setHistoryId(row.id)}
+                      >
+                        <HistoryIcon className="size-3.5" />
+                      </Button>
                       {row.pdf_url && (
                         <Button
                           type="button"
@@ -444,6 +518,11 @@ export function SubbieSwmsQueue({
         verdict={review?.verdict ?? 'accepted'}
         vendors={vendors}
         onClose={() => setReview(null)}
+      />
+      <SubbieHistoryDialog
+        rowId={historyId}
+        open={Boolean(historyId)}
+        onClose={() => setHistoryId(null)}
       />
     </div>
   )

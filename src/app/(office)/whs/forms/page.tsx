@@ -11,9 +11,10 @@ export default async function WhsFormsPage({
     person_id?: string
     from?: string
     to?: string
+    highlight?: string
   }>
 }) {
-  const { kind, project_id, person_id, from, to } = await searchParams
+  const { kind, project_id, person_id, from, to, highlight } = await searchParams
   const supabase = await createClient()
 
   // Build base query for submissions
@@ -106,6 +107,7 @@ export default async function WhsFormsPage({
         from: from ?? '',
         to: to ?? '',
       }}
+      highlight={highlight ?? null}
     />
   )
 }

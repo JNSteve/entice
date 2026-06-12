@@ -320,9 +320,11 @@ interface FormsRegisterProps {
     from: string
     to: string
   }
+  /** When set, auto-open the drawer for this submission ID. */
+  highlight: string | null
 }
 
-export function FormsRegister({ rows, projects, profiles, filters }: FormsRegisterProps) {
+export function FormsRegister({ rows, projects, profiles, filters, highlight }: FormsRegisterProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [, startTransition] = useTransition()
@@ -332,6 +334,16 @@ export function FormsRegister({ rows, projects, profiles, filters }: FormsRegist
   const [drawerSchema, setDrawerSchema] = useState<FormField[] | null>(null)
   const [drawerSignons, setDrawerSignons] = useState<SignonDetail[]>([])
   const [drawerAttachmentCount, setDrawerAttachmentCount] = useState(0)
+
+  // Auto-open drawer for highlight param
+  React.useEffect(() => {
+    if (!highlight) return
+    const target = rows.find((r) => r.id === highlight)
+    if (target) {
+      openDrawer(target)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [highlight])
 
   function buildUrl(params: Record<string, string>) {
     const sp = new URLSearchParams()
