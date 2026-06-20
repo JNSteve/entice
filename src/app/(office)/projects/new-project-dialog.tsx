@@ -130,7 +130,7 @@ export function NewProjectDialog({
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="np-client">Client</Label>
                 <Select
-                  value={clientId || undefined}
+                  value={clientId || null}
                   onValueChange={(v) => v && handleClientChange(v)}
                 >
                   <SelectTrigger id="np-client" className="w-full">

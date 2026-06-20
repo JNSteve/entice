@@ -293,7 +293,7 @@ export function AwardSection({
           <form onSubmit={handleAward} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="award-vendor">Vendor</Label>
-              <Select value={vendorId || undefined} onValueChange={handleVendorChange}>
+              <Select value={vendorId || null} onValueChange={handleVendorChange}>
                 <SelectTrigger id="award-vendor" className="w-full">
                   <SelectValue placeholder="Pick a vendor…" />
                 </SelectTrigger>

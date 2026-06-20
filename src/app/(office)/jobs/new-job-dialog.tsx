@@ -114,7 +114,7 @@ export function NewJobDialog({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="nj-client">Client</Label>
               <Select
-                value={clientId || undefined}
+                value={clientId || null}
                 onValueChange={(v) => v && handleClientChange(v)}
               >
                 <SelectTrigger id="nj-client" className="w-full">

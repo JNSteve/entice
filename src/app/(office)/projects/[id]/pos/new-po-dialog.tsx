@@ -119,7 +119,7 @@ export function NewPoDialog({ projectId, vendors: initialVendors }: NewPoDialogP
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="po-vendor">Vendor</Label>
               <Select
-                value={vendorId || undefined}
+                value={vendorId || null}
                 onValueChange={(v) => {
                   if (!v) return
                   if (v === '__new__') {

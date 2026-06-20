@@ -406,7 +406,7 @@ export function BudgetTable({
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="bl-code">Cost code</Label>
               <Select
-                value={lineCostCodeId || undefined}
+                value={lineCostCodeId || null}
                 onValueChange={(v) => v && setLineCostCodeId(v)}
               >
                 <SelectTrigger id="bl-code" className="w-full">
