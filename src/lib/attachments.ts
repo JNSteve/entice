@@ -86,7 +86,9 @@ export async function recordAttachment(
       size: parsed.data.size,
       kind: parsed.data.kind,
       caption: parsed.data.caption ?? null,
-      meta: parsed.data.meta ?? null,
+      // meta is `jsonb NOT NULL DEFAULT '{}'` — an explicit null overrides the
+      // default and violates the constraint, so fall back to an empty object.
+      meta: parsed.data.meta ?? {},
       created_by: profile.id,
     })
     .select('id')
