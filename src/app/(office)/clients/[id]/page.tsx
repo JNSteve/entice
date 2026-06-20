@@ -1,7 +1,10 @@
 import { notFound } from 'next/navigation'
+import Link from 'next/link'
 import { requireRole, getProfile } from '@/lib/auth'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
+import { StatusBadge } from '@/components/StatusBadge'
+import { fmtDate } from '@/lib/format'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -54,10 +57,10 @@ export default async function ClientDetailPage({
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase.from('contacts').select('*').eq('client_id', id).order('name'),
     supabase.from('sites').select('*').eq('client_id', id).order('name'),
-    supabase.from('quotes').select('id, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
-    supabase.from('jobs').select('id, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
-    supabase.from('projects').select('id, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
-    supabase.from('invoices').select('id, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('quotes').select('id, number, title, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('jobs').select('id, number, title, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('projects').select('id, number, name, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('invoices').select('id, number, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
   ])
 
   if (!client) notFound()
@@ -221,7 +224,8 @@ export default async function ClientDetailPage({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
@@ -229,11 +233,14 @@ export default async function ClientDetailPage({
               <TableBody>
                 {quotes.map((q) => (
                   <TableRow key={q.id}>
-                    <TableCell className="font-mono text-xs">{q.id.slice(0, 8)}</TableCell>
-                    <TableCell>{q.status ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {q.created_at ? new Date(q.created_at).toLocaleDateString('en-AU') : '—'}
+                    <TableCell className="font-medium">
+                      <Link href={`/quotes/${q.id}`} className="text-primary hover:underline">
+                        {q.number}
+                      </Link>
                     </TableCell>
+                    <TableCell>{q.title ?? '—'}</TableCell>
+                    <TableCell>{q.status ? <StatusBadge status={q.status} /> : '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(q.created_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -252,7 +259,8 @@ export default async function ClientDetailPage({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
@@ -260,11 +268,14 @@ export default async function ClientDetailPage({
               <TableBody>
                 {jobs.map((j) => (
                   <TableRow key={j.id}>
-                    <TableCell className="font-mono text-xs">{j.id.slice(0, 8)}</TableCell>
-                    <TableCell>{j.status ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {j.created_at ? new Date(j.created_at).toLocaleDateString('en-AU') : '—'}
+                    <TableCell className="font-medium">
+                      <Link href={`/jobs/${j.id}`} className="text-primary hover:underline">
+                        {j.number}
+                      </Link>
                     </TableCell>
+                    <TableCell>{j.title ?? '—'}</TableCell>
+                    <TableCell>{j.status ? <StatusBadge status={j.status} /> : '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(j.created_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -283,7 +294,8 @@ export default async function ClientDetailPage({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
+                  <TableHead>Number</TableHead>
+                  <TableHead>Name</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
@@ -291,11 +303,14 @@ export default async function ClientDetailPage({
               <TableBody>
                 {projects.map((p) => (
                   <TableRow key={p.id}>
-                    <TableCell className="font-mono text-xs">{p.id.slice(0, 8)}</TableCell>
-                    <TableCell>{p.status ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {p.created_at ? new Date(p.created_at).toLocaleDateString('en-AU') : '—'}
+                    <TableCell className="font-medium">
+                      <Link href={`/projects/${p.id}`} className="text-primary hover:underline">
+                        {p.number}
+                      </Link>
                     </TableCell>
+                    <TableCell>{p.name ?? '—'}</TableCell>
+                    <TableCell>{p.status ? <StatusBadge status={p.status} /> : '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(p.created_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -314,7 +329,7 @@ export default async function ClientDetailPage({
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>ID</TableHead>
+                  <TableHead>Number</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
@@ -322,11 +337,13 @@ export default async function ClientDetailPage({
               <TableBody>
                 {invoices.map((inv) => (
                   <TableRow key={inv.id}>
-                    <TableCell className="font-mono text-xs">{inv.id.slice(0, 8)}</TableCell>
-                    <TableCell>{inv.status ?? '—'}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {inv.created_at ? new Date(inv.created_at).toLocaleDateString('en-AU') : '—'}
+                    <TableCell className="font-medium">
+                      <Link href={`/invoices/${inv.id}`} className="text-primary hover:underline">
+                        {inv.number}
+                      </Link>
                     </TableCell>
+                    <TableCell>{inv.status ? <StatusBadge status={inv.status} /> : '—'}</TableCell>
+                    <TableCell className="text-muted-foreground">{fmtDate(inv.created_at)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
