@@ -42,9 +42,21 @@ export async function proxy(request: NextRequest) {
   // A dead session (e.g. a stale refresh token from a previous login) would
   // otherwise re-attempt refresh on every request, spamming auth errors in
   // both server and browser consoles. Clear the auth cookies once so the
-  // browser stops presenting it. (No session at all → no cookies → no-op.)
+  // browser stops presenting it.
+  //
+  // Only clear on a DEFINITIVE session failure (a 4xx auth error such as
+  // refresh_token_not_found). A transient network/TLS hiccup surfaces as
+  // AuthRetryableFetchError (status 0) — we must NOT wipe a valid session in
+  // that case, or the user gets logged out mid-work on any blip.
+  const err = authError as { name?: string; status?: number } | null
+  const isDefiniteSessionFailure =
+    !!err &&
+    err.name !== 'AuthRetryableFetchError' &&
+    typeof err.status === 'number' &&
+    err.status >= 400 &&
+    err.status < 500
   const staleAuthCookies =
-    !user && authError
+    !user && isDefiniteSessionFailure
       ? request.cookies
           .getAll()
           .filter((c) => /^sb-.+-auth-token/.test(c.name))

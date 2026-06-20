@@ -136,10 +136,14 @@ function UserMenu({ profile }: { profile: Profile }) {
           Field view
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => signOut()}>
-          <LogOutIcon className="size-4" />
-          Sign out
-        </DropdownMenuItem>
+        <form action={signOut}>
+          <DropdownMenuItem
+            render={<button type="submit" className="w-full" />}
+          >
+            <LogOutIcon className="size-4" />
+            Sign out
+          </DropdownMenuItem>
+        </form>
       </DropdownMenuContent>
     </DropdownMenu>
   )
