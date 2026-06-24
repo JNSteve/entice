@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   BookOpenIcon,
   CameraIcon,
@@ -8,11 +9,14 @@ import {
   ChevronUpIcon,
   FileTextIcon,
   HardHatIcon,
+  PencilIcon,
+  PlusIcon,
   TruckIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { EmptyState } from '@/components/EmptyState'
 import { AttachmentList, type AttachmentItem } from '@/components/AttachmentList'
+import { PhotoUpload } from '@/components/PhotoUpload'
 import {
   Table,
   TableBody,
@@ -21,6 +25,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { DiaryDialog, LabourManager, PlantManager } from './diary-manage'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +57,8 @@ interface DiaryListProps {
   projectId: string
   entries: DiaryEntry[]
   attachmentsByDiary: Record<string, AttachmentItem[]>
+  canManage: boolean
+  plant: { id: string; name: string }[]
 }
 
 // ─── Range export form ───────────────────────────────────────────────────────
@@ -125,11 +132,19 @@ function DetailBlock({ label, text }: { label: string; text: string | null }) {
 function EntryCard({
   entry,
   attachments,
+  projectId,
+  canManage,
+  plantOptions,
 }: {
   entry: DiaryEntry
   attachments: AttachmentItem[]
+  projectId: string
+  canManage: boolean
+  plantOptions: { id: string; name: string }[]
 }) {
+  const router = useRouter()
   const [open, setOpen] = useState(false)
+  const [editOpen, setEditOpen] = useState(false)
 
   const headcount = entry.labour.reduce((s, l) => s + l.headcount, 0)
   const totalLabourHours = entry.labour.reduce((s, l) => s + l.headcount * l.hours, 0)
@@ -190,7 +205,18 @@ function EntryCard({
       {/* Expanded detail */}
       {open && (
         <div className="flex flex-col gap-4 border-t px-4 py-4">
-          <div className="flex justify-end">
+          <div className="flex justify-end gap-2">
+            {canManage && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setEditOpen(true)}
+              >
+                <PencilIcon className="size-4" />
+                Edit details
+              </Button>
+            )}
             <Button
               type="button"
               variant="outline"
@@ -201,13 +227,24 @@ function EntryCard({
               Export PDF
             </Button>
           </div>
+          {canManage && (
+            <DiaryDialog
+              projectId={projectId}
+              entry={entry}
+              open={editOpen}
+              onOpenChange={setEditOpen}
+            />
+          )}
 
           <DetailBlock label="Work performed" text={entry.work_performed} />
           <DetailBlock label="Delays" text={entry.delays} />
           <DetailBlock label="Instructions received" text={entry.instructions} />
           <DetailBlock label="Visitors" text={entry.visitors} />
 
-          {entry.labour.length > 0 && (
+          {canManage ? (
+            <LabourManager diaryId={entry.id} labour={entry.labour} />
+          ) : (
+            entry.labour.length > 0 && (
             <div className="flex flex-col gap-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Labour
@@ -249,9 +286,17 @@ function EntryCard({
                 </Table>
               </div>
             </div>
+            )
           )}
 
-          {entry.plant.length > 0 && (
+          {canManage ? (
+            <PlantManager
+              diaryId={entry.id}
+              plant={entry.plant}
+              plantOptions={plantOptions}
+            />
+          ) : (
+            entry.plant.length > 0 && (
             <div className="flex flex-col gap-1">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Plant
@@ -279,15 +324,35 @@ function EntryCard({
                 </Table>
               </div>
             </div>
+            )
           )}
 
-          {photos.length > 0 && (
-            <div className="flex flex-col gap-1">
+          {canManage ? (
+            <div className="flex flex-col gap-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Photos
               </p>
-              <AttachmentList items={photos} canDelete={false} />
+              <PhotoUpload
+                parentType="diary"
+                parentId={entry.id}
+                kind="photo"
+                capture
+                multiple
+                onUploaded={() => router.refresh()}
+              />
+              {photos.length > 0 && (
+                <AttachmentList items={photos} canDelete />
+              )}
             </div>
+          ) : (
+            photos.length > 0 && (
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                  Photos
+                </p>
+                <AttachmentList items={photos} canDelete={false} />
+              </div>
+            )
           )}
         </div>
       )}
@@ -297,19 +362,54 @@ function EntryCard({
 
 // ─── Main list ───────────────────────────────────────────────────────────────
 
-export function DiaryList({ projectId, entries, attachmentsByDiary }: DiaryListProps) {
+export function DiaryList({
+  projectId,
+  entries,
+  attachmentsByDiary,
+  canManage,
+  plant,
+}: DiaryListProps) {
+  const [createOpen, setCreateOpen] = useState(false)
+
   if (entries.length === 0) {
+    if (!canManage) {
+      return (
+        <EmptyState
+          icon={<BookOpenIcon className="size-8" />}
+          title="No diary entries yet"
+          description="Site diaries recorded in the field app will show up here."
+        />
+      )
+    }
     return (
-      <EmptyState
-        icon={<BookOpenIcon className="size-8" />}
-        title="No diary entries yet"
-        description="Site diaries recorded in the field app will show up here."
-      />
+      <div className="flex flex-col gap-4">
+        <div className="flex justify-end">
+          <Button onClick={() => setCreateOpen(true)}>
+            <PlusIcon className="size-4" />
+            New diary entry
+          </Button>
+        </div>
+        <EmptyState
+          icon={<BookOpenIcon className="size-8" />}
+          title="No diary entries yet"
+          description="Record a site diary for any past date, or capture entries from the field app."
+        />
+        <DiaryDialog projectId={projectId} open={createOpen} onOpenChange={setCreateOpen} />
+      </div>
     )
   }
 
   return (
     <div className="flex flex-col gap-4">
+      {canManage && (
+        <div className="flex justify-end">
+          <Button onClick={() => setCreateOpen(true)}>
+            <PlusIcon className="size-4" />
+            New diary entry
+          </Button>
+          <DiaryDialog projectId={projectId} open={createOpen} onOpenChange={setCreateOpen} />
+        </div>
+      )}
       <RangeExport projectId={projectId} entries={entries} />
       <div className="flex flex-col gap-3">
         {entries.map((entry) => (
@@ -317,6 +417,9 @@ export function DiaryList({ projectId, entries, attachmentsByDiary }: DiaryListP
             key={entry.id}
             entry={entry}
             attachments={attachmentsByDiary[entry.id] ?? []}
+            projectId={projectId}
+            canManage={canManage}
+            plantOptions={plant}
           />
         ))}
       </div>

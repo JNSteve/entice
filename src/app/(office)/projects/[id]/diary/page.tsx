@@ -10,24 +10,35 @@ export default async function ProjectDiaryPage({
 }: {
   params: Promise<{ id: string }>
 }) {
-  await requireRole('admin', 'office', 'supervisor')
+  const profile = await requireRole('admin', 'office', 'supervisor')
+  const canManage =
+    profile.role === 'admin' ||
+    profile.role === 'office' ||
+    profile.role === 'supervisor'
 
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: project }, { data: diaries }] = await Promise.all([
-    supabase.from('projects').select('id').eq('id', id).single(),
-    supabase
-      .from('diaries')
-      .select(
-        `id, date, weather, work_performed, delays, instructions, visitors, created_at,
-         profiles!diaries_created_by_fkey(full_name)`
-      )
-      .eq('project_id', id)
-      .order('date', { ascending: false }),
-  ])
+  const [{ data: project }, { data: diaries }, { data: plantRegister }] =
+    await Promise.all([
+      supabase.from('projects').select('id').eq('id', id).single(),
+      supabase
+        .from('diaries')
+        .select(
+          `id, date, weather, work_performed, delays, instructions, visitors, created_at,
+           profiles!diaries_created_by_fkey(full_name)`
+        )
+        .eq('project_id', id)
+        .order('date', { ascending: false }),
+      supabase.from('plant').select('id, name').eq('active', true).order('name'),
+    ])
 
   if (!project) notFound()
+
+  const plant = (plantRegister ?? []).map((p) => ({
+    id: p.id as string,
+    name: p.name as string,
+  }))
 
   const diaryIds = (diaries ?? []).map((d) => d.id as string)
 
@@ -98,6 +109,8 @@ export default async function ProjectDiaryPage({
         projectId={id}
         entries={entries}
         attachmentsByDiary={attachmentsByDiary}
+        canManage={canManage}
+        plant={plant}
       />
     </section>
   )
