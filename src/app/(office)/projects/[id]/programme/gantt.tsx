@@ -169,21 +169,35 @@ export function Gantt({
   const todayIdx = differenceInCalendarDays(new Date(), rangeStart)
   const todayInRange = todayIdx >= 0 && todayIdx < totalDays
 
-  // ── Group tasks by phase (first-appearance order, tasks ordered by position)
+  // ── Group tasks by phase, ordered CHRONOLOGICALLY so the programme always
+  //    reads top-to-bottom in time regardless of the order rows were added:
+  //    tasks within a phase sort by start date (position as a stable tiebreak),
+  //    and the phases themselves sort by their earliest task. ISO date strings
+  //    ('YYYY-MM-DD') compare correctly with localeCompare.
   const groups = useMemo(() => {
-    const out: { phase: string | null; tasks: ProgrammeTask[] }[] = []
-    const idx = new Map<string, number>()
+    const byPhase = new Map<string, ProgrammeTask[]>()
+    const phaseOf = new Map<string, string | null>()
     for (const t of tasks) {
       const key = t.phase ?? ''
-      const at = idx.get(key)
-      if (at === undefined) {
-        idx.set(key, out.length)
-        out.push({ phase: t.phase, tasks: [t] })
-      } else {
-        out[at].tasks.push(t)
+      if (!byPhase.has(key)) {
+        byPhase.set(key, [])
+        phaseOf.set(key, t.phase)
       }
+      byPhase.get(key)!.push(t)
     }
-    return out
+    const out = Array.from(byPhase.entries()).map(([key, list]) => {
+      const sorted = [...list].sort(
+        (a, b) =>
+          a.start_date.localeCompare(b.start_date) || a.position - b.position
+      )
+      return {
+        phase: phaseOf.get(key) ?? null,
+        tasks: sorted,
+        earliest: sorted[0]?.start_date ?? '',
+      }
+    })
+    out.sort((a, b) => a.earliest.localeCompare(b.earliest))
+    return out.map(({ phase, tasks }) => ({ phase, tasks }))
   }, [tasks])
 
   const phases = useMemo(

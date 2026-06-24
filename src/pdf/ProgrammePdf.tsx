@@ -217,20 +217,31 @@ export function ProgrammePdf({
     [company.phone, company.email].filter(Boolean).join('  ·  ') || null,
   ].filter((line): line is string => Boolean(line))
 
-  // ── Group by phase (first appearance), numbering tasks 1..n in list order
+  // ── Group by phase, ordered chronologically (matches the on-screen Gantt):
+  //    tasks within a phase by start date, phases by their earliest task.
   const groups: { phase: string | null; tasks: ProgrammePdfTask[] }[] = []
   {
-    const idx = new Map<string, number>()
+    const byPhase = new Map<string, ProgrammePdfTask[]>()
+    const phaseOf = new Map<string, string | null>()
     for (const t of tasks) {
       const key = t.phase ?? ''
-      const at = idx.get(key)
-      if (at === undefined) {
-        idx.set(key, groups.length)
-        groups.push({ phase: t.phase, tasks: [t] })
-      } else {
-        groups[at].tasks.push(t)
+      if (!byPhase.has(key)) {
+        byPhase.set(key, [])
+        phaseOf.set(key, t.phase)
       }
+      byPhase.get(key)!.push(t)
     }
+    const withEarliest = Array.from(byPhase.entries()).map(([key, list]) => {
+      const sorted = [...list].sort((a, b) => a.start.localeCompare(b.start))
+      return {
+        phase: phaseOf.get(key) ?? null,
+        tasks: sorted,
+        earliest: sorted[0]?.start ?? '',
+      }
+    })
+    withEarliest.sort((a, b) => a.earliest.localeCompare(b.earliest))
+    for (const { phase, tasks: t } of withEarliest)
+      groups.push({ phase, tasks: t })
   }
   const rowNumber = new Map<string, number>()
   {
