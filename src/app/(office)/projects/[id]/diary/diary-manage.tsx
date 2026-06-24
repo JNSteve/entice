@@ -24,14 +24,16 @@ import {
 } from '@/components/ui/select'
 import { WEATHER_OPTIONS, PLANT_STATUSES, type PlantStatus } from '@/lib/zod'
 import type { DiaryEntry } from './diary-list'
+import { saveProjectDiary } from './actions'
+// Child-row actions are imported directly from the field module — a 'use server'
+// module (./actions) cannot re-export them, so we import the originals here.
 import {
-  saveProjectDiary,
   addLabourRow,
   updateLabourRow,
   deleteLabourRow,
   addPlantRow,
   deletePlantRow,
-} from './actions'
+} from '@/app/field/diary/[projectId]/actions'
 
 // ─── Date + weather helpers ──────────────────────────────────────────────────
 

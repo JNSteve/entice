@@ -110,13 +110,8 @@ function revalidateDiary(projectId: string) {
   revalidatePath(`/field/diary/${projectId}`)
 }
 
-// Reuse the existing child-row actions (RLS already permits admin/office/
-// supervisor). Re-exporting these 'use server' actions from the field module
-// keeps a single implementation for both flows.
-export {
-  addLabourRow,
-  updateLabourRow,
-  deleteLabourRow,
-  addPlantRow,
-  deletePlantRow,
-} from '@/app/field/diary/[projectId]/actions'
+// NOTE: the child-row actions (addLabourRow, updateLabourRow, deleteLabourRow,
+// addPlantRow, deletePlantRow) are reused directly from
+// '@/app/field/diary/[projectId]/actions' by the client component. A 'use server'
+// module may only export async functions — it cannot re-export them — so they
+// are intentionally NOT re-exported here.
