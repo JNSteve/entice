@@ -1,17 +1,11 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+// Self-hosted Geist (Vercel's `geist` package) — no build-time Google Fonts
+// fetch, so builds work offline / behind a TLS-intercepting proxy. Exposes the
+// same --font-geist-sans / --font-geist-mono CSS variables.
+import { GeistSans } from "geist/font/sans";
+import { GeistMono } from "geist/font/mono";
 import { Toaster } from "@/components/ui/sonner";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "Entice",
@@ -38,7 +32,7 @@ export default function RootLayout({
       // attributes into <html> before React hydrates; suppress attribute
       // mismatch warnings on this element only.
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${GeistSans.variable} ${GeistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
         {children}
