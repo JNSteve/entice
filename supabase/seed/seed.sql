@@ -713,3 +713,63 @@ values
   ('d0c00000-0000-4000-a000-000000000008', 'Risk & Opportunity Procedure',                   'procedure', 'integrated', 'INT-PRO-005', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
   ('d0c00000-0000-4000-a000-000000000009', 'Competence & Training Procedure',                'procedure', 'integrated', 'INT-PRO-006', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1))
 on conflict (id) do nothing;
+
+-- ─── 23. NCR / CAPA register — ISO 9001/14001 §10.2 ─────────────────────────
+-- ncr capa
+-- A handful of demo nonconformances across sources so the register and
+-- dashboard look alive: a quality NCR (investigating, 1 open CAPA), an
+-- environmental NCR (actions, 1 overdue CAPA), and a supplier NCR (open).
+-- Stable UUIDs + on conflict do nothing make this idempotent. raised_by uses
+-- the seeded supervisor (Sam Field). CAPA due dates are relative to today so
+-- the "overdue" demo stays overdue whenever the seed is run.
+insert into ncrs
+  (id, number, source, category, severity, title, description, immediate_action,
+   root_cause, status, project_id, job_id, vendor_id, raised_by, occurred_on)
+values
+  ('e0c00000-0000-4000-a000-000000000001', 'NCR-0001', 'quality', 'Concrete', 3,
+   'Insufficient concrete cover to reinforcement — gabion footing',
+   'Cover meter check on the gabion footing pour returned 28-32mm against the 50mm specified in the structural drawings. Affects approx. 6 linear metres of the eastern footing.',
+   'Pour halted and area cordoned; superintendent notified. Affected section flagged for assessment before backfill.',
+   'Bar chairs spaced too widely and not all replaced after pre-pour adjustment.',
+   'investigating',
+   'a1000000-0000-4000-a000-000000000001', null, null,
+   'aa000000-0000-4000-a000-000000000001', current_date - 6),
+  ('e0c00000-0000-4000-a000-000000000002', 'NCR-0002', 'environmental', 'Sediment control', 2,
+   'Sediment fence breach after overnight rain',
+   'Section of sediment fence along the river batter failed overnight; sediment-laden runoff reached the watercourse edge before being contained.',
+   'Emergency sandbag bund installed at first light; affected fence section isolated.',
+   'Fence undermined by concentrated flow — no check dam upstream of the run.',
+   'actions',
+   'a1000000-0000-4000-a000-000000000001', null, null,
+   'aa000000-0000-4000-a000-000000000001', current_date - 10),
+  ('e0c00000-0000-4000-a000-000000000003', 'NCR-0003', 'supplier', 'Materials', 3,
+   'Wrong rebar grade delivered (N12 supplied for D500N spec)',
+   'Reinforcement delivery from SteelFix contained N12 bar where the schedule called for D500N. Quantity affected: 1.2 tonnes. Held in the laydown area, not yet fixed.',
+   'Delivery quarantined and tagged "DO NOT USE"; supplier notified and replacement requested.',
+   null,
+   'open',
+   'a1000000-0000-4000-a000-000000000001', null,
+   'dd000000-0000-4000-a000-000000000003',
+   'aa000000-0000-4000-a000-000000000001', current_date - 2)
+on conflict (id) do nothing;
+
+insert into capa_actions
+  (id, ncr_id, kind, description, assigned_to, due_date, status, completed_at)
+values
+  -- Quality NCR: one open corrective action due next week.
+  ('e1c00000-0000-4000-a000-000000000001', 'e0c00000-0000-4000-a000-000000000001',
+   'corrective', 'Engage testing house to core and assess the affected footing section; rectify or replace per engineer''s direction.',
+   'aa000000-0000-4000-a000-000000000001', current_date + 7, 'open', null),
+  -- Environmental NCR: one OVERDUE corrective action + one preventive.
+  ('e1c00000-0000-4000-a000-000000000002', 'e0c00000-0000-4000-a000-000000000002',
+   'corrective', 'Reinstate and reinforce the failed sediment fence run and remove deposited sediment from the batter toe.',
+   'aa000000-0000-4000-a000-000000000001', current_date - 3, 'open', null),
+  ('e1c00000-0000-4000-a000-000000000003', 'e0c00000-0000-4000-a000-000000000002',
+   'preventive', 'Add a check dam upstream of each fence run on the river batters; update the ESCP and brief the crew.',
+   'aa000000-0000-4000-a000-000000000001', current_date + 14, 'open', null)
+on conflict (id) do nothing;
+
+-- Keep the live sequence ahead of the seeded NCR numbers so the app's
+-- next_number('ncr') issues NCR-0004 onward (mirrors how numbering works
+-- elsewhere; never lower an existing value).
+update sequences set next_value = greatest(next_value, 4) where key = 'ncr';

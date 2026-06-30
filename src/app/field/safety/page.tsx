@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import {
   AlertTriangleIcon,
   ChevronRightIcon,
+  ClipboardCheckIcon,
   ClipboardListIcon,
   FileIcon,
   FileTextIcon,
@@ -209,6 +210,21 @@ export default async function FieldSafetyPage() {
           </div>
         )}
       </section>
+
+      {/* Report a problem (NCR) — report-only entry for field crews */}
+      <Link
+        href="/field/safety/ncr"
+        className="flex items-center gap-3 rounded-xl border p-4 transition-colors hover:bg-muted/50 active:bg-muted"
+      >
+        <ClipboardCheckIcon className="size-6 shrink-0 text-muted-foreground" />
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm font-semibold">Report a problem (NCR)</span>
+          <span className="text-xs text-muted-foreground">
+            Quality, environmental or other nonconformance
+          </span>
+        </div>
+        <ChevronRightIcon className="ml-auto size-4 shrink-0 text-muted-foreground" />
+      </Link>
 
       {/* Controlled documents (issued, read-only) */}
       {docGroups.length > 0 && (

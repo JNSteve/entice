@@ -22,6 +22,7 @@ import {
   ComplianceCard,
   DiariesMissingCard,
   HoldPointsCard,
+  NcrCard,
   QuotesAwaitingCard,
   RetentionDueCard,
   SafetyCard,
@@ -34,6 +35,8 @@ import {
   type ComplianceRow,
   type DiaryMissingRow,
   type HoldPointDueRow,
+  type NcrData,
+  type NcrOverdueCapaRow,
   type QuoteAwaitingRow,
   type RetentionDueRow,
   type SafetyData,
@@ -620,6 +623,49 @@ async function loadSafety(
   }
 }
 
+// ─── 13. NCRs (nonconformances + CAPA) ────────────────────────────────────────
+
+async function loadNcr(supabase: Db, today: Date): Promise<NcrData> {
+  const todayStr = dateStr(today)
+
+  const [ncrsRes, capasRes] = await Promise.all([
+    supabase.from('ncrs').select('id, status'),
+    supabase
+      .from('capa_actions')
+      .select('id, ncr_id, description, due_date, status, ncrs(number)')
+      .eq('status', 'open')
+      .not('due_date', 'is', null)
+      .lt('due_date', todayStr),
+  ])
+  if (ncrsRes.error) throw ncrsRes.error
+  if (capasRes.error) throw capasRes.error
+
+  const ncrs = ncrsRes.data ?? []
+
+  const overdueCapas: NcrOverdueCapaRow[] = (capasRes.data ?? [])
+    .map((c) => {
+      const ncrRel = c.ncrs as unknown as { number: string } | null
+      return {
+        capaId: c.id as string,
+        ncrId: c.ncr_id as string,
+        ncrNumber: ncrRel?.number ?? '—',
+        description: c.description as string,
+        daysOverdue: Math.max(
+          0,
+          differenceInCalendarDays(today, parseISO(c.due_date as string))
+        ),
+      }
+    })
+    .sort((a, b) => b.daysOverdue - a.daysOverdue)
+
+  return {
+    openCount: ncrs.filter((n) => n.status === 'open').length,
+    investigatingCount: ncrs.filter((n) => n.status === 'investigating').length,
+    actionsCount: ncrs.filter((n) => n.status === 'actions').length,
+    overdueCapas,
+  }
+}
+
 // ─── 11. Diaries missing ──────────────────────────────────────────────────────
 
 async function loadDiariesMissing(
@@ -685,6 +731,7 @@ export default async function DashboardPage() {
     holdPoints,
     diariesMissing,
     safety,
+    ncr,
   ] = await Promise.all([
     showMoney ? settle(() => loadClaimsDue(supabase, today)) : none,
     showMoney ? settle(() => loadQuotesAwaiting(supabase, today)) : none,
@@ -698,6 +745,7 @@ export default async function DashboardPage() {
     settle(() => loadHoldPoints(supabase, today)),
     settle(() => loadDiariesMissing(supabase, today)),
     settle(() => loadSafety(supabase, today)),
+    settle(() => loadNcr(supabase, today)),
   ])
 
   return (
@@ -727,6 +775,7 @@ export default async function DashboardPage() {
         <HoldPointsCard data={holdPoints ?? null} />
         <DiariesMissingCard data={diariesMissing ?? null} />
         <SafetyCard data={safety ?? null} />
+        <NcrCard data={ncr ?? null} />
       </div>
     </div>
   )

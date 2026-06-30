@@ -61,6 +61,9 @@ const STATUS_META: Record<string, StatusMeta> = {
   investigating:       { label: 'Investigating',       className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
   under_review:        { label: 'Under Review',        className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
   in_review:           { label: 'In Review',           className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
+  // NCR lifecycle: actions (amber) → verified (blue) → closed (purple)
+  actions:             { label: 'Actions',             className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
+  verified:            { label: 'Verified',            className: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300' },
 
   // Green / done / closed
   done:                { label: 'Done',                className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },

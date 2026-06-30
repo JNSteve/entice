@@ -811,6 +811,88 @@ export function SafetyCard({ data }: { data: SafetyData | null }) {
   )
 }
 
+// ─── 13. NCRs (nonconformances + CAPA) ────────────────────────────────────────
+
+export type NcrOverdueCapaRow = {
+  capaId: string
+  ncrId: string
+  ncrNumber: string
+  description: string
+  daysOverdue: number
+}
+
+export type NcrData = {
+  openCount: number
+  investigatingCount: number
+  actionsCount: number
+  overdueCapas: NcrOverdueCapaRow[]
+}
+
+export function NcrCard({ data }: { data: NcrData | null }) {
+  return (
+    <DashboardCard title="NCRs" href="/whs/ncr">
+      {data === null ? (
+        <LoadError />
+      ) : (
+        <>
+          <div className="flex items-center gap-4 text-sm">
+            {data.openCount > 0 ? (
+              <span className="font-medium text-red-600 dark:text-red-400">
+                {data.openCount} open
+              </span>
+            ) : null}
+            {data.investigatingCount > 0 ? (
+              <span className="font-medium text-amber-600 dark:text-amber-400">
+                {data.investigatingCount} investigating
+              </span>
+            ) : null}
+            {data.actionsCount > 0 ? (
+              <span className="font-medium text-amber-600 dark:text-amber-400">
+                {data.actionsCount} in actions
+              </span>
+            ) : null}
+            {data.openCount === 0 &&
+            data.investigatingCount === 0 &&
+            data.actionsCount === 0 ? (
+              <Muted>No open NCRs.</Muted>
+            ) : null}
+          </div>
+
+          {data.overdueCapas.length > 0 && (
+            <>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                Overdue CAPA actions
+              </p>
+              {data.overdueCapas.slice(0, MAX_ROWS).map((c) => (
+                <div
+                  key={c.capaId}
+                  className="flex items-start justify-between gap-2 text-sm"
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <Link
+                      href={`/whs/ncr/${c.ncrId}`}
+                      className="truncate hover:underline"
+                    >
+                      {c.description}
+                    </Link>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {c.ncrNumber}
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                    {c.daysOverdue}d overdue
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.overdueCapas.length} />
+            </>
+          )}
+        </>
+      )}
+    </DashboardCard>
+  )
+}
+
 // ─── 11. Diaries missing ──────────────────────────────────────────────────────
 
 export type DiaryMissingRow = {

@@ -1319,6 +1319,180 @@ export const correctiveActionUpdateSchema = z.object({
     .optional(),
 })
 
+// ─── NCR / CAPA register (ISO 9001/14001 §10.2) ──────────────────────────────
+
+export const NCR_SOURCES = [
+  'quality',
+  'environmental',
+  'customer_complaint',
+  'audit_finding',
+  'supplier',
+  'safety',
+  'other',
+] as const
+export type NcrSource = (typeof NCR_SOURCES)[number]
+
+export const NCR_SOURCE_LABELS: Record<NcrSource, string> = {
+  quality: 'Quality',
+  environmental: 'Environmental',
+  customer_complaint: 'Customer complaint',
+  audit_finding: 'Audit finding',
+  supplier: 'Supplier',
+  safety: 'Safety',
+  other: 'Other',
+}
+
+// Lifecycle, in order. The verification gate sits between 'actions' and
+// 'verified'; 'closed' is reachable only from 'verified' (enforced in the
+// server action, never bypassable from the client).
+export const NCR_STATUSES = [
+  'open',
+  'investigating',
+  'actions',
+  'verified',
+  'closed',
+] as const
+export type NcrStatus = (typeof NCR_STATUSES)[number]
+
+/** Office-side raise: a fuller form than the field report. */
+export const ncrCreateSchema = z.object({
+  source: z.enum(NCR_SOURCES),
+  category: optionalText,
+  severity: z.coerce.number().int().min(1).max(5),
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().min(1, 'Describe the nonconformance'),
+  immediate_action: optionalText,
+  project_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  job_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  vendor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  incident_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  occurred_on: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+})
+
+export type NcrCreateInput = z.infer<typeof ncrCreateSchema>
+
+/** Field-side raise (report-only): phone-simple, no CAPA/management fields. */
+export const ncrFieldRaiseSchema = z.object({
+  source: z.enum(['quality', 'environmental', 'safety', 'other'] as const),
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().min(1, 'Describe the problem'),
+  project_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type NcrFieldRaiseInput = z.infer<typeof ncrFieldRaiseSchema>
+
+/** Edit while not closed. Includes root_cause (captured during investigation). */
+export const ncrUpdateSchema = z.object({
+  source: z.enum(NCR_SOURCES).optional(),
+  category: optionalText.optional(),
+  severity: z.coerce.number().int().min(1).max(5).optional(),
+  title: z.string().min(1, 'Title is required').optional(),
+  description: z.string().min(1, 'Describe the nonconformance').optional(),
+  immediate_action: optionalText.optional(),
+  root_cause: optionalText.optional(),
+  project_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  job_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  vendor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  occurred_on: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+})
+
+export type NcrUpdateInput = z.infer<typeof ncrUpdateSchema>
+
+/**
+ * Status transition. Moving to 'verified' requires verification_notes (the
+ * verification-of-effectiveness evidence). The forward chain and the close gate
+ * are enforced in the server action.
+ */
+export const ncrStatusSchema = z
+  .object({
+    status: z.enum(NCR_STATUSES),
+    verification_notes: optionalText.optional(),
+  })
+  .refine(
+    (d) => d.status !== 'verified' || Boolean(d.verification_notes),
+    {
+      message: 'Verification notes are required to verify effectiveness',
+      path: ['verification_notes'],
+    }
+  )
+
+export type NcrStatusInput = z.infer<typeof ncrStatusSchema>
+
+export const CAPA_KINDS = ['corrective', 'preventive'] as const
+export type CapaKind = (typeof CAPA_KINDS)[number]
+
+export const CAPA_KIND_LABELS: Record<CapaKind, string> = {
+  corrective: 'Corrective',
+  preventive: 'Preventive',
+}
+
+export const capaActionSchema = z.object({
+  ncr_id: z.uuid(),
+  kind: z.enum(CAPA_KINDS),
+  description: z.string().min(1, 'Description is required'),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  due_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+})
+
+export type CapaActionInput = z.infer<typeof capaActionSchema>
+
+export const capaActionUpdateSchema = z.object({
+  kind: z.enum(CAPA_KINDS).optional(),
+  description: z.string().min(1, 'Description is required').optional(),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  due_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+})
+
+export type CapaActionUpdateInput = z.infer<typeof capaActionUpdateSchema>
+
 // ─── Hold points ─────────────────────────────────────────────────────────────
 
 export const holdPointSchema = z.object({

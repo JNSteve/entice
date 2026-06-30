@@ -15,6 +15,7 @@ import { SwmsPdf, type SwmsPdfSignature } from '@/pdf/SwmsPdf'
 import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
 import { FormPdf, type FormPdfSignon } from '@/pdf/FormPdf'
 import { IncidentPdf, type IncidentPdfAction } from '@/pdf/IncidentPdf'
+import { NcrPdf, type NcrPdfAction } from '@/pdf/NcrPdf'
 import { QrPosterPdf } from '@/pdf/QrPosterPdf'
 import { DocumentRegisterPdf, type DocumentRegisterPdfRow } from '@/pdf/DocumentRegisterPdf'
 import { DOC_CATEGORY_LABELS, DOC_SYSTEM_LABELS, type DocCategory, type DocSystem } from '@/lib/zod'
@@ -81,7 +82,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'qr-poster' || type === 'document-register'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'qr-poster' || type === 'document-register'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -114,6 +115,8 @@ export async function GET(
       return formPdf(id)
     case 'incident':
       return incidentPdf(id)
+    case 'ncr':
+      return ncrPdf(id)
     case 'qr-poster':
       // [id] = share_links row id
       return qrPosterPdf(id, request)
@@ -1160,6 +1163,106 @@ async function incidentPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${incident.number as string}.pdf"`,
+    },
+  })
+}
+
+// ─── NCR (nonconformance) ─────────────────────────────────────────────────────
+
+async function ncrPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: ncr }, { data: actions }, { data: photoCount }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('ncrs')
+        .select(
+          `id, number, source, category, severity, title, description,
+           immediate_action, root_cause, status, occurred_on, created_at,
+           verification_notes, verified_at, closed_at,
+           project_id, vendor_id,
+           projects(number, name), vendors(name),
+           raiser:profiles!ncrs_raised_by_fkey(full_name),
+           verifier:profiles!ncrs_verified_by_fkey(full_name)`
+        )
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('capa_actions')
+        .select(
+          'kind, description, due_date, status, completed_at, profiles!capa_actions_assigned_to_fkey(full_name)'
+        )
+        .eq('ncr_id', id)
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .order('created_at'),
+      supabase
+        .from('attachments')
+        .select('id', { count: 'exact', head: true })
+        .eq('parent_type', 'ncr')
+        .eq('parent_id', id)
+        .eq('kind', 'photo'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  if (!ncr) return new Response('Not found', { status: 404 })
+
+  const projectRel = ncr.projects as unknown as { number: string; name: string } | null
+  const vendorRel = ncr.vendors as unknown as { name: string } | null
+  const raiserRel = ncr.raiser as unknown as { full_name: string } | null
+  const verifierRel = ncr.verifier as unknown as { full_name: string } | null
+
+  const { NCR_SOURCE_LABELS } = await import('@/lib/zod')
+  const source =
+    NCR_SOURCE_LABELS[ncr.source as keyof typeof NCR_SOURCE_LABELS] ??
+    (ncr.source as string)
+
+  const pdfActions: NcrPdfAction[] = (actions ?? []).map((a) => {
+    const assignee = a.profiles as unknown as { full_name: string } | null
+    return {
+      kind: a.kind as string,
+      description: a.description as string,
+      assigned_to: assignee?.full_name ?? null,
+      due_date: (a.due_date as string | null) ?? null,
+      status: a.status as string,
+      completed_at: (a.completed_at as string | null) ?? null,
+    }
+  })
+
+  const buffer = await renderToBuffer(
+    <NcrPdf
+      ncr={{
+        number: ncr.number as string,
+        date: fmtDate((ncr.occurred_on as string | null) ?? (ncr.created_at as string)),
+        source,
+        severity: Number(ncr.severity),
+        status: ncr.status as string,
+        occurred: ncr.occurred_on ? fmtDate(ncr.occurred_on as string) : null,
+        category: (ncr.category as string | null) ?? null,
+        project: projectRel ? `${projectRel.number} — ${projectRel.name}` : null,
+        vendor: vendorRel?.name ?? null,
+        raisedBy: raiserRel?.full_name ?? null,
+        description: ncr.description as string,
+        immediateAction: (ncr.immediate_action as string | null) ?? null,
+        rootCause: (ncr.root_cause as string | null) ?? null,
+        verificationNotes: (ncr.verification_notes as string | null) ?? null,
+        verifiedBy: verifierRel?.full_name ?? null,
+        verifiedAt: ncr.verified_at ? fmtDate(ncr.verified_at as string) : null,
+        closedAt: ncr.closed_at ? fmtDate(ncr.closed_at as string) : null,
+        photoCount: (photoCount as unknown as number) ?? 0,
+      }}
+      company={toCompany(settings)}
+      actions={pdfActions}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${ncr.number as string}.pdf"`,
     },
   })
 }
