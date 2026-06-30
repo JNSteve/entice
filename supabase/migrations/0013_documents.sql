@@ -82,9 +82,9 @@ alter table documents
 -- 3. Approval lifecycle
 ------------------------------------------------------------------------------
 
--- Migrate the legacy status vocabulary first, then swap the check constraint.
-update documents set status = 'issued' where status = 'current';
-
+-- Drop the legacy status check FIRST (it only allows current/superseded/archived),
+-- THEN migrate the vocabulary, THEN install the new constraint — otherwise the
+-- 'current'→'issued' update violates the still-active legacy constraint.
 do $$
 declare c text;
 begin
@@ -97,6 +97,8 @@ begin
     execute format('alter table documents drop constraint %I', c);
   end if;
 end $$;
+
+update documents set status = 'issued' where status = 'current';
 
 alter table documents alter column status set default 'draft';
 alter table documents
