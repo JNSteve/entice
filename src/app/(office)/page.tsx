@@ -13,6 +13,7 @@ import {
 } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { nowAU } from '@/lib/tz'
 import { PageHeader } from '@/components/PageHeader'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import {
@@ -665,7 +666,9 @@ export default async function DashboardPage() {
   const showMoney = profile.role === 'admin' || profile.role === 'office'
 
   const supabase = await createClient()
-  const today = new Date()
+  // Anchored to the Australian (Brisbane) calendar day so date-window/day-diff
+  // logic in the loaders below is correct on a UTC server.
+  const today = nowAU()
 
   // Money queries are skipped entirely (never issued) for supervisors.
   const none = Promise.resolve(undefined)

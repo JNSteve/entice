@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
+import { todayAU } from '@/lib/tz'
 import {
   poCreateSchema,
   poHeaderSchema,
@@ -260,7 +261,7 @@ export async function setPoStatus(
 
   const update: Record<string, unknown> = { status: parsed.data.status }
   if (parsed.data.status === 'issued') {
-    update.issue_date = new Date().toISOString().slice(0, 10)
+    update.issue_date = todayAU()
   }
 
   const { error } = await supabase

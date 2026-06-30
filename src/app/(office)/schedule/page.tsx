@@ -3,6 +3,7 @@ import { addDays, startOfWeek, format, eachDayOfInterval } from 'date-fns'
 import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { nowAU } from '@/lib/tz'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
 import { ScheduleBoard } from './schedule-board'
@@ -22,7 +23,7 @@ function getWeekMonday(weekParam: string | undefined): Date {
       return startOfWeek(parsed, { weekStartsOn: 1 })
     }
   }
-  return startOfWeek(new Date(), { weekStartsOn: 1 })
+  return startOfWeek(nowAU(), { weekStartsOn: 1 })
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -40,12 +41,12 @@ export default async function SchedulePage({
   const sunday = addDays(monday, 6)
   const weekDays = eachDayOfInterval({ start: monday, end: sunday }).map(toDateStr)
 
-  const todayStr = toDateStr(new Date())
+  const todayStr = toDateStr(nowAU())
 
   // Nav week strings
   const prevWeek = toDateStr(addDays(monday, -7))
   const nextWeek = toDateStr(addDays(monday, 7))
-  const thisWeek = toDateStr(startOfWeek(new Date(), { weekStartsOn: 1 }))
+  const thisWeek = toDateStr(startOfWeek(nowAU(), { weekStartsOn: 1 }))
 
   // Date range label
   const weekLabel =

@@ -10,16 +10,9 @@ import {
   labourRowUpdateSchema,
   plantRowSchema,
 } from '@/lib/zod'
+import { todayAU, yesterdayAU } from '@/lib/tz'
 
 type Result = { error?: string }
-
-/** YYYY-MM-DD for a date offset from today (server local). */
-function localDateStr(offsetDays = 0): string {
-  const d = new Date()
-  d.setDate(d.getDate() + offsetDays)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 function revalidateDiary(projectId: string) {
   revalidatePath(`/field/diary/${projectId}`)
@@ -45,7 +38,7 @@ export async function saveDiary(data: unknown): Promise<Result> {
   const { project_id, date, weather, work_performed, delays, instructions, visitors } =
     parsed.data
 
-  if (date !== localDateStr(0) && date !== localDateStr(-1)) {
+  if (date !== todayAU() && date !== yesterdayAU()) {
     return { error: 'Diary entries can only be made for today or yesterday.' }
   }
 

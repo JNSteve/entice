@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/card'
 import { round2, lineTotal } from '@/lib/money'
 import { aud, fmtDate, pct } from '@/lib/format'
+import { nowAU } from '@/lib/tz'
 import { RetentionCard, type RetentionEntry } from './retention-card'
 
 /** Claim day of the current month if not yet passed, otherwise next month. */
@@ -82,7 +83,7 @@ export default async function ProjectOverviewPage({
 
   if (!project) notFound()
 
-  const today = new Date()
+  const today = nowAU()
   const nextClaimDate = nextClaimReferenceDate(Number(project.claim_day), today)
 
   // ── Programme summary (ops-visible incl supervisor — op table under RLS)

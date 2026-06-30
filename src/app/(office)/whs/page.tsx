@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { differenceInCalendarDays, format, parseISO, subDays } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
+import { nowAU } from '@/lib/tz'
 import {
   Card,
   CardContent,
@@ -71,9 +72,11 @@ function StatCard({
 export default async function WhsOverviewPage() {
   const supabase = await createClient()
 
-  const today = new Date()
+  // AU calendar 'today' for date-string guards and day-diffs; weekAgoIso is a
+  // real instant (timestamp filter) so it stays anchored to the actual clock.
+  const today = nowAU()
   const todayStr = dateStr(today)
-  const weekAgoIso = subDays(today, 7).toISOString()
+  const weekAgoIso = subDays(new Date(), 7).toISOString()
 
   const [
     { data: incidents },

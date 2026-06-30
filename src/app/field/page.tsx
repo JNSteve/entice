@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { todayAU, dateAU } from '@/lib/tz'
 import { MyDayClient, type AssignmentCard, type OpenEntry, type TomorrowItem, type WeekSummary } from './my-day-client'
 
 export default async function MyDayPage() {
@@ -11,19 +12,14 @@ export default async function MyDayPage() {
 
   const supabase = await createClient()
 
-  // Today + tomorrow as YYYY-MM-DD (server local date — acceptable v1)
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
-  const tomorrowDate = new Date(now)
-  tomorrowDate.setDate(now.getDate() + 1)
-  const tomorrowStr = `${tomorrowDate.getFullYear()}-${pad(tomorrowDate.getMonth() + 1)}-${pad(tomorrowDate.getDate())}`
+  // Today + tomorrow as YYYY-MM-DD in Australian (Brisbane) time.
+  const todayStr = todayAU()
+  const tomorrowStr = dateAU(1)
 
-  const dayOfWeek = now.getDay() // 0=Sun
-  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-  const weekStart = new Date(now)
-  weekStart.setDate(now.getDate() - daysFromMonday)
-  const weekStartStr = `${weekStart.getFullYear()}-${pad(weekStart.getMonth() + 1)}-${pad(weekStart.getDate())}`
+  // Week start (Monday) derived from the AU calendar day.
+  const todayDow = new Date(`${todayStr}T00:00:00Z`).getUTCDay() // 0=Sun
+  const daysFromMonday = todayDow === 0 ? 6 : todayDow - 1
+  const weekStartStr = dateAU(-daysFromMonday)
 
   // ─── Today's assignments ─────────────────────────────────────────────────
 
@@ -179,11 +175,20 @@ export default async function MyDayPage() {
 
   // ─── Greeting ────────────────────────────────────────────────────────────
 
-  const hour = now.getHours()
+  // Greeting hour + date label in Brisbane time (server may run in UTC).
+  const now = new Date()
+  const hour = Number(
+    new Intl.DateTimeFormat('en-GB', {
+      timeZone: 'Australia/Brisbane',
+      hour: '2-digit',
+      hour12: false,
+    }).format(now)
+  )
   const greeting =
     hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
 
   const dateLabel = now.toLocaleDateString('en-AU', {
+    timeZone: 'Australia/Brisbane',
     weekday: 'long',
     day: 'numeric',
     month: 'long',

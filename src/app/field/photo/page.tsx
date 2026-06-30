@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { todayAU, dateAU } from '@/lib/tz'
 import { CaptureClient, type CaptureTarget } from './capture-client'
 
 export default async function FieldPhotoPage() {
@@ -9,16 +10,12 @@ export default async function FieldPhotoPage() {
 
   const supabase = await createClient()
 
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  const todayStr = todayAU()
 
-  // Week start (Monday)
-  const dayOfWeek = now.getDay()
-  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-  const weekStart = new Date(now)
-  weekStart.setDate(now.getDate() - daysFromMonday)
-  const weekStartStr = `${weekStart.getFullYear()}-${pad(weekStart.getMonth() + 1)}-${pad(weekStart.getDate())}`
+  // Week start (Monday) derived from the AU calendar day.
+  const todayDow = new Date(`${todayStr}T00:00:00Z`).getUTCDay()
+  const daysFromMonday = todayDow === 0 ? 6 : todayDow - 1
+  const weekStartStr = dateAU(-daysFromMonday)
 
   // ─── This week's assignment targets (distinct) ────────────────────────────
 

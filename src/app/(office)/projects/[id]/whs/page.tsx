@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation'
 import { format, parseISO } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { todayAU } from '@/lib/tz'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -145,7 +146,7 @@ export default async function ProjectWhsPage({
       (s.profiles as unknown as { full_name: string } | null)?.full_name ?? null,
   }))
 
-  const todayStr = format(new Date(), 'yyyy-MM-dd')
+  const todayStr = todayAU()
   const holdPointCount = (holdPoints ?? []).length
   const holdPointsOverdue = (holdPoints ?? []).filter(
     (hp) => hp.status !== 'released' && (hp.date as string) < todayStr

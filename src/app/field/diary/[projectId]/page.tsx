@@ -4,6 +4,7 @@ import { ArrowLeftIcon } from 'lucide-react'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
+import { todayAU, yesterdayAU } from '@/lib/tz'
 import {
   DiaryForm,
   type DiaryData,
@@ -12,13 +13,6 @@ import {
   type PlantOption,
   type LabourSuggestion,
 } from './diary-form'
-
-function localDateStr(offsetDays = 0): string {
-  const d = new Date()
-  d.setDate(d.getDate() + offsetDays)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 export default async function FieldDiaryEntryPage({
   params,
@@ -33,8 +27,8 @@ export default async function FieldDiaryEntryPage({
   const { projectId } = await params
   const { date: rawDate } = await searchParams
 
-  const todayStr = localDateStr(0)
-  const yesterdayStr = localDateStr(-1)
+  const todayStr = todayAU()
+  const yesterdayStr = yesterdayAU()
   // Today + yesterday (backfill) only — anything else falls back to today.
   const date = rawDate === yesterdayStr ? yesterdayStr : todayStr
 

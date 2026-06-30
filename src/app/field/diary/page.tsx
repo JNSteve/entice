@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { todayAU } from '@/lib/tz'
 import { ProjectPicker, type PickerProject } from './project-picker'
 
 export default async function DiaryProjectPickerPage() {
@@ -9,9 +10,7 @@ export default async function DiaryProjectPickerPage() {
 
   const supabase = await createClient()
 
-  const now = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  const todayStr = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`
+  const todayStr = todayAU()
 
   const [{ data: assignedRows }, { data: projectRows }] = await Promise.all([
     supabase

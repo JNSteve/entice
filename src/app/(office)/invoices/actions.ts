@@ -7,6 +7,7 @@ import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { docTotals, round2 } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
+import { nowAU } from '@/lib/tz'
 import {
   invoiceBasisSchema,
   invoiceHeaderSchema,
@@ -184,7 +185,7 @@ export async function createInvoiceFromJob(
   ])
   if (!client) return { error: 'Client not found' }
 
-  const today = new Date()
+  const today = nowAU()
   const issueDate = format(today, 'yyyy-MM-dd')
   const dueDate = format(addDays(today, client.payment_terms_days ?? 30), 'yyyy-MM-dd')
 

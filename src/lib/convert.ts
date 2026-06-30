@@ -6,6 +6,7 @@
  * do the actual DB writes.
  */
 import { lineTotal, docTotals, round2 } from '@/lib/money'
+import { todayAU } from '@/lib/tz'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,7 +104,7 @@ export function projectPayloadFromQuote(
   sections: ConvertSection[],
   lines: ConvertLine[],
   otherCostCodeId: string,
-  today: string = new Date().toISOString().slice(0, 10)
+  today: string = todayAU()
 ): ProjectConversionPayload {
   // Contract sum = sell subtotal ex GST over ALL lines
   const contractSum = docTotals(

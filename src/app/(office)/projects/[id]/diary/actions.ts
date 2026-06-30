@@ -4,15 +4,9 @@ import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { diarySchema } from '@/lib/zod'
+import { isFutureAU } from '@/lib/tz'
 
 type Result = { error?: string; id?: string }
-
-/** YYYY-MM-DD for today (server local). */
-function todayStr(): string {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
 
 /**
  * Office/admin/supervisor diary upsert. Unlike the field flow (today/yesterday
@@ -31,7 +25,7 @@ export async function saveProjectDiary(data: unknown): Promise<Result> {
   const { project_id, date, weather, work_performed, delays, instructions, visitors } =
     parsed.data
 
-  if (date > todayStr()) {
+  if (isFutureAU(date)) {
     return { error: 'Diary date cannot be in the future.' }
   }
 

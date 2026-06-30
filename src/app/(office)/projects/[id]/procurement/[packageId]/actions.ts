@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { todayAU } from '@/lib/tz'
 import {
   packageAwardSchema,
   packageQuoteSchema,
@@ -269,7 +270,7 @@ export async function awardPackage(
     description: parsed.data.description,
     amount: parsed.data.amount,
     status: 'active',
-    date: new Date().toISOString().slice(0, 10),
+    date: todayAU(),
   })
   if (insertError) return { error: insertError.message }
 

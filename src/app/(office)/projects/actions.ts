@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
+import { todayAU } from '@/lib/tz'
 import {
   PROJECT_STATUSES,
   projectCreateSchema,
@@ -121,7 +122,7 @@ export async function updateProject(
       parsed.data.status === 'practical_completion' &&
       !project.practical_completion_date
     ) {
-      update.practical_completion_date = new Date().toISOString().slice(0, 10)
+      update.practical_completion_date = todayAU()
     }
   }
 

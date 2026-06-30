@@ -7,6 +7,7 @@ import { createClient } from '@/lib/supabase/server'
 import { buildSnapshotLines, computeClaimTotals, computeLine } from '@/lib/claim-logic'
 import { round2 } from '@/lib/money'
 import { claimCertifySchema, claimLineUpdateSchema } from '@/lib/zod'
+import { todayAU } from '@/lib/tz'
 
 type Result = { error?: string }
 
@@ -18,7 +19,7 @@ function revalidateClaim(projectId: string, claimId?: string) {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10)
+  return todayAU()
 }
 
 // ─── Create claim ─────────────────────────────────────────────────────────────
@@ -61,11 +62,14 @@ export async function createClaim(
     supabase.from('settings').select('gst_rate').eq('id', 1).single(),
   ])
 
-  // claim_day clamped into the current month (claim_day 31 in June → 30 June).
-  const now = new Date()
-  const day = Math.min(project.claim_day, lastDayOfMonth(now).getDate())
+  // claim_day clamped into the current (AU) month (claim_day 31 in June → 30 June).
+  // Base the year/month on the Australian calendar so a UTC server doesn't roll
+  // the reference date into the wrong month near midnight.
+  const [auYear, auMonth] = todayAU().split('-').map(Number) // auMonth is 1-based
+  const monthDate = new Date(auYear, auMonth - 1, 1)
+  const day = Math.min(project.claim_day, lastDayOfMonth(monthDate).getDate())
   const referenceDate = format(
-    new Date(now.getFullYear(), now.getMonth(), day),
+    new Date(auYear, auMonth - 1, day),
     'yyyy-MM-dd'
   )
 

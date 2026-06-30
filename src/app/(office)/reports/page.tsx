@@ -15,6 +15,7 @@ import {
 } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { nowAU } from '@/lib/tz'
 import { PageHeader } from '@/components/PageHeader'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { ReportNav, REPORT_TABS, type ReportKey } from './report-nav'
@@ -224,7 +225,7 @@ async function loadWip(
       .order('completed_at', { ascending: true }),
   ])
 
-  const today = new Date()
+  const today = nowAU()
 
   const projectRows: WipProjectRow[] = (projects ?? []).map((p) => {
     const projectClaims = (claims ?? []).filter((c) => c.project_id === p.id)
@@ -318,7 +319,7 @@ async function loadQuoteConversion(
     .select('id, status, gst_rate, sent_at, clients(name), quote_lines(qty, unit_sell)')
     .not('sent_at', 'is', null)
 
-  const range = periodRange(period, new Date())
+  const range = periodRange(period, nowAU())
   if (range) {
     query = query
       .gte('sent_at', range.start.toISOString())
@@ -399,7 +400,7 @@ async function loadOutstanding(supabase: Supabase): Promise<{
         ),
     ])
 
-  const today = new Date()
+  const today = nowAU()
 
   const invoiceRows: AgingInvoiceRow[] = (invoices ?? [])
     .map((inv) => {
@@ -497,7 +498,7 @@ function getWeekMonday(weekParam: string | undefined): Date {
       return startOfWeek(parsed, { weekStartsOn: 1 })
     }
   }
-  return startOfWeek(new Date(), { weekStartsOn: 1 })
+  return startOfWeek(nowAU(), { weekStartsOn: 1 })
 }
 
 async function loadTimesheets(
@@ -623,7 +624,7 @@ export default async function ReportsPage({
       const monday = getWeekMonday(week)
       const sunday = addDays(monday, 6)
       const weekDays = eachDayOfInterval({ start: monday, end: sunday }).map(toDateStr)
-      const thisWeek = toDateStr(startOfWeek(new Date(), { weekStartsOn: 1 }))
+      const thisWeek = toDateStr(startOfWeek(nowAU(), { weekStartsOn: 1 }))
       content = (
         <TimesheetsReport
           weekDays={weekDays}

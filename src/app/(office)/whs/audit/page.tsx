@@ -1,6 +1,6 @@
-import { subDays, format } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { todayAU, dateAU } from '@/lib/tz'
 import { PageHeader } from '@/components/PageHeader'
 import { AuditTable, ENTITY_TYPE_LABELS } from './audit-table'
 import type { AuditFilters } from './audit-table'
@@ -29,9 +29,9 @@ export default async function WhsAuditPage({
 
   const sp = await searchParams
 
-  // Defaults: last 30 days
-  const defaultFrom = format(subDays(new Date(), 30), 'yyyy-MM-dd')
-  const defaultTo = format(new Date(), 'yyyy-MM-dd')
+  // Defaults: last 30 days (Australian calendar)
+  const defaultFrom = dateAU(-30)
+  const defaultTo = todayAU()
 
   const from = sp.from || defaultFrom
   const to = sp.to || defaultTo

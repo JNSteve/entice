@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { SwmsHazard } from '@/lib/zod'
+import { todayAU, dateAU } from '@/lib/tz'
 
 // ─── Field worker SWMS list ──────────────────────────────────────────────────
 
@@ -15,36 +16,29 @@ export interface FieldSwmsItem {
   assigned: boolean
 }
 
-function localDateStr(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-}
-
 /**
  * All ACTIVE SWMS instances with the signed-in user's sign state, flagging
- * the ones on projects/jobs the user is assigned to this week (Mon–Sun,
- * server local — acceptable v1). Shared by the field SWMS list and the
- * Safety home. Use in Server Components / server-side helpers only.
+ * the ones on projects/jobs the user is assigned to this week (Mon–Sun, in
+ * Australian/Brisbane time). Shared by the field SWMS list and the Safety
+ * home. Use in Server Components / server-side helpers only.
  */
 export async function fetchMyFieldSwms(
   supabase: SupabaseClient,
   profileId: string
 ): Promise<FieldSwmsItem[]> {
-  const now = new Date()
-  const dayOfWeek = now.getDay() // 0 = Sun
-  const daysFromMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-  const weekStart = new Date(now)
-  weekStart.setDate(now.getDate() - daysFromMonday)
-  const weekEnd = new Date(weekStart)
-  weekEnd.setDate(weekStart.getDate() + 6)
+  // Mon–Sun window anchored to the Australian calendar day.
+  const todayDow = new Date(`${todayAU()}T00:00:00Z`).getUTCDay() // 0 = Sun
+  const daysFromMonday = todayDow === 0 ? 6 : todayDow - 1
+  const weekStartStr = dateAU(-daysFromMonday)
+  const weekEndStr = dateAU(-daysFromMonday + 6)
 
   const [{ data: assignments }, { data: instances }] = await Promise.all([
     supabase
       .from('assignments')
       .select('project_id, job_id')
       .eq('user_id', profileId)
-      .gte('date', localDateStr(weekStart))
-      .lte('date', localDateStr(weekEnd)),
+      .gte('date', weekStartStr)
+      .lte('date', weekEndStr),
     supabase
       .from('swms_instances')
       .select(
