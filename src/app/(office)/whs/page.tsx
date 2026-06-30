@@ -128,11 +128,11 @@ export default async function WhsOverviewPage() {
       .select('id, vendor_id, kind, expiry_date, vendors(name)')
       .lt('expiry_date', todayStr)
       .order('expiry_date', { ascending: true }),
-    // Current library documents past their review date.
+    // Issued controlled documents past their review date.
     supabase
-      .from('whs_documents')
+      .from('documents')
       .select('id, title, doc_number, review_due')
-      .eq('status', 'current')
+      .eq('status', 'issued')
       .not('review_due', 'is', null)
       .lt('review_due', todayStr)
       .order('review_due', { ascending: true }),
@@ -362,7 +362,7 @@ export default async function WhsOverviewPage() {
                   >
                     <div className="flex min-w-0 flex-col">
                       <Link
-                        href="/whs/documents"
+                        href="/documents"
                         className="truncate hover:underline"
                       >
                         {d.title}

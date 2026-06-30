@@ -1375,49 +1375,79 @@ export const subbieSwmsStatusSchema = z
 
 export type SubbieSwmsStatusInput = z.infer<typeof subbieSwmsStatusSchema>
 
-// ─── WHS document library ────────────────────────────────────────────────────
+// ─── Controlled document register (ISO 9001 §7.5) ────────────────────────────
 
-export const WHS_DOC_CATEGORIES = [
+export const DOC_CATEGORIES = [
   'policy',
   'procedure',
+  'work_instruction',
+  'form',
+  'register',
   'plan',
   'sds',
-  'register',
-  'form',
+  'external',
   'other',
 ] as const
-export type WhsDocCategory = (typeof WHS_DOC_CATEGORIES)[number]
+export type DocCategory = (typeof DOC_CATEGORIES)[number]
 
-export const WHS_DOC_CATEGORY_LABELS: Record<WhsDocCategory, string> = {
+export const DOC_CATEGORY_LABELS: Record<DocCategory, string> = {
   policy: 'Policy',
   procedure: 'Procedure',
+  work_instruction: 'Work Instruction',
+  form: 'Form',
+  register: 'Register',
   plan: 'Plan',
   sds: 'SDS',
-  register: 'Register',
-  form: 'Form',
+  external: 'External',
   other: 'Other',
 }
 
-export const WHS_DOC_STATUSES = ['current', 'superseded', 'archived'] as const
-export type WhsDocStatus = (typeof WHS_DOC_STATUSES)[number]
+export const DOC_SYSTEMS = ['qms', 'ems', 'ohs', 'integrated'] as const
+export type DocSystem = (typeof DOC_SYSTEMS)[number]
+
+export const DOC_SYSTEM_LABELS: Record<DocSystem, string> = {
+  qms: 'QMS',
+  ems: 'EMS',
+  ohs: 'OHS',
+  integrated: 'Integrated',
+}
+
+// Approval lifecycle, in order. The status stepper renders this sequence;
+// 'superseded'/'archived' are terminal off-ramps shown separately.
+export const DOC_STATUSES = [
+  'draft',
+  'in_review',
+  'approved',
+  'issued',
+  'superseded',
+  'archived',
+] as const
+export type DocStatus = (typeof DOC_STATUSES)[number]
+
+/** The forward approval steps a document moves through to become live. */
+export const DOC_LIFECYCLE: DocStatus[] = ['draft', 'in_review', 'approved', 'issued']
 
 /**
- * New document (or new version) in the WHS document library. The file is
- * uploaded by the browser client to attachments/whs-documents/ first; this
- * validates the row the server action records afterwards. When
- * supersedes_id is set the action also flips the old row to 'superseded'.
+ * New document (or new version) in the controlled register. A draft may be
+ * created with no file yet (file_path/filename null); the issue action guards
+ * against issuing without a file. The file, when present, is uploaded by the
+ * browser client to attachments/documents/ first; this validates the row the
+ * server action records afterwards. When supersedes_id is set the action also
+ * flips the old row to 'superseded' and starts the new row in 'draft'.
  */
-export const whsDocumentSchema = z.object({
+export const documentSchema = z.object({
   title: z.string().min(1, 'Title is required'),
-  category: z.enum(WHS_DOC_CATEGORIES),
+  category: z.enum(DOC_CATEGORIES),
+  system: z.enum(DOC_SYSTEMS),
   doc_number: optionalText,
   version: z.string().min(1, 'Version is required').transform((v) => v.trim()),
   file_path: z
     .string()
-    .min(1, 'File path is required')
-    .regex(/^whs-documents\//, 'Invalid file path')
-    .refine((v) => !v.includes('..'), 'Invalid file path'),
-  filename: z.string().min(1, 'Filename is required'),
+    .regex(/^documents\//, 'Invalid file path')
+    .refine((v) => !v.includes('..'), 'Invalid file path')
+    .nullish()
+    .transform((v) => v ?? null),
+  filename: optionalText,
   content_type: optionalText,
   size: z.coerce
     .number()
@@ -1436,12 +1466,13 @@ export const whsDocumentSchema = z.object({
     .transform((v) => v ?? null),
 })
 
-export type WhsDocumentInput = z.infer<typeof whsDocumentSchema>
+export type DocumentInput = z.infer<typeof documentSchema>
 
-/** Metadata-only edit of an existing library document (no file change). */
-export const whsDocumentUpdateSchema = z.object({
+/** Metadata-only edit of an existing register document (no file change). */
+export const documentUpdateSchema = z.object({
   title: z.string().min(1, 'Title is required').optional(),
-  category: z.enum(WHS_DOC_CATEGORIES).optional(),
+  category: z.enum(DOC_CATEGORIES).optional(),
+  system: z.enum(DOC_SYSTEMS).optional(),
   doc_number: optionalText.optional(),
   version: z
     .string()
@@ -1456,4 +1487,4 @@ export const whsDocumentUpdateSchema = z.object({
   notes: optionalText.optional(),
 })
 
-export type WhsDocumentUpdateInput = z.infer<typeof whsDocumentUpdateSchema>
+export type DocumentUpdateInput = z.infer<typeof documentUpdateSchema>

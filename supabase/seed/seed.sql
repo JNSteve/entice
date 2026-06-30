@@ -692,3 +692,24 @@ insert into form_signons (id, submission_id, profile_id, name, company, signatur
   ('fc000003-0000-4000-a000-000000000001', 'fb000006-0000-4000-a000-000000000001', 'aa000000-0000-4000-a000-000000000001', 'Sam Field',   'Entice Civil Pty Ltd', 'seed/sig-placeholder.png', '2026-06-10 07:40+10'),
   ('fc000004-0000-4000-a000-000000000001', 'fb000006-0000-4000-a000-000000000001', null,                                   'Liam Chen',   'DigDeep Earthmoving',  'seed/sig-placeholder.png', '2026-06-10 07:42+10'),
   ('fc000005-0000-4000-a000-000000000001', 'fb000006-0000-4000-a000-000000000001', null,                                   'Pete Howard', 'GreenTip Waste',       'seed/sig-placeholder.png', '2026-06-10 07:45+10');
+
+-- ─── 22. ISO documents — controlled register starters ───────────────────────
+-- iso documents
+-- ISO 9001/14001/45001 starter policies & procedures for the company-wide
+-- controlled document register. Each is created as a DRAFT with no file yet —
+-- the office reviews and adopts them through the approval workflow before they
+-- are issued. Stable UUIDs + on conflict do nothing make this idempotent.
+-- uploaded_by = the admin profile (looked up by role, matching the rest of seed).
+insert into documents
+  (id, title, category, system, doc_number, version, status, file_path, filename, review_due, notes, uploaded_by)
+values
+  ('d0c00000-0000-4000-a000-000000000001', 'Quality Policy',                                 'policy',    'qms',        'QMS-POL-001', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
+  ('d0c00000-0000-4000-a000-000000000002', 'Environmental Policy',                           'policy',    'ems',        'EMS-POL-001', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
+  ('d0c00000-0000-4000-a000-000000000003', 'WHS / OHS Policy',                               'policy',    'ohs',        'OHS-POL-001', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
+  ('d0c00000-0000-4000-a000-000000000004', 'Document & Records Control Procedure',           'procedure', 'integrated', 'INT-PRO-001', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
+  ('d0c00000-0000-4000-a000-000000000005', 'Internal Audit Procedure',                       'procedure', 'integrated', 'INT-PRO-002', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
+  ('d0c00000-0000-4000-a000-000000000006', 'Management Review Procedure',                    'procedure', 'integrated', 'INT-PRO-003', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
+  ('d0c00000-0000-4000-a000-000000000007', 'Nonconformance & Corrective Action Procedure',   'procedure', 'integrated', 'INT-PRO-004', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
+  ('d0c00000-0000-4000-a000-000000000008', 'Risk & Opportunity Procedure',                   'procedure', 'integrated', 'INT-PRO-005', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1)),
+  ('d0c00000-0000-4000-a000-000000000009', 'Competence & Training Procedure',                'procedure', 'integrated', 'INT-PRO-006', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1))
+on conflict (id) do nothing;

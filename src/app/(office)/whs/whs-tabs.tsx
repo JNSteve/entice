@@ -9,12 +9,14 @@ type Tab = {
   href: string
 }
 
+// NOTE: the "Documents" tab was removed when the WHS-only document library was
+// generalised into the company-wide controlled document register at the
+// top-level /documents (sidebar nav). The old whs/documents route was deleted.
 const TABS: Tab[] = [
   { label: 'Overview', href: '/whs' },
   { label: 'Forms', href: '/whs/forms' },
   { label: 'Incidents', href: '/whs/incidents' },
   { label: 'Subbie SWMS', href: '/whs/subbie-swms' },
-  { label: 'Documents', href: '/whs/documents' },
   { label: 'Audit', href: '/whs/audit' },
 ]
 

@@ -17,10 +17,10 @@ import { fetchMyFieldSwms } from '@/lib/swms-queries'
 import { FieldSwmsCard } from '@/components/FieldSwmsCard'
 import { fmtDate } from '@/lib/format'
 import {
-  WHS_DOC_CATEGORIES,
-  WHS_DOC_CATEGORY_LABELS,
+  DOC_CATEGORIES,
+  DOC_CATEGORY_LABELS,
   type FormTemplateKind,
-  type WhsDocCategory,
+  type DocCategory,
 } from '@/lib/zod'
 
 const KIND_ICONS: Record<FormTemplateKind, React.ComponentType<{ className?: string }>> = {
@@ -101,11 +101,11 @@ export default async function FieldSafetyPage() {
       .eq('reported_by', profile.id)
       .order('created_at', { ascending: false })
       .limit(10),
-    // Current controlled WHS documents only — read-only field listing.
+    // Issued controlled documents only — read-only field listing.
     supabase
-      .from('whs_documents')
+      .from('documents')
       .select('id, title, category, version, file_path')
-      .eq('status', 'current')
+      .eq('status', 'issued')
       .order('title'),
   ])
 
@@ -122,10 +122,10 @@ export default async function FieldSafetyPage() {
   }
 
   // Group by category, in the canonical category order.
-  const docGroups = WHS_DOC_CATEGORIES.map((category) => ({
+  const docGroups = DOC_CATEGORIES.map((category) => ({
     category,
     docs: (safetyDocs ?? [])
-      .filter((d) => (d.category as WhsDocCategory) === category)
+      .filter((d) => (d.category as DocCategory) === category)
       .map((d) => ({
         id: d.id as string,
         title: d.title as string,
@@ -210,17 +210,17 @@ export default async function FieldSafetyPage() {
         )}
       </section>
 
-      {/* Safety documents (current controlled docs, read-only) */}
+      {/* Controlled documents (issued, read-only) */}
       {docGroups.length > 0 && (
         <section className="flex flex-col gap-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Safety documents
+            Controlled documents
           </h2>
           <div className="flex flex-col gap-3">
             {docGroups.map((group) => (
               <div key={group.category} className="flex flex-col gap-1.5">
                 <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                  {WHS_DOC_CATEGORY_LABELS[group.category]}
+                  {DOC_CATEGORY_LABELS[group.category]}
                 </h3>
                 <div className="flex flex-col divide-y rounded-xl border">
                   {group.docs.map((doc) =>

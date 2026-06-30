@@ -16,6 +16,9 @@ import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
 import { FormPdf, type FormPdfSignon } from '@/pdf/FormPdf'
 import { IncidentPdf, type IncidentPdfAction } from '@/pdf/IncidentPdf'
 import { QrPosterPdf } from '@/pdf/QrPosterPdf'
+import { DocumentRegisterPdf, type DocumentRegisterPdfRow } from '@/pdf/DocumentRegisterPdf'
+import { DOC_CATEGORY_LABELS, DOC_SYSTEM_LABELS, type DocCategory, type DocSystem } from '@/lib/zod'
+import { todayAU } from '@/lib/tz'
 import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
 
@@ -78,7 +81,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'qr-poster'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'qr-poster' || type === 'document-register'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -114,6 +117,9 @@ export async function GET(
     case 'qr-poster':
       // [id] = share_links row id
       return qrPosterPdf(id, request)
+    case 'document-register':
+      // [id] is a placeholder (use 'list') — the register PDF covers all docs.
+      return documentRegisterPdf()
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -1239,6 +1245,62 @@ async function qrPosterPdf(id: string, request: Request): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${filename}"`,
+    },
+  })
+}
+
+// ─── Master Document List (controlled register) ───────────────────────────────
+
+async function documentRegisterPdf(): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: docs }, { data: settings }] = await Promise.all([
+    supabase
+      .from('documents')
+      .select(
+        `id, doc_number, title, category, system, version, status,
+         review_due, approved_at, issued_at,
+         approver:profiles!documents_approved_by_fkey(full_name)`
+      )
+      .order('system')
+      .order('doc_number', { nullsFirst: false })
+      .order('title'),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  const today = todayAU()
+  const rows: DocumentRegisterPdfRow[] = (docs ?? []).map((d) => {
+    const reviewDue = (d.review_due as string | null) ?? null
+    return {
+      docNumber: (d.doc_number as string | null) ?? null,
+      title: d.title as string,
+      category: DOC_CATEGORY_LABELS[d.category as DocCategory] ?? (d.category as string),
+      system: DOC_SYSTEM_LABELS[d.system as DocSystem] ?? (d.system as string),
+      version: d.version as string,
+      status: (d.status as string).replace(/_/g, ' '),
+      approved: d.approved_at ? fmtDate(d.approved_at as string) : null,
+      issued: d.issued_at ? fmtDate(d.issued_at as string) : null,
+      reviewDue: reviewDue ? fmtDate(reviewDue) : null,
+      overdue: d.status === 'issued' && reviewDue != null && reviewDue < today,
+    }
+  })
+
+  const buffer = await renderToBuffer(
+    <DocumentRegisterPdf
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      rows={rows}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="master-document-list.pdf"',
     },
   })
 }

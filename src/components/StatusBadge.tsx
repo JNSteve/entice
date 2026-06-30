@@ -18,7 +18,6 @@ const STATUS_META: Record<string, StatusMeta> = {
   // Blue / in-progress
   sent:                { label: 'Sent',                className: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300' },
   submitted:           { label: 'Submitted',           className: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300' },
-  issued:              { label: 'Issued',              className: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300' },
   in_progress:         { label: 'In Progress',         className: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300' },
   working:             { label: 'Working',             className: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300' },
   invited:             { label: 'Invited',             className: 'bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-950 dark:text-blue-300' },
@@ -36,7 +35,9 @@ const STATUS_META: Record<string, StatusMeta> = {
 
   // Green / success
   accepted:            { label: 'Accepted',            className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
-  approved:            { label: 'Approved',            className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
+  // Controlled document register approval lifecycle
+  approved:            { label: 'Approved',            className: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300' },
+  issued:              { label: 'Issued',              className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   awarded:             { label: 'Awarded',             className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   paid:                { label: 'Paid',                className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
   completed:           { label: 'Completed',           className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
@@ -59,6 +60,7 @@ const STATUS_META: Record<string, StatusMeta> = {
   // Amber / investigating
   investigating:       { label: 'Investigating',       className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
   under_review:        { label: 'Under Review',        className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
+  in_review:           { label: 'In Review',           className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
 
   // Green / done / closed
   done:                { label: 'Done',                className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
