@@ -25,7 +25,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { MoneyInput } from '@/components/MoneyInput'
 import { computeClaim, type ClaimLineInput, type RetentionRules } from '@/lib/claims'
 import { aud, fmtDate, pct } from '@/lib/format'
-import { round2 } from '@/lib/money'
+import { round2, round6 } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import {
   BanknoteIcon,
@@ -85,7 +85,7 @@ export interface ClaimEditorProps {
 /** Previously-claimed floor as a percentage, capped at 100. */
 function floorPct(line: ClaimLineRow): number {
   if (line.line_value <= 0) return 0
-  return Math.min(round2((line.previous_claimed / line.line_value) * 100), 100)
+  return Math.min(round6((line.previous_claimed / line.line_value) * 100), 100)
 }
 
 // ─── % complete input (commit on blur) ────────────────────────────────────────
@@ -120,7 +120,7 @@ function PctInput({
         setFocused(false)
         const parsed = parseFloat(raw)
         if (isNaN(parsed)) return
-        const clamped = Math.min(Math.max(round2(parsed), min), 100)
+        const clamped = Math.min(Math.max(round6(parsed), min), 100)
         onCommit(clamped)
       }}
     />
@@ -212,9 +212,11 @@ export function ClaimEditor({ projectId, claim: initialClaim, lines: initialLine
   function commitClaimedToDate(line: ClaimLineRow, value: number | null) {
     if (value == null) return
     const min = allowReduction.has(line.id) ? 0 : floorPct(line)
+    // 6dp so the entered dollars round-trip exactly: on a $2M line,
+    // $1,499,900 → 74.995000% → round2 back to $1,499,900.00 (not $1,500,000).
     const nextPct =
       line.line_value > 0
-        ? Math.min(Math.max(round2((value / line.line_value) * 100), min), 100)
+        ? Math.min(Math.max(round6((value / line.line_value) * 100), min), 100)
         : 0
     commitPct(line, nextPct)
   }

@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { computeClaim, type ClaimLineInput, type ClaimResult } from './claims'
-import { round2 } from './money'
+import { round2, round6 } from './money'
 
 /**
  * Data-access layer for progress-claim computations. Every claim figure comes
@@ -113,8 +113,10 @@ export async function buildSnapshotLines(
 
   return sources.map((s) => {
     const previous = previousBySource.get(`${s.source_type}:${s.source_id}`) ?? 0
+    // 6dp so the initialised pct reproduces previous_claimed exactly on large
+    // lines (claimed_to_date = round2(line_value * pct / 100)).
     const pct =
-      s.line_value > 0 ? Math.min(round2((previous / s.line_value) * 100), 100) : 0
+      s.line_value > 0 ? Math.min(round6((previous / s.line_value) * 100), 100) : 0
     const { claimedToDate, thisClaim } = computeLine(s.line_value, pct, previous)
     return {
       ...s,

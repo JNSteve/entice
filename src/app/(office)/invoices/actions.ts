@@ -53,10 +53,16 @@ async function assertDraft(
 
 /**
  * Server-side job status sync, called after every invoice status/payment
- * change:
- *   - any non-void invoice sent/paid + job completed  → job invoiced
- *   - ALL non-void invoices paid (and ≥1 exists)      → job paid
- * Void invoices are ignored entirely; the job never moves backwards.
+ * change. Reconciles the job's invoicing status against its non-void invoices
+ * in BOTH directions:
+ *   Forward:
+ *     - any non-void invoice sent/paid + job completed  → job invoiced
+ *     - ALL non-void invoices paid (and ≥1 exists)      → job paid
+ *   Reversal (e.g. a settling payment is deleted, reverting paid→sent):
+ *     - job 'paid' but NOT all non-void invoices paid    → back to invoiced
+ *       (if ≥1 is issued) or completed (if none are issued)
+ * Void invoices are ignored entirely. Only the invoicing lifecycle statuses
+ * (completed → invoiced → paid) are touched; earlier statuses are left alone.
  */
 async function syncJobStatus(
   supabase: SupabaseClient,
@@ -75,12 +81,24 @@ async function syncJobStatus(
   if (!job || !invoices || invoices.length === 0) return
 
   const allPaid = invoices.every((i) => i.status === 'paid')
+  const anyIssued = invoices.some((i) => i.status === 'sent' || i.status === 'paid')
+
+  // Reversal: a 'paid' job whose invoices are no longer all-paid drops back to
+  // the correct prior invoicing state. Without this, deleting the settling
+  // payment reverts the invoice to 'sent' but strands the job on 'paid'.
+  if (job.status === 'paid' && !allPaid) {
+    await supabase
+      .from('jobs')
+      .update({ status: anyIssued ? 'invoiced' : 'completed' })
+      .eq('id', jobId)
+    return
+  }
+
   if (allPaid && ['completed', 'invoiced'].includes(job.status)) {
     await supabase.from('jobs').update({ status: 'paid' }).eq('id', jobId)
     return
   }
 
-  const anyIssued = invoices.some((i) => i.status === 'sent' || i.status === 'paid')
   if (anyIssued && job.status === 'completed') {
     await supabase.from('jobs').update({ status: 'invoiced' }).eq('id', jobId)
   }

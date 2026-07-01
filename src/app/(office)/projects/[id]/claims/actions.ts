@@ -5,7 +5,7 @@ import { format, lastDayOfMonth } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { buildSnapshotLines, computeClaimTotals, computeLine } from '@/lib/claim-logic'
-import { round2 } from '@/lib/money'
+import { round6 } from '@/lib/money'
 import { claimCertifySchema, claimLineUpdateSchema } from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
 
@@ -138,12 +138,15 @@ export async function updateClaimLine(
 
   const lineValue = Number(line.line_value)
   const previous = Number(line.previous_claimed)
-  const pct = parsed.data.pct_complete
+  // pct is the source of truth for claimed_to_date; store at 6dp so a dollar
+  // figure entered on a large line round-trips exactly (a $2M line with
+  // $1,499,900 entered → 74.995000%, not a 2dp-truncated 75.00%).
+  const pct = round6(parsed.data.pct_complete)
 
   // Floor: cannot drop below the previously-claimed percentage unless the
   // caller explicitly allows a reduction (credit situation).
   const floorPct =
-    lineValue > 0 ? Math.min(round2((previous / lineValue) * 100), 100) : 0
+    lineValue > 0 ? Math.min(round6((previous / lineValue) * 100), 100) : 0
   if (!parsed.data.allow_reduction && pct < floorPct) {
     return {
       error: `% complete cannot drop below the previously claimed ${floorPct}% — enable "allow reduction" for credits`,

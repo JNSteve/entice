@@ -214,7 +214,7 @@ async function loadWip(
       .order('number'),
     supabase
       .from('claims')
-      .select('project_id, status, total_claimed_to_date, certified_amount')
+      .select('project_id, status, total_inc_gst, certified_amount')
       .neq('status', 'draft'),
     supabase
       .from('jobs')
@@ -229,10 +229,17 @@ async function loadWip(
 
   const projectRows: WipProjectRow[] = (projects ?? []).map((p) => {
     const projectClaims = (claims ?? []).filter((c) => c.project_id === p.id)
-    const claimedValues = projectClaims
-      .filter((c) => c.total_claimed_to_date != null)
-      .map((c) => Number(c.total_claimed_to_date))
-    const claimed = claimedValues.length > 0 ? Math.max(...claimedValues) : 0
+    // Exposure = "billed value not yet certified". Keep both operands on the
+    // SAME basis: inc-GST, and cumulative-via-Σ-of-per-claim figures.
+    //   claimed   = Σ total_inc_gst  (per-claim billed inc-GST, net of retention)
+    //   certified = Σ certified_amount (per-claim certified inc-GST)
+    // A submitted-but-uncertified claim raises `claimed` but not `certified`,
+    // so it lands in exposure — exactly the intended meaning.
+    const claimed = round2(
+      projectClaims
+        .filter((c) => c.total_inc_gst != null)
+        .reduce((s, c) => s + Number(c.total_inc_gst), 0)
+    )
     const certified = round2(
       projectClaims
         .filter(

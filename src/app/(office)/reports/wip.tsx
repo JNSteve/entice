@@ -21,13 +21,13 @@ export type WipProjectRow = {
   id: string
   number: string
   name: string
-  /** Max total_claimed_to_date across non-draft claims. */
+  /** Σ total_inc_gst across submitted/certified/paid claims (billed inc GST). */
   claimed: number
-  /** Σ certified_amount of certified + paid claims. */
+  /** Σ certified_amount of certified + paid claims (certified inc GST). */
   certified: number
-  /** Σ certified_amount of paid claims. */
+  /** Σ certified_amount of paid claims (inc GST). */
   paid: number
-  /** claimed − certified. */
+  /** claimed − certified — billed value not yet certified (inc GST). */
   exposure: number
 }
 
@@ -61,9 +61,9 @@ export function WipReport({
       projects.map((r) => ({
         Project: r.number,
         Name: r.name,
-        'Claimed to date': r.claimed,
-        'Certified to date': r.certified,
-        Paid: r.paid,
+        'Claimed inc GST': r.claimed,
+        'Certified inc GST': r.certified,
+        'Paid inc GST': r.paid,
         'Uncertified exposure': r.exposure,
       }))
     )
@@ -110,9 +110,9 @@ export function WipReport({
               <TableHeader>
                 <TableRow>
                   <TableHead>Project</TableHead>
-                  <TableHead className="text-right">Claimed to date</TableHead>
-                  <TableHead className="text-right">Certified to date</TableHead>
-                  <TableHead className="text-right">Paid</TableHead>
+                  <TableHead className="text-right">Claimed (inc GST)</TableHead>
+                  <TableHead className="text-right">Certified (inc GST)</TableHead>
+                  <TableHead className="text-right">Paid (inc GST)</TableHead>
                   <TableHead className="text-right">Uncertified exposure</TableHead>
                 </TableRow>
               </TableHeader>
