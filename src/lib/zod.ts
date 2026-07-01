@@ -945,6 +945,10 @@ export type SwmsInstanceCreateInput = z.infer<typeof swmsInstanceCreateSchema>
 export const swmsSignSchema = z.object({
   instance_id: z.uuid(),
   name: z.string().min(1, 'Name is required'),
+  /** The instance version the worker actually VIEWED and is attesting to.
+   * signSwms compares this against the current instance.version (compare-and-set)
+   * and rejects if the SWMS was revised between view and sign. */
+  version: z.coerce.number().int(),
   /** PNG data URL exported from the signature pad. Char cap mirrors
    * formSignonSchema / the swms_signatures_signature_data DB check. */
   signature: z

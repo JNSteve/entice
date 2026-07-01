@@ -205,6 +205,26 @@ export async function setNcrStatus(ncrId: string, data: unknown): Promise<Result
 
 // ─── CAPA actions ─────────────────────────────────────────────────────────────
 
+// CAPA actions may only be mutated while the parent NCR is in a working status.
+// Once the NCR is 'verified' or 'closed' the attested verification-of-effectiveness
+// is locked in — reopen the NCR (moving it back to an editable status) to change
+// its corrective actions. Returns an error string when the parent is locked.
+async function ncrActionsLocked(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  ncrId: string
+): Promise<string | null> {
+  const { data: parent } = await supabase
+    .from('ncrs')
+    .select('status')
+    .eq('id', ncrId)
+    .single()
+  if (!parent) return 'NCR not found'
+  if (parent.status === 'verified' || parent.status === 'closed') {
+    return 'This NCR is verified/closed — reopen it to change its corrective actions.'
+  }
+  return null
+}
+
 export async function createCapaAction(
   data: unknown
 ): Promise<{ error?: string; id?: string }> {
@@ -216,6 +236,9 @@ export async function createCapaAction(
   }
 
   const supabase = await createClient()
+
+  const locked = await ncrActionsLocked(supabase, parsed.data.ncr_id)
+  if (locked) return { error: locked }
 
   const { data: row, error } = await supabase
     .from('capa_actions')
@@ -250,6 +273,9 @@ export async function updateCapaAction(
 
   const supabase = await createClient()
 
+  const locked = await ncrActionsLocked(supabase, ncrId)
+  if (locked) return { error: locked }
+
   const { error } = await supabase
     .from('capa_actions')
     .update(parsed.data)
@@ -269,6 +295,9 @@ export async function deleteCapaAction(
   await requireRole('admin', 'office', 'supervisor')
 
   const supabase = await createClient()
+
+  const locked = await ncrActionsLocked(supabase, ncrId)
+  if (locked) return { error: locked }
 
   const { error } = await supabase
     .from('capa_actions')
@@ -309,6 +338,9 @@ export async function reopenCapaAction(
   await requireRole('admin', 'office', 'supervisor')
 
   const supabase = await createClient()
+
+  const locked = await ncrActionsLocked(supabase, ncrId)
+  if (locked) return { error: locked }
 
   const { error } = await supabase
     .from('capa_actions')

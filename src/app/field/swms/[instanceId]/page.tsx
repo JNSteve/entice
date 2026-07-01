@@ -163,7 +163,11 @@ export default async function FieldSwmsInstancePage({
             </div>
           </div>
         ) : (
-          <SignForm instanceId={instance.id} defaultName={profile.full_name} />
+          <SignForm
+            instanceId={instance.id}
+            version={Number(instance.version)}
+            defaultName={profile.full_name}
+          />
         )}
       </section>
     </div>

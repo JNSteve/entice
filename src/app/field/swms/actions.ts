@@ -26,7 +26,7 @@ export async function signSwms(data: unknown): Promise<Result> {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
   }
 
-  const { instance_id, name, signature } = parsed.data
+  const { instance_id, name, signature, version: viewedVersion } = parsed.data
 
   let png: Buffer
   try {
@@ -54,6 +54,16 @@ export async function signSwms(data: unknown): Promise<Result> {
   }
 
   const version = Number(instance.version)
+
+  // Compare-and-set: the worker must be signing the exact version they read.
+  // If revise() bumped the version between view and submit, reject — signing a
+  // revision they never saw would be a false attestation.
+  if (version !== viewedVersion) {
+    return {
+      error:
+        'This SWMS was revised while you were reading it — please review the current version and sign again.',
+    }
+  }
 
   // Friendly duplicate check (the unique constraint is the backstop).
   const { data: existing } = await supabase

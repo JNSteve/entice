@@ -175,6 +175,26 @@ export async function setIncidentStatus(
 
 // ─── Corrective actions ───────────────────────────────────────────────────────
 
+// Corrective actions may only be mutated while the parent incident is still open
+// or under investigation. Once the incident is 'closed' the record is locked —
+// reopen the incident (admin) to change its corrective actions. Returns an error
+// string when the parent is locked.
+async function incidentActionsLocked(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  incidentId: string
+): Promise<string | null> {
+  const { data: parent } = await supabase
+    .from('incidents')
+    .select('status')
+    .eq('id', incidentId)
+    .single()
+  if (!parent) return 'Incident not found'
+  if (parent.status === 'closed') {
+    return 'This incident is closed — reopen it to change its corrective actions.'
+  }
+  return null
+}
+
 export async function createCorrectiveAction(
   data: unknown
 ): Promise<{ error?: string; id?: string }> {
@@ -186,6 +206,9 @@ export async function createCorrectiveAction(
   }
 
   const supabase = await createClient()
+
+  const locked = await incidentActionsLocked(supabase, parsed.data.incident_id)
+  if (locked) return { error: locked }
 
   const { data: row, error } = await supabase
     .from('corrective_actions')
@@ -219,6 +242,9 @@ export async function updateCorrectiveAction(
 
   const supabase = await createClient()
 
+  const locked = await incidentActionsLocked(supabase, incidentId)
+  if (locked) return { error: locked }
+
   const { error } = await supabase
     .from('corrective_actions')
     .update(parsed.data)
@@ -238,6 +264,9 @@ export async function deleteCorrectiveAction(
   await requireRole('admin', 'office', 'supervisor')
 
   const supabase = await createClient()
+
+  const locked = await incidentActionsLocked(supabase, incidentId)
+  if (locked) return { error: locked }
 
   const { error } = await supabase
     .from('corrective_actions')
@@ -278,6 +307,9 @@ export async function reopenCorrectiveAction(
   await requireRole('admin', 'office', 'supervisor')
 
   const supabase = await createClient()
+
+  const locked = await incidentActionsLocked(supabase, incidentId)
+  if (locked) return { error: locked }
 
   const { error } = await supabase
     .from('corrective_actions')

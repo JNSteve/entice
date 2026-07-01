@@ -10,10 +10,13 @@ import { signSwms } from '../actions'
 
 interface SignFormProps {
   instanceId: string
+  /** The version rendered on this page — pinned into the signature so a revise()
+   * between view and sign is caught server-side (compare-and-set). */
+  version: number
   defaultName: string
 }
 
-export function SignForm({ instanceId, defaultName }: SignFormProps) {
+export function SignForm({ instanceId, version, defaultName }: SignFormProps) {
   const [pending, startTransition] = useTransition()
   const [name, setName] = useState(defaultName)
   const [signature, setSignature] = useState<string | null>(null)
@@ -28,6 +31,7 @@ export function SignForm({ instanceId, defaultName }: SignFormProps) {
       const result = await signSwms({
         instance_id: instanceId,
         name,
+        version,
         signature,
       })
       if (result.error) {
