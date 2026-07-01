@@ -269,6 +269,33 @@ export async function submitClaim(
     if (error) return { error: error.message }
   }
 
+  // Persist retention BEFORE flipping status, so a failed retention write can
+  // never leave the claim submitted-but-under-recorded (which would inflate the
+  // next claim's headroom). No transaction needed — the sequence is idempotent:
+  //   1. Clear any prior 'withheld' row for this claim (clean slate for retries).
+  //   2. Insert the current withheld amount (if any); on error the claim stays
+  //      draft and re-submittable.
+  //   3. Only then flip status → submitted; on error the retention row exists
+  //      but the claim is still draft — re-submit re-runs step 1 to clean up.
+  const { error: retDeleteError } = await supabase
+    .from('retention_entries')
+    .delete()
+    .eq('claim_id', claimId)
+    .eq('kind', 'withheld')
+  if (retDeleteError) return { error: retDeleteError.message }
+
+  if (result.retentionThisClaim > 0) {
+    const { error: retError } = await supabase.from('retention_entries').insert({
+      project_id: projectId,
+      claim_id: claimId,
+      kind: 'withheld',
+      amount: result.retentionThisClaim,
+      date: today(),
+      notes: `Withheld on claim ${claim.number}`,
+    })
+    if (retError) return { error: retError.message }
+  }
+
   const { error: claimError } = await supabase
     .from('claims')
     .update({
@@ -284,18 +311,6 @@ export async function submitClaim(
     .eq('id', claimId)
     .eq('status', 'draft')
   if (claimError) return { error: claimError.message }
-
-  if (result.retentionThisClaim > 0) {
-    const { error: retError } = await supabase.from('retention_entries').insert({
-      project_id: projectId,
-      claim_id: claimId,
-      kind: 'withheld',
-      amount: result.retentionThisClaim,
-      date: today(),
-      notes: `Withheld on claim ${claim.number}`,
-    })
-    if (retError) return { error: retError.message }
-  }
 
   revalidateClaim(projectId, claimId)
   return {}

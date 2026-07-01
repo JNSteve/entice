@@ -286,6 +286,22 @@ export async function voidInvoice(id: string): Promise<Result> {
     return { error: `Can't void a ${invoice.status} invoice` }
   }
 
+  // A part-paid invoice must not be voided — voiding excludes it from every
+  // non-void rollup, orphaning the recorded cash and letting syncJobStatus
+  // mis-flip the job. Payments are removable (see deletePayment), so this is
+  // actionable: clear the payments first, then void.
+  const { count: paymentCount, error: payCountErr } = await supabase
+    .from('payments')
+    .select('id', { count: 'exact', head: true })
+    .eq('invoice_id', id)
+  if (payCountErr) return { error: payCountErr.message }
+  if ((paymentCount ?? 0) > 0) {
+    return {
+      error:
+        'This invoice has recorded payments — remove the payments before voiding it.',
+    }
+  }
+
   const { error } = await supabase
     .from('invoices')
     .update({ status: 'void' })
@@ -449,6 +465,10 @@ export async function recordPayment(data: unknown): Promise<Result> {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
   }
 
+  if (parsed.data.amount <= 0) {
+    return { error: 'Payment amount must be greater than zero.' }
+  }
+
   const supabase = await createClient()
   const { data: invoice } = await supabase
     .from('invoices')
@@ -458,6 +478,26 @@ export async function recordPayment(data: unknown): Promise<Result> {
   if (!invoice) return { error: 'Invoice not found' }
   if (invoice.status !== 'sent') {
     return { error: `Payments can only be recorded on sent invoices (this one is ${invoice.status})` }
+  }
+
+  // Upper-bound guard: reject any payment that would push Σ payments over the
+  // invoice total inc GST (exact equality is allowed — that settles it).
+  const [{ data: priorLines }, { data: priorPayments }] = await Promise.all([
+    supabase
+      .from('invoice_lines')
+      .select('qty, unit_sell')
+      .eq('invoice_id', invoice.id),
+    supabase.from('payments').select('amount').eq('invoice_id', invoice.id),
+  ])
+
+  const { total } = docTotals(
+    (priorLines ?? []).map((l) => ({ qty: Number(l.qty), unitSell: Number(l.unit_sell) })),
+    Number(invoice.gst_rate)
+  )
+  const alreadyPaid = round2((priorPayments ?? []).reduce((s, p) => s + Number(p.amount), 0))
+  const remaining = round2(total - alreadyPaid)
+  if (round2(alreadyPaid + parsed.data.amount) > total) {
+    return { error: `Payment exceeds the outstanding balance of $${remaining.toFixed(2)}.` }
   }
 
   const { error: payErr } = await supabase.from('payments').insert({
@@ -470,19 +510,7 @@ export async function recordPayment(data: unknown): Promise<Result> {
   if (payErr) return { error: payErr.message }
 
   // Server-side auto-paid check: Σ payments >= total inc GST.
-  const [{ data: lines }, { data: payments }] = await Promise.all([
-    supabase
-      .from('invoice_lines')
-      .select('qty, unit_sell')
-      .eq('invoice_id', invoice.id),
-    supabase.from('payments').select('amount').eq('invoice_id', invoice.id),
-  ])
-
-  const { total } = docTotals(
-    (lines ?? []).map((l) => ({ qty: Number(l.qty), unitSell: Number(l.unit_sell) })),
-    Number(invoice.gst_rate)
-  )
-  const paid = round2((payments ?? []).reduce((s, p) => s + Number(p.amount), 0))
+  const paid = round2(alreadyPaid + parsed.data.amount)
 
   if (paid >= total) {
     const { error: updErr } = await supabase
@@ -499,7 +527,9 @@ export async function recordPayment(data: unknown): Promise<Result> {
 }
 
 export async function deletePayment(paymentId: string): Promise<Result> {
-  // Payments are only removable by admins, and only while the invoice isn't paid.
+  // Payments are only removable by admins. Deleting the payment that settled an
+  // invoice reverts it from 'paid' back to 'sent' so overpayment typos and other
+  // mistakes are recoverable.
   await requireRole('admin')
 
   const supabase = await createClient()
@@ -512,16 +542,41 @@ export async function deletePayment(paymentId: string): Promise<Result> {
 
   const { data: invoice } = await supabase
     .from('invoices')
-    .select('id, status, job_id')
+    .select('id, status, job_id, gst_rate')
     .eq('id', payment.invoice_id)
     .single()
   if (!invoice) return { error: 'Invoice not found' }
-  if (invoice.status === 'paid') {
-    return { error: 'Payments on a paid invoice cannot be removed' }
-  }
 
   const { error } = await supabase.from('payments').delete().eq('id', paymentId)
   if (error) return { error: error.message }
+
+  // Recompute Σ payments; if a previously-paid invoice now falls below its total,
+  // revert it to 'sent' (clear paid_at) and re-sync the job so it reverts too.
+  if (invoice.status === 'paid') {
+    const [{ data: lines }, { data: payments }] = await Promise.all([
+      supabase
+        .from('invoice_lines')
+        .select('qty, unit_sell')
+        .eq('invoice_id', invoice.id),
+      supabase.from('payments').select('amount').eq('invoice_id', invoice.id),
+    ])
+
+    const { total } = docTotals(
+      (lines ?? []).map((l) => ({ qty: Number(l.qty), unitSell: Number(l.unit_sell) })),
+      Number(invoice.gst_rate)
+    )
+    const paid = round2((payments ?? []).reduce((s, p) => s + Number(p.amount), 0))
+
+    if (paid < total) {
+      const { error: updErr } = await supabase
+        .from('invoices')
+        .update({ status: 'sent', paid_at: null })
+        .eq('id', invoice.id)
+      if (updErr) return { error: updErr.message }
+
+      await syncJobStatus(supabase, invoice.job_id)
+    }
+  }
 
   revalidateInvoice(invoice.id, invoice.job_id)
   return {}
