@@ -20,6 +20,7 @@ const PARENT_TYPES = [
   'package',
   'incident',
   'form_submission',
+  'ncr',
 ] as const
 
 const KINDS = ['photo', 'docket', 'document', 'pdf'] as const
@@ -52,6 +53,8 @@ function revalidateParent(parentType: string, parentId: string) {
     revalidatePath(`/field/safety/submission/${parentId}`)
   } else if (parentType === 'incident') {
     revalidatePath(`/field/safety/incident/${parentId}`)
+  } else if (parentType === 'ncr') {
+    revalidatePath(`/whs/ncr/${parentId}`)
   } else {
     revalidatePath(`/${parentType}s/${parentId}`)
   }
