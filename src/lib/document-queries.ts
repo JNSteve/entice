@@ -56,13 +56,16 @@ export interface DocumentDetail {
 
 /**
  * Builds the acknowledgement register for a single issued document: every
- * ACTIVE staff profile vs whether they have acknowledged the document's current
- * version ordinal. Mirrors the SWMS sign-on register pattern.
+ * ACTIVE staff profile vs whether they have acknowledged THIS document row.
+ *
+ * Matching is by `document_id` alone. Each issued version is its own documents
+ * row, so the row id is a stable key: deleting a superseded predecessor (which
+ * shifts chain ordinals) never changes which acks match this row. The stored
+ * `version` ordinal is informational only and is not used for matching.
  */
 export async function fetchAckRegister(
   supabase: SupabaseClient,
-  documentId: string,
-  versionOrd: number
+  documentId: string
 ): Promise<AckRegisterRow[]> {
   const [{ data: staff }, { data: acks }] = await Promise.all([
     supabase
@@ -72,9 +75,8 @@ export async function fetchAckRegister(
       .order('full_name'),
     supabase
       .from('document_acknowledgements')
-      .select('user_id, acknowledged_at, version')
-      .eq('document_id', documentId)
-      .eq('version', versionOrd),
+      .select('user_id, acknowledged_at')
+      .eq('document_id', documentId),
   ])
 
   const ackedAtByUser = new Map(

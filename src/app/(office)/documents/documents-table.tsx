@@ -900,7 +900,7 @@ export function DocumentsTable({ rows, canManage, isAdmin }: DocumentsTableProps
   function handleAcknowledge(row: DocumentRow) {
     setBusyId(row.id)
     startTransition(async () => {
-      const result = await acknowledgeDocument(row.id, row.versionOrdinal)
+      const result = await acknowledgeDocument(row.id)
       setBusyId(null)
       if (result.error) {
         toast.error(result.error)

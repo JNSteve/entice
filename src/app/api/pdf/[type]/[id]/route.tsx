@@ -977,7 +977,7 @@ async function formPdf(id: string): Promise<Response> {
     supabase
       .from('form_submissions')
       .select(
-        `id, kind, template_id, template_version, submitted_at, data,
+        `id, kind, template_id, template_version, submitted_at, data, schema_snapshot,
          projects(number, name),
          jobs(number, title),
          plant(name),
@@ -1043,7 +1043,11 @@ async function formPdf(id: string): Promise<Response> {
       : (s.signature_data as string | null) ?? null,
   }))
 
-  const schema = (templateRel?.schema ?? []) as FormField[]
+  // Prefer the schema captured at submit time; legacy rows fall back to the
+  // template's CURRENT schema.
+  const schema = ((submission.schema_snapshot as FormField[] | null) ??
+    templateRel?.schema ??
+    []) as FormField[]
 
   const buffer = await renderToBuffer(
     <FormPdf

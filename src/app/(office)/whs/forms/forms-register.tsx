@@ -52,6 +52,8 @@ export interface SubmissionRow {
   signonCount: number
   externalCount: number
   data: Record<string, unknown>
+  /** Schema captured at submit time; null for legacy rows (fall back to template). */
+  schemaSnapshot: FormField[] | null
 }
 
 export interface SignonDetail {
@@ -382,13 +384,19 @@ export function FormsRegister({ rows, projects, profiles, filters, highlight }: 
 
     const supabase = createClient()
 
-    // Fetch template schema, signons, and attachment count in parallel
+    // Prefer the schema captured at submit time; only legacy rows (null snapshot)
+    // fall back to the template's CURRENT schema.
+    const needsTemplateSchema = row.schemaSnapshot === null
+
+    // Fetch template schema (only if needed), signons, and attachment count in parallel
     const [templateRes, signonsRes, attachmentsRes] = await Promise.all([
-      supabase
-        .from('form_templates')
-        .select('schema')
-        .eq('id', row.templateId)
-        .single(),
+      needsTemplateSchema
+        ? supabase
+            .from('form_templates')
+            .select('schema')
+            .eq('id', row.templateId)
+            .single()
+        : Promise.resolve({ data: null }),
       supabase
         .from('form_signons')
         .select('id, name, company, profile_id, signed_at, signature_data, signature_path')
@@ -401,7 +409,9 @@ export function FormsRegister({ rows, projects, profiles, filters, highlight }: 
         .eq('parent_id', row.id),
     ])
 
-    setDrawerSchema((templateRes.data?.schema as FormField[]) ?? [])
+    setDrawerSchema(
+      row.schemaSnapshot ?? (templateRes.data?.schema as FormField[]) ?? []
+    )
     setDrawerAttachmentCount(attachmentsRes.count ?? 0)
 
     const rawSignons = (signonsRes.data ?? []) as SignonDetail[]

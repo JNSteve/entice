@@ -50,8 +50,8 @@ export default async function DocumentsPage() {
   const ackRegisters = new Map<string, AckRegisterRow[]>()
   await Promise.all(
     issued.map(async (d) => {
-      const ord = versionOrdinal(d.id as string, supersedesById)
-      const register = await fetchAckRegister(supabase, d.id as string, ord)
+      // Match acks by the document ROW id (robust to predecessor deletion).
+      const register = await fetchAckRegister(supabase, d.id as string)
       ackRegisters.set(d.id as string, register)
     })
   )

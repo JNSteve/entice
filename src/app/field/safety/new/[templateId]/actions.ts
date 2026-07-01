@@ -62,6 +62,9 @@ export async function submitForm(input: unknown): Promise<Result> {
     .insert({
       template_id: template.id,
       template_version: Number(template.version),
+      // Snapshot the schema so this submission always renders against the field
+      // set it was captured with, even after the template is edited in place.
+      schema_snapshot: template.schema,
       kind: template.kind,
       project_id: parsed.data.project_id,
       job_id: parsed.data.job_id,

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole, getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { versionOrdinal } from '@/lib/document-queries'
 import { documentSchema, documentUpdateSchema } from '@/lib/zod'
 
 type Result = { error?: string }
@@ -303,15 +304,17 @@ export async function deleteDocument(id: string): Promise<Result> {
 
 /**
  * The signed-in user acknowledges they have read the CURRENT version of an
- * issued document. `version` is the chain ordinal (1 = original, 2 = first
- * revision, …) so a new issued version resets everyone's acknowledgement.
- * A second acknowledgement for the same (document, user, version) is rejected
- * by the unique constraint and reported as already-acknowledged.
+ * issued document. Each issued version is its own `documents` row, and the
+ * acknowledgement stores `document_id` pointing at that exact row — so the row
+ * identity is a stable, un-spoofable key. Matching (see fetchAckRegister) is by
+ * `document_id` alone, robust to a superseded predecessor being deleted.
+ *
+ * The stored `version` ordinal is DERIVED SERVER-SIDE from the supersedes chain
+ * (never the client value) and is informational only. A second acknowledgement
+ * for the same (document, user) is rejected by the unique index and reported as
+ * already-acknowledged. The client-supplied argument is ignored.
  */
-export async function acknowledgeDocument(
-  documentId: string,
-  version: number
-): Promise<Result> {
+export async function acknowledgeDocument(documentId: string): Promise<Result> {
   const profile = await getProfile()
   if (!profile) return { error: 'Not signed in' }
 
@@ -325,6 +328,17 @@ export async function acknowledgeDocument(
     .single()
   if (!doc) return { error: 'Document not found' }
   if (doc.status !== 'issued') return { error: 'Only issued documents can be acknowledged' }
+
+  // Derive the informational version ordinal server-side (chain depth), never
+  // trusting the client. Load the supersedes graph and walk predecessors.
+  const { data: chain } = await supabase
+    .from('documents')
+    .select('id, supersedes_id')
+    .not('supersedes_id', 'is', null)
+  const supersedesById = new Map<string, string | null>(
+    (chain ?? []).map((d) => [d.id as string, (d.supersedes_id as string | null) ?? null])
+  )
+  const version = versionOrdinal(documentId, supersedesById)
 
   const { error } = await supabase.from('document_acknowledgements').insert({
     document_id: documentId,

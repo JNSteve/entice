@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { FormsRegister } from './forms-register'
-import type { FormTemplateKind } from '@/lib/zod'
+import type { FormField, FormTemplateKind } from '@/lib/zod'
 
 export default async function WhsFormsPage({
   searchParams,
@@ -21,7 +21,7 @@ export default async function WhsFormsPage({
   let query = supabase
     .from('form_submissions')
     .select(
-      `id, kind, template_id, template_version, submitted_at, data,
+      `id, kind, template_id, template_version, submitted_at, data, schema_snapshot,
        projects(id, number, name),
        jobs(id, number, title),
        plant(id, name),
@@ -92,6 +92,7 @@ export default async function WhsFormsPage({
       signonCount,
       externalCount,
       data: (s.data ?? {}) as Record<string, unknown>,
+      schemaSnapshot: (s.schema_snapshot as FormField[] | null) ?? null,
     }
   })
 

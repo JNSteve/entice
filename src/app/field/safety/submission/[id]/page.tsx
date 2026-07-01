@@ -81,7 +81,7 @@ export default async function FormSubmissionPage({
     .from('form_submissions')
     .select(
       `id, template_id, template_version, kind, project_id, job_id, plant_id,
-       data, submitted_by, submitted_at,
+       data, schema_snapshot, submitted_by, submitted_at,
        form_templates(name, schema, requires_signon),
        projects(number, name), jobs(number, title), plant(name, rego),
        profiles(full_name)`
@@ -114,11 +114,15 @@ export default async function FormSubmissionPage({
   const isMine = submission.submitted_by === profile.id
   const isStaff = profile.role === 'admin' || profile.role === 'office'
   const requiresSignon = Boolean(template?.requires_signon)
-  const schema = (template?.schema ?? []).filter((f) => f.type !== 'photo')
+  // Render against the schema captured at submit time; legacy rows (null
+  // snapshot) fall back to the template's CURRENT schema.
+  const snapshotSchema = submission.schema_snapshot as FormField[] | null
+  const effectiveSchema = snapshotSchema ?? template?.schema ?? []
+  const schema = effectiveSchema.filter((f) => f.type !== 'photo')
   const data = (submission.data ?? {}) as Record<string, unknown>
 
-  // Template drift: data keys the (current) schema doesn't know about.
-  const schemaKeys = new Set((template?.schema ?? []).map((f) => f.key))
+  // Drift: data keys the effective schema doesn't know about.
+  const schemaKeys = new Set(effectiveSchema.map((f) => f.key))
   const extraKeys = Object.keys(data).filter((k) => !schemaKeys.has(k))
 
   const targetLabel = projectRel
