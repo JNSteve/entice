@@ -4,6 +4,12 @@ import React, { useState, useRef, useTransition } from 'react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { recordAttachment } from '@/lib/attachments'
+import {
+  buildStorageKey,
+  removeUploadedObject,
+  safeContentType,
+  validateUploadFile,
+} from '@/lib/storage-keys'
 import { Button } from '@/components/ui/button'
 import {
   CameraIcon,
@@ -45,21 +51,19 @@ interface CaptureClientProps {
 type Kind = 'photo' | 'docket'
 
 interface UploadState {
+  /** Stable id — status updates target this, not an array index (a batch of
+   * files would otherwise all share the same stale-closure index). */
+  id: string
   file: File
   name: string
   status: 'uploading' | 'done' | 'error'
   error?: string
 }
 
-const MAX_SIZE = 25 * 1024 * 1024
 const MAX_EDGE = 1600
 const JPEG_QUALITY = 0.82
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_')
-}
 
 async function downscaleImage(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) return file
@@ -354,37 +358,43 @@ export function CaptureClient({
     })
   }
 
+  function setUploadStatus(id: string, update: Partial<UploadState>) {
+    setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...update } : u)))
+  }
+
   async function uploadFile(file: File) {
     if (!selectedTarget) {
       toast.error('Pick a target first')
       return
     }
 
-    const idx = uploads.length
-    setUploads((prev) => [...prev, { file, name: file.name, status: 'uploading' }])
+    const id = crypto.randomUUID()
+    setUploads((prev) => [...prev, { id, file, name: file.name, status: 'uploading' }])
+
+    const supabase = createClient()
+    let path: string | null = null
+    let uploaded = false
 
     try {
       const isPhoto = kind === 'photo'
       const processedFile = isPhoto ? await downscaleImage(file) : file
-      const sanitized = sanitizeFilename(processedFile.name)
-      const path = `${selectedTarget.type}/${selectedTarget.id}/${crypto.randomUUID()}-${sanitized}`
+      path = buildStorageKey(
+        `${selectedTarget.type}/${selectedTarget.id}`,
+        processedFile.name
+      )
 
-      const supabase = createClient()
       const { error: storageError } = await supabase.storage
         .from('attachments')
         .upload(path, processedFile, {
-          contentType: processedFile.type || 'application/octet-stream',
+          contentType: safeContentType(processedFile.type),
           upsert: false,
         })
 
       if (storageError) {
-        setUploads((prev) =>
-          prev.map((u, i) =>
-            i === idx ? { ...u, status: 'error', error: storageError.message } : u
-          )
-        )
+        setUploadStatus(id, { status: 'error', error: storageError.message })
         return
       }
+      uploaded = true
 
       const extraMeta =
         kind === 'docket'
@@ -400,7 +410,7 @@ export function CaptureClient({
         parent_id: selectedTarget.id,
         path,
         filename: file.name,
-        content_type: processedFile.type || 'application/octet-stream',
+        content_type: safeContentType(processedFile.type),
         size: processedFile.size,
         kind,
         caption: caption.trim() || null,
@@ -408,18 +418,12 @@ export function CaptureClient({
       })
 
       if (result.error) {
-        await supabase.storage.from('attachments').remove([path])
-        setUploads((prev) =>
-          prev.map((u, i) =>
-            i === idx ? { ...u, status: 'error', error: result.error } : u
-          )
-        )
+        await removeUploadedObject(supabase, path)
+        setUploadStatus(id, { status: 'error', error: result.error })
         return
       }
 
-      setUploads((prev) =>
-        prev.map((u, i) => (i === idx ? { ...u, status: 'done' } : u))
-      )
+      setUploadStatus(id, { status: 'done' })
 
       // Get signed URL for the new upload and add to recent list
       const { data: urlData } = await createClient()
@@ -440,10 +444,11 @@ export function CaptureClient({
         ...prev,
       ])
     } catch (err) {
+      // recordAttachment threw (network drop / server 500) — the object may
+      // already exist, so run the same compensating cleanup as the error path.
+      if (uploaded && path) await removeUploadedObject(supabase, path)
       const msg = err instanceof Error ? err.message : 'Upload failed'
-      setUploads((prev) =>
-        prev.map((u, i) => (i === idx ? { ...u, status: 'error', error: msg } : u))
-      )
+      setUploadStatus(id, { status: 'error', error: msg })
     }
   }
 
@@ -456,8 +461,9 @@ export function CaptureClient({
       return
     }
     for (const file of Array.from(files)) {
-      if (file.size > MAX_SIZE) {
-        toast.error(`${file.name} exceeds the 25 MB limit and was skipped.`)
+      const problem = validateUploadFile(file)
+      if (problem) {
+        toast.error(problem)
         continue
       }
       uploadFile(file)
@@ -587,9 +593,9 @@ export function CaptureClient({
       {/* Upload status list */}
       {uploads.length > 0 && (
         <div className="flex flex-col gap-1.5">
-          {uploads.map((u, i) => (
+          {uploads.map((u) => (
             <div
-              key={i}
+              key={u.id}
               className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
             >
               {u.status === 'uploading' && (

@@ -30,8 +30,15 @@ const attachmentInputSchema = z.object({
   parent_id: z.string().uuid(),
   path: z.string().min(1),
   filename: z.string().min(1),
+  // Callers must send a fallback (safeContentType) for browsers that report
+  // an empty MIME type — min(1) rejects '' AFTER the object is uploaded.
   content_type: z.string().min(1),
-  size: z.number().int().positive(),
+  // Clients pre-check this (validateUploadFile), so the message here is a
+  // backstop for anything that slips through.
+  size: z
+    .number()
+    .int()
+    .positive('File is empty — it may not have finished syncing'),
   kind: z.enum(KINDS),
   caption: z.string().optional().nullable(),
   meta: z.record(z.string(), z.unknown()).optional().nullable(),
@@ -132,23 +139,28 @@ export async function deleteAttachment(
     return { error: 'You do not have permission to delete this attachment' }
   }
 
-  // Remove the storage object first
-  const { error: storageError } = await supabase.storage
-    .from(row.bucket ?? 'attachments')
-    .remove([row.path])
-
-  if (storageError) {
-    // Log but don't block row deletion — orphaned storage objects are recoverable
-    console.error('Storage delete error:', storageError.message)
-  }
-
-  // Delete the row
+  // Delete the row FIRST (an orphaned storage object is recoverable, a row
+  // pointing at a deleted object is not), then best-effort remove the object.
   const { error: deleteError } = await supabase
     .from('attachments')
     .delete()
     .eq('id', id)
 
   if (deleteError) return { error: deleteError.message }
+
+  const { data: removed, error: storageError } = await supabase.storage
+    .from(row.bucket ?? 'attachments')
+    .remove([row.path])
+
+  // Supabase reports RLS-filtered deletes as success-with-empty-list, so an
+  // empty result means nothing was removed — log it so orphans are visible.
+  if (storageError || !removed || removed.length === 0) {
+    console.error(
+      'Storage delete skipped/failed for',
+      row.path,
+      storageError?.message ?? 'no object removed (missing or filtered by RLS)'
+    )
+  }
 
   revalidateParent(row.parent_type, row.parent_id)
 

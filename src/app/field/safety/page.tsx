@@ -111,7 +111,11 @@ export default async function FieldSafetyPage() {
   ])
 
   // Sign the document files server-side (private bucket, 1h links).
-  const docPaths = (safetyDocs ?? []).map((d) => d.file_path as string)
+  // Defensive null filter — issued docs should always have a file, but that
+  // is only enforced at the app layer (issueDocument).
+  const docPaths = (safetyDocs ?? [])
+    .map((d) => d.file_path as string | null)
+    .filter((p): p is string => Boolean(p))
   const docUrlByPath = new Map<string, string>()
   if (docPaths.length > 0) {
     const { data: signed } = await supabase.storage

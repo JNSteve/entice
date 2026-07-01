@@ -945,10 +945,12 @@ export type SwmsInstanceCreateInput = z.infer<typeof swmsInstanceCreateSchema>
 export const swmsSignSchema = z.object({
   instance_id: z.uuid(),
   name: z.string().min(1, 'Name is required'),
-  /** PNG data URL exported from the signature pad. */
+  /** PNG data URL exported from the signature pad. Char cap mirrors
+   * formSignonSchema / the swms_signatures_signature_data DB check. */
   signature: z
     .string()
-    .startsWith('data:image/png;base64,', 'Signature must be a PNG image'),
+    .startsWith('data:image/png;base64,', 'Signature must be a PNG image')
+    .max(140000, 'Signature image is too large'),
 })
 
 export type SwmsSignInput = z.infer<typeof swmsSignSchema>
@@ -1012,6 +1014,8 @@ export type DocketMeta = z.infer<typeof docketMetaSchema>
 
 export const costFromDocketSchema = z.object({
   attachment_id: z.string().uuid(),
+  /** Mirrors costs_parent_type_check — the COSTS row's parent, deliberately
+   * narrower than attachments.parent_type. Do not widen. */
   parent_type: z.enum(['job', 'project']),
   parent_id: z.string().uuid(),
   date: z.string().min(1, 'Date is required'),

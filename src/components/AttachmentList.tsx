@@ -24,8 +24,8 @@ import { fmtDate } from '@/lib/format'
 export interface AttachmentItem {
   id: string
   filename: string
-  content_type: string
-  size: number
+  content_type: string | null
+  size: number | null
   kind: 'photo' | 'docket' | 'document' | 'pdf'
   caption: string | null
   created_by: string
@@ -41,14 +41,15 @@ interface AttachmentListProps {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatBytes(bytes: number): string {
+function formatBytes(bytes: number | null | undefined): string {
+  if (bytes == null) return '—'
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-function FileTypeIcon({ contentType }: { contentType: string }) {
-  if (contentType.startsWith('image/')) return <FileImageIcon className="size-4 shrink-0 text-muted-foreground" />
+function FileTypeIcon({ contentType }: { contentType: string | null }) {
+  if (contentType?.startsWith('image/')) return <FileImageIcon className="size-4 shrink-0 text-muted-foreground" />
   if (contentType === 'application/pdf') return <FileTextIcon className="size-4 shrink-0 text-muted-foreground" />
   return <FileIcon className="size-4 shrink-0 text-muted-foreground" />
 }

@@ -65,13 +65,18 @@ export async function signSwms(data: unknown): Promise<Result> {
     .maybeSingle()
   if (existing) return { error: 'You have already signed this version' }
 
-  const path = `swms/${instance_id}/${profile.id}-v${version}.png`
+  // Unique key per attempt: a deterministic key could collide with a stale
+  // object left by an earlier upload-OK/insert-failed attempt, silently
+  // keeping the FIRST drawing (signers cannot overwrite or delete under RLS).
+  // A rare orphaned PNG from a failed attempt is the accepted trade-off.
+  const path = `swms/${instance_id}/${profile.id}-v${version}-${crypto
+    .randomUUID()
+    .slice(0, 8)}.png`
 
   const { error: uploadError } = await supabase.storage
     .from('attachments')
     .upload(path, png, { contentType: 'image/png' })
-  // A leftover object from an earlier failed attempt is fine — reuse it.
-  if (uploadError && !/already exists|duplicate/i.test(uploadError.message)) {
+  if (uploadError) {
     return { error: uploadError.message }
   }
 

@@ -94,10 +94,15 @@ export async function updateDocument(id: string, data: unknown): Promise<Result>
     .from('documents')
     .update(parsed.data)
     .eq('id', id)
+    // Controlled metadata is frozen once issued — mirror attachDocumentFile's
+    // precondition rather than relying on the UI hiding the Edit action.
+    .in('status', ['draft', 'in_review', 'approved'])
     .select('id')
 
   if (error) return { error: error.message }
-  if (!updated || updated.length === 0) return { error: 'Document not found' }
+  if (!updated || updated.length === 0) {
+    return { error: 'Document cannot be changed once issued' }
+  }
 
   revalidateDocuments()
   return {}
@@ -119,6 +124,14 @@ export async function attachDocumentFile(
   }
 
   const supabase = await createClient()
+
+  // Remember the current file so a replacement doesn't orphan it.
+  const { data: current } = await supabase
+    .from('documents')
+    .select('file_path')
+    .eq('id', id)
+    .single()
+
   const { data: updated, error } = await supabase
     .from('documents')
     .update({
@@ -134,6 +147,15 @@ export async function attachDocumentFile(
   if (error) return { error: error.message }
   if (!updated || updated.length === 0) {
     return { error: 'Document cannot be changed once issued' }
+  }
+
+  // Best-effort cleanup of the replaced object (same pattern as deleteDocument).
+  const oldPath = current?.file_path as string | null
+  if (oldPath && oldPath !== file.file_path) {
+    const { error: storageError } = await supabase.storage
+      .from('attachments')
+      .remove([oldPath])
+    if (storageError) console.error('Storage delete error:', storageError.message)
   }
 
   revalidateDocuments()

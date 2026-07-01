@@ -51,19 +51,43 @@ export async function setSubbieSwmsStatus(
   const terminal =
     parsed.data.status === 'accepted' || parsed.data.status === 'rejected'
 
-  // Accepted submissions also become a project document. Insert the
+  // Accepted submissions also become a project document. COPY the object
+  // (never alias the submission's path) so deleting the project document
+  // later cannot destroy the SWMS register's file, then insert the
   // attachments row first so a failure leaves the review state untouched.
   let attachmentId: string | null = null
+  let copiedPath: string | null = null
   if (parsed.data.status === 'accepted') {
+    const destFolder = `project/${existing.project_id}`
+    const destName = `${crypto.randomUUID()}-swms.pdf`
+    copiedPath = `${destFolder}/${destName}`
+
+    const { error: copyError } = await supabase.storage
+      .from('attachments')
+      .copy(existing.file_path, copiedPath)
+    if (copyError) {
+      return { error: `Could not copy the SWMS file: ${copyError.message}` }
+    }
+
+    // The submission row doesn't store the byte size — read it off the copy.
+    const { data: listed } = await supabase.storage
+      .from('attachments')
+      .list(destFolder, { search: destName })
+    const size =
+      (listed?.find((o) => o.name === destName)?.metadata as
+        | { size?: number }
+        | undefined)?.size ?? null
+
     const { data: attachment, error: attachmentError } = await supabase
       .from('attachments')
       .insert({
         parent_type: 'project',
         parent_id: existing.project_id,
         bucket: 'attachments',
-        path: existing.file_path,
+        path: copiedPath,
         filename: `${existing.company_name} — ${existing.title}.pdf`,
         content_type: 'application/pdf',
+        size,
         kind: 'document',
         meta: { subbie_swms_id: existing.id, company: existing.company_name },
         created_by: profile.id,
@@ -71,6 +95,7 @@ export async function setSubbieSwmsStatus(
       .select('id')
       .single()
     if (attachmentError || !attachment) {
+      await supabase.storage.from('attachments').remove([copiedPath])
       return { error: attachmentError?.message ?? 'Could not file the document' }
     }
     attachmentId = attachment.id as string
@@ -95,8 +120,12 @@ export async function setSubbieSwmsStatus(
 
   if (error || !updated || updated.length === 0) {
     // Roll back the document we just filed so accept stays all-or-nothing.
+    // The copied object goes too — it's ours, the register's original stays.
     if (attachmentId) {
       await supabase.from('attachments').delete().eq('id', attachmentId)
+    }
+    if (copiedPath) {
+      await supabase.storage.from('attachments').remove([copiedPath])
     }
     return {
       error:

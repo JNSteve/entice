@@ -7,8 +7,9 @@ export interface AttachmentRow {
   bucket: string
   path: string
   filename: string
-  content_type: string
-  size: number
+  /** Nullable in the DB (e.g. rows filed by server flows) — treat as optional. */
+  content_type: string | null
+  size: number | null
   kind: 'photo' | 'docket' | 'document' | 'pdf'
   caption: string | null
   meta: Record<string, unknown> | null

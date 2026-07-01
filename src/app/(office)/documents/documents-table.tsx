@@ -17,6 +17,12 @@ import {
   UploadIcon,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
+import {
+  buildStorageKey,
+  removeUploadedObject,
+  safeContentType,
+  validateUploadFile,
+} from '@/lib/storage-keys'
 import { AuditHistory } from '@/components/AuditHistory'
 import type { AuditRow } from '@/lib/audit-queries'
 import type { AckRegisterRow } from '@/lib/document-queries'
@@ -136,12 +142,6 @@ function SystemBadge({ system }: { system: DocSystem }) {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const MAX_SIZE = 25 * 1024 * 1024 // 25 MB
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_')
-}
-
 function titleFromFilename(name: string): string {
   return name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim()
 }
@@ -257,8 +257,9 @@ function DocumentDialog({
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0] ?? null
-    if (f && f.size > MAX_SIZE) {
-      toast.error(`${f.name} exceeds the 25 MB limit`)
+    const problem = f ? validateUploadFile(f) : null
+    if (problem) {
+      toast.error(problem)
       e.target.value = ''
       setFile(null)
       return
@@ -280,11 +281,11 @@ function DocumentDialog({
       const supabase = createClient()
 
       if (file) {
-        const path = `documents/${crypto.randomUUID()}-${sanitizeFilename(file.name)}`
+        const path = buildStorageKey('documents', file.name)
         const { error: storageError } = await supabase.storage
           .from('attachments')
           .upload(path, file, {
-            contentType: file.type || 'application/octet-stream',
+            contentType: safeContentType(file.type),
             upsert: false,
           })
         if (storageError) {
@@ -294,7 +295,7 @@ function DocumentDialog({
         filePayload = {
           file_path: path,
           filename: file.name,
-          content_type: file.type || 'application/octet-stream',
+          content_type: safeContentType(file.type),
           size: file.size,
         }
       }
@@ -313,7 +314,7 @@ function DocumentDialog({
 
       if (result.error) {
         if (filePayload.file_path) {
-          await supabase.storage.from('attachments').remove([filePayload.file_path])
+          await removeUploadedObject(supabase, filePayload.file_path)
         }
         toast.error(result.error)
         return
@@ -491,16 +492,17 @@ function EditDocumentDialog({
       }
 
       if (file && canAttach) {
-        if (file.size > MAX_SIZE) {
-          toast.error(`${file.name} exceeds the 25 MB limit`)
+        const problem = validateUploadFile(file)
+        if (problem) {
+          toast.error(problem)
           return
         }
         const supabase = createClient()
-        const path = `documents/${crypto.randomUUID()}-${sanitizeFilename(file.name)}`
+        const path = buildStorageKey('documents', file.name)
         const { error: storageError } = await supabase.storage
           .from('attachments')
           .upload(path, file, {
-            contentType: file.type || 'application/octet-stream',
+            contentType: safeContentType(file.type),
             upsert: false,
           })
         if (storageError) {
@@ -510,11 +512,11 @@ function EditDocumentDialog({
         const attach = await attachDocumentFile(row.id, {
           file_path: path,
           filename: file.name,
-          content_type: file.type || 'application/octet-stream',
+          content_type: safeContentType(file.type),
           size: file.size,
         })
         if (attach.error) {
-          await supabase.storage.from('attachments').remove([path])
+          await removeUploadedObject(supabase, path)
           toast.error(attach.error)
           return
         }

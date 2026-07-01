@@ -4,6 +4,12 @@ import React, { useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { recordAttachment } from '@/lib/attachments'
+import {
+  buildStorageKey,
+  removeUploadedObject,
+  safeContentType,
+  validateUploadFile,
+} from '@/lib/storage-keys'
 import { Button } from '@/components/ui/button'
 import { UploadIcon, CheckIcon, XIcon, RefreshCwIcon, Loader2Icon } from 'lucide-react'
 
@@ -12,6 +18,8 @@ import { UploadIcon, CheckIcon, XIcon, RefreshCwIcon, Loader2Icon } from 'lucide
 type Kind = 'photo' | 'docket' | 'document'
 
 interface FileState {
+  /** Stable id — status updates target this, not an array index. */
+  id: string
   file: File
   name: string
   status: 'pending' | 'uploading' | 'done' | 'error'
@@ -29,15 +37,10 @@ interface PhotoUploadProps {
   extraMeta?: Record<string, unknown>
 }
 
-const MAX_SIZE = 25 * 1024 * 1024 // 25 MB
 const MAX_EDGE = 1600
 const JPEG_QUALITY = 0.82
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9._-]/g, '_')
-}
 
 async function downscaleImage(file: File): Promise<File> {
   if (!file.type.startsWith('image/')) return file
@@ -107,39 +110,42 @@ export function PhotoUpload({
   const isPhoto = kind === 'photo'
   const accept = isPhoto ? 'image/*' : undefined
 
-  function setStatus(index: number, update: Partial<FileState>) {
+  function setStatus(id: string, update: Partial<FileState>) {
     setFileStates((prev) =>
-      prev.map((f, i) => (i === index ? { ...f, ...update } : f))
+      prev.map((f) => (f.id === id ? { ...f, ...update } : f))
     )
   }
 
-  async function uploadFile(file: File, index: number) {
-    setStatus(index, { status: 'uploading', error: undefined })
+  async function uploadFile(file: File, id: string) {
+    setStatus(id, { status: 'uploading', error: undefined })
+
+    const supabase = createClient()
+    let path: string | null = null
+    let uploaded = false
 
     try {
       const processedFile = isPhoto ? await downscaleImage(file) : file
-      const sanitized = sanitizeFilename(processedFile.name)
-      const path = `${parentType}/${parentId}/${crypto.randomUUID()}-${sanitized}`
+      path = buildStorageKey(`${parentType}/${parentId}`, processedFile.name)
 
-      const supabase = createClient()
       const { error: storageError } = await supabase.storage
         .from('attachments')
         .upload(path, processedFile, {
-          contentType: processedFile.type || 'application/octet-stream',
+          contentType: safeContentType(processedFile.type),
           upsert: false,
         })
 
       if (storageError) {
-        setStatus(index, { status: 'error', error: storageError.message })
+        setStatus(id, { status: 'error', error: storageError.message })
         return
       }
+      uploaded = true
 
       const result = await recordAttachment({
         parent_type: parentType,
         parent_id: parentId,
         path,
         filename: file.name,
-        content_type: processedFile.type || 'application/octet-stream',
+        content_type: safeContentType(processedFile.type),
         size: processedFile.size,
         kind,
         caption: null,
@@ -148,16 +154,19 @@ export function PhotoUpload({
 
       if (result.error) {
         // Row failed — clean up storage object best-effort
-        await supabase.storage.from('attachments').remove([path])
-        setStatus(index, { status: 'error', error: result.error })
+        await removeUploadedObject(supabase, path)
+        setStatus(id, { status: 'error', error: result.error })
         return
       }
 
-      setStatus(index, { status: 'done' })
+      setStatus(id, { status: 'done' })
       onUploaded?.()
     } catch (err) {
+      // recordAttachment threw (network drop / server 500) — the object may
+      // already exist, so run the same compensating cleanup as the error path.
+      if (uploaded && path) await removeUploadedObject(supabase, path)
       const msg = err instanceof Error ? err.message : 'Upload failed'
-      setStatus(index, { status: 'error', error: msg })
+      setStatus(id, { status: 'error', error: msg })
     }
   }
 
@@ -165,14 +174,19 @@ export function PhotoUpload({
     if (!files) return
 
     const newStates: FileState[] = []
-    const startIndex = fileStates.length
 
     for (const file of Array.from(files)) {
-      if (file.size > MAX_SIZE) {
-        toast.error(`${file.name} exceeds the 25 MB limit and was skipped.`)
+      const problem = validateUploadFile(file)
+      if (problem) {
+        toast.error(problem)
         continue
       }
-      newStates.push({ file, name: file.name, status: 'pending' })
+      newStates.push({
+        id: crypto.randomUUID(),
+        file,
+        name: file.name,
+        status: 'pending',
+      })
     }
 
     if (newStates.length === 0) return
@@ -180,9 +194,9 @@ export function PhotoUpload({
     setFileStates((prev) => [...prev, ...newStates])
 
     // Start uploads after state update
-    newStates.forEach((_, i) => {
+    newStates.forEach((state) => {
       setTimeout(() => {
-        uploadFile(newStates[i].file, startIndex + i)
+        uploadFile(state.file, state.id)
       }, 0)
     })
   }
@@ -193,14 +207,14 @@ export function PhotoUpload({
     e.target.value = ''
   }
 
-  async function retryFile(index: number) {
-    const fs = fileStates[index]
+  async function retryFile(id: string) {
+    const fs = fileStates.find((f) => f.id === id)
     if (!fs || fs.status !== 'error') return
-    await uploadFile(fs.file, index)
+    await uploadFile(fs.file, id)
   }
 
-  function dismissFile(index: number) {
-    setFileStates((prev) => prev.filter((_, i) => i !== index))
+  function dismissFile(id: string) {
+    setFileStates((prev) => prev.filter((f) => f.id !== id))
   }
 
   const pending = fileStates.some((f) => f.status === 'uploading')
@@ -235,9 +249,9 @@ export function PhotoUpload({
 
       {fileStates.length > 0 && (
         <ul className="flex flex-col gap-1.5">
-          {fileStates.map((fs, i) => (
+          {fileStates.map((fs) => (
             <li
-              key={i}
+              key={fs.id}
               className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm"
             >
               {fs.status === 'uploading' && (
@@ -264,7 +278,7 @@ export function PhotoUpload({
                     type="button"
                     variant="ghost"
                     size="icon-sm"
-                    onClick={() => retryFile(i)}
+                    onClick={() => retryFile(fs.id)}
                   >
                     <RefreshCwIcon className="size-3.5" />
                     <span className="sr-only">Retry</span>
@@ -277,7 +291,7 @@ export function PhotoUpload({
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  onClick={() => dismissFile(i)}
+                  onClick={() => dismissFile(fs.id)}
                 >
                   <XIcon className="size-3.5" />
                   <span className="sr-only">Dismiss</span>
