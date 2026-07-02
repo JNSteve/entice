@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
+import { auLocalToInstant } from '@/lib/tz'
 import { validateSubmissionData } from '@/lib/form-validate'
 import {
   formSubmissionSchema,
@@ -103,9 +104,13 @@ export async function createIncident(input: unknown): Promise<Result> {
     return { error: err instanceof Error ? err.message : 'Numbering failed' }
   }
 
-  // datetime-local has no timezone; treat it as server-local (acceptable v1).
-  const occurredAt = new Date(parsed.data.occurred_at)
-  if (Number.isNaN(occurredAt.getTime())) {
+  // datetime-local has no timezone; the crew keys in Brisbane wall-clock time,
+  // so convert it to the real instant (never parse as server-local — the
+  // production server runs on UTC).
+  let occurredAt: string
+  try {
+    occurredAt = auLocalToInstant(parsed.data.occurred_at)
+  } catch {
     return { error: 'Invalid date/time for when it happened' }
   }
 
@@ -117,7 +122,7 @@ export async function createIncident(input: unknown): Promise<Result> {
       job_id: parsed.data.job_id,
       type: parsed.data.type,
       severity: parsed.data.severity,
-      occurred_at: occurredAt.toISOString(),
+      occurred_at: occurredAt,
       location: parsed.data.location,
       description: parsed.data.description,
       immediate_action: parsed.data.immediate_action,

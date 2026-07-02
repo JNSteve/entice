@@ -173,6 +173,21 @@ The WHS module lives at `/whs` (office hub: Overview / Forms / Incidents / Subbi
 
 No Supabase auth redirect URL allowlist configuration is needed — the app uses password-only authentication with no OAuth redirects.
 
+### Backups & retention
+
+Going live means the database becomes the system of record, so backups are part
+of go-live, not an afterthought:
+
+- Supabase Pro provides daily automated backups with 7-day point-in-time
+  recovery — confirm these stay enabled on the project.
+- **Settings → Data & Backup** (admin only) exports every business table to a
+  single `entice-backup-YYYYMMDD.json` — run it monthly and store the file
+  off-platform.
+- Retention periods, the export procedure and responsibilities are set out in
+  the [Records Retention & Backup Policy](docs/iso/records-retention-backup-policy.md)
+  (registered in the app as controlled document `INT-POL-001` — review and
+  adopt it via the Documents register).
+
 ---
 
 ## Phase 2 backlog

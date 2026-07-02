@@ -773,3 +773,14 @@ on conflict (id) do nothing;
 -- next_number('ncr') issues NCR-0004 onward (mirrors how numbering works
 -- elsewhere; never lower an existing value).
 update sequences set next_value = greatest(next_value, 4) where key = 'ncr';
+
+-- ─── 24. Records Retention & Backup Policy starter — ISO 7.5.3 ──────────────
+-- Placeholder controlled-document row (no file yet — the owner uploads the
+-- adopted PDF). Ready-to-adopt text lives in the repo at
+-- docs/iso/records-retention-backup-policy.md. Stable UUID + on conflict do
+-- nothing keep this idempotent, matching the section-22 starter documents.
+insert into documents
+  (id, title, category, system, doc_number, version, status, file_path, filename, review_due, notes, uploaded_by)
+values
+  ('d0c00000-0000-4000-a000-000000000010', 'Records Retention & Backup Policy', 'policy', 'integrated', 'INT-POL-001', 'Rev A', 'draft', null, null, null, 'Starter — review and adopt before use', (select id from profiles where role = 'admin' order by created_at limit 1))
+on conflict (id) do nothing;

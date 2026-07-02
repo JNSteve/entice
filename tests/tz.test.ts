@@ -1,5 +1,12 @@
 import { expect, test } from 'vitest'
-import { todayAU, dateAU, yesterdayAU, isFutureAU, nowAU } from '../src/lib/tz'
+import {
+  todayAU,
+  dateAU,
+  yesterdayAU,
+  isFutureAU,
+  nowAU,
+  auLocalToInstant,
+} from '../src/lib/tz'
 
 // 2026-06-24 23:30 UTC = 2026-06-25 09:30 Brisbane (+10)
 const lateUtc = new Date('2026-06-24T23:30:00Z')
@@ -30,6 +37,22 @@ test('isFutureAU', () => {
   expect(isFutureAU('2026-06-26', lateUtc)).toBe(true)
   expect(isFutureAU('2026-06-25', lateUtc)).toBe(false)
   expect(isFutureAU('2026-06-24', lateUtc)).toBe(false)
+})
+
+test('auLocalToInstant treats datetime-local as Brisbane wall-clock', () => {
+  // 08:00 Brisbane (+10, no DST) = 22:00 UTC the previous day
+  expect(auLocalToInstant('2026-07-02T08:00')).toBe('2026-07-01T22:00:00.000Z')
+  // Afternoon same-day case
+  expect(auLocalToInstant('2026-07-02T15:30')).toBe('2026-07-02T05:30:00.000Z')
+  // Seconds-bearing values pass through unchanged
+  expect(auLocalToInstant('2026-07-02T08:00:30')).toBe(
+    '2026-07-01T22:00:30.000Z'
+  )
+})
+
+test('auLocalToInstant throws on impossible dates', () => {
+  expect(() => auLocalToInstant('2026-13-40T99:99')).toThrow()
+  expect(() => auLocalToInstant('garbage')).toThrow()
 })
 
 test('nowAU local components match the Brisbane wall-clock', () => {

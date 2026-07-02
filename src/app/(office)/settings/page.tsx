@@ -12,6 +12,7 @@ const VALID_TABS: SettingsTab[] = [
   'checklists',
   'swms',
   'whs-forms',
+  'backup',
 ]
 
 export default async function SettingsPage({

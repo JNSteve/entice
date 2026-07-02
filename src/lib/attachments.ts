@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { createClient } from '@/lib/supabase/server'
-import { requireRole, getProfile } from '@/lib/auth'
+import { getProfile } from '@/lib/auth'
 
 // ─── Schema ──────────────────────────────────────────────────────────────────
 
@@ -24,6 +24,26 @@ const PARENT_TYPES = [
 ] as const
 
 const KINDS = ['photo', 'docket', 'document', 'pdf'] as const
+
+// Table each parent_type lives in — used to verify the claimed parent exists
+// before recording an attachment against it. The lookup runs under the
+// caller's OWN RLS session, so a role that cannot see a parent row (e.g. a
+// field user probing a money table) cannot attach to it either.
+const PARENT_TABLE: Record<(typeof PARENT_TYPES)[number], string> = {
+  job: 'jobs',
+  project: 'projects',
+  quote: 'quotes',
+  invoice: 'invoices',
+  claim: 'claims',
+  po: 'purchase_orders',
+  vendor: 'vendors',
+  diary: 'diaries',
+  variation: 'variations',
+  package: 'packages',
+  incident: 'incidents',
+  form_submission: 'form_submissions',
+  ncr: 'ncrs',
+}
 
 const attachmentInputSchema = z.object({
   parent_type: z.enum(PARENT_TYPES),
@@ -48,7 +68,11 @@ export type AttachmentInput = z.infer<typeof attachmentInputSchema>
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
-function revalidateParent(parentType: string, parentId: string) {
+async function revalidateParent(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  parentType: string,
+  parentId: string
+) {
   // Revalidate the most common parent pages
   if (parentType === 'job') {
     revalidatePath(`/jobs/${parentId}`)
@@ -62,6 +86,26 @@ function revalidateParent(parentType: string, parentId: string) {
     revalidatePath(`/field/safety/incident/${parentId}`)
   } else if (parentType === 'ncr') {
     revalidatePath(`/whs/ncr/${parentId}`)
+  } else if (parentType === 'variation') {
+    // Variations live under their project, not at a top-level /variations
+    const { data } = await supabase
+      .from('variations')
+      .select('project_id')
+      .eq('id', parentId)
+      .maybeSingle()
+    if (data?.project_id) {
+      revalidatePath(`/projects/${data.project_id}/variations`)
+    }
+  } else if (parentType === 'package') {
+    // Packages live under /projects/[id]/procurement/[packageId]
+    const { data } = await supabase
+      .from('packages')
+      .select('project_id')
+      .eq('id', parentId)
+      .maybeSingle()
+    if (data?.project_id) {
+      revalidatePath(`/projects/${data.project_id}/procurement/${parentId}`)
+    }
   } else {
     revalidatePath(`/${parentType}s/${parentId}`)
   }
@@ -83,6 +127,15 @@ export async function recordAttachment(
   }
 
   const supabase = await createClient()
+
+  // Verify the claimed parent actually exists, under the caller's own RLS —
+  // kills attachment rows pointing at made-up or invisible parent records.
+  const { data: parent } = await supabase
+    .from(PARENT_TABLE[parsed.data.parent_type])
+    .select('id')
+    .eq('id', parsed.data.parent_id)
+    .maybeSingle()
+  if (!parent) return { error: 'Parent record not found' }
 
   const { data, error } = await supabase
     .from('attachments')
@@ -106,7 +159,7 @@ export async function recordAttachment(
 
   if (error) return { error: error.message }
 
-  revalidateParent(parsed.data.parent_type, parsed.data.parent_id)
+  await revalidateParent(supabase, parsed.data.parent_type, parsed.data.parent_id)
 
   return { id: data.id }
 }
@@ -162,7 +215,7 @@ export async function deleteAttachment(
     )
   }
 
-  revalidateParent(row.parent_type, row.parent_id)
+  await revalidateParent(supabase, row.parent_type, row.parent_id)
 
   return {}
 }

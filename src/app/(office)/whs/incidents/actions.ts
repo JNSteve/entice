@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
+import { auLocalToInstant } from '@/lib/tz'
 import {
   incidentCreateSchema,
   incidentUpdateSchema,
@@ -38,6 +39,15 @@ export async function createIncident(
     throw new Error(`Failed to get next incident number: ${err.message}`)
   })
 
+  // datetime-local has no timezone; the value is Brisbane wall-clock time.
+  // Storing it raw would make Postgres read it as UTC — convert explicitly.
+  let occurredAt: string
+  try {
+    occurredAt = auLocalToInstant(parsed.data.occurred_at)
+  } catch {
+    return { error: 'Invalid date/time for when it happened' }
+  }
+
   const { data: row, error } = await supabase
     .from('incidents')
     .insert({
@@ -46,7 +56,7 @@ export async function createIncident(
       job_id: parsed.data.job_id,
       type: parsed.data.type,
       severity: parsed.data.severity,
-      occurred_at: parsed.data.occurred_at,
+      occurred_at: occurredAt,
       location: parsed.data.location ?? null,
       description: parsed.data.description,
       immediate_action: parsed.data.immediate_action ?? null,

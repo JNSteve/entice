@@ -36,6 +36,28 @@ export function isFutureAU(dateStr: string, now: Date = new Date()): boolean {
 }
 
 /**
+ * Interpret a datetime-local input value ('YYYY-MM-DDTHH:MM', optionally with
+ * seconds) as BRISBANE wall-clock time and return the corresponding UTC
+ * instant as an ISO string for storage. Never parse these strings with a bare
+ * `new Date(str)` (server-local — wrong on a UTC host) or store them raw
+ * (Postgres reads them as UTC — also wrong). Brisbane has no DST, so a fixed
+ * +10:00 offset is always correct.
+ *
+ * Throws on values that don't parse to a real date (e.g. '2026-13-40T99:99').
+ */
+export function auLocalToInstant(datetimeLocal: string): string {
+  // datetime-local omits seconds unless a sub-minute step is set; normalise.
+  const withSeconds = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(datetimeLocal)
+    ? `${datetimeLocal}:00`
+    : datetimeLocal
+  const d = new Date(`${withSeconds}+10:00`)
+  if (Number.isNaN(d.getTime())) {
+    throw new Error(`Invalid datetime-local value: ${datetimeLocal}`)
+  }
+  return d.toISOString()
+}
+
+/**
  * A Date whose *local* getters (getFullYear/getMonth/getDate, and therefore
  * date-fns helpers like format/startOfDay/differenceInCalendarDays that read the
  * local components) reflect the Brisbane wall-clock for `now`. Use this when a
