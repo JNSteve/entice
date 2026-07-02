@@ -6,7 +6,45 @@ import { Select as SelectPrimitive } from "@base-ui/react/select"
 import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
-const Select = SelectPrimitive.Root
+type CollectedItem = { value: unknown; label: React.ReactNode }
+
+/**
+ * Recursively collects `{ value, label }` pairs from `SelectItem` elements in
+ * the tree (through `SelectContent`, `SelectGroup`, fragments, arrays, …).
+ *
+ * Base UI's `Select.Value` renders the RAW value in the trigger unless the
+ * root receives an `items` prop mapping values to labels (unlike Radix, which
+ * echoes the selected item's children). Deriving `items` from the authored
+ * children heals every call site without touching them, and works during SSR
+ * because it never needs the popup to mount.
+ */
+function collectSelectItems(node: React.ReactNode, out: CollectedItem[]) {
+  React.Children.forEach(node, (child) => {
+    if (!React.isValidElement(child)) return
+    if (child.type === SelectItem) {
+      const { value, label, children } = child.props as SelectPrimitive.Item.Props
+      out.push({ value, label: children ?? label })
+      return
+    }
+    const children = (child.props as { children?: React.ReactNode } | null)
+      ?.children
+    if (children != null) collectSelectItems(children, out)
+  })
+}
+
+function Select<Value, Multiple extends boolean | undefined = false>(
+  props: SelectPrimitive.Root.Props<Value, Multiple>
+) {
+  let items = props.items
+  if (items == null) {
+    const collected: CollectedItem[] = []
+    collectSelectItems(props.children, collected)
+    if (collected.length > 0) {
+      items = collected as ReadonlyArray<{ value: Value; label: React.ReactNode }>
+    }
+  }
+  return <SelectPrimitive.Root {...props} items={items} />
+}
 
 function SelectGroup({ className, ...props }: SelectPrimitive.Group.Props) {
   return (
