@@ -1,11 +1,7 @@
 import { getProfile, requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
-import {
-  versionOrdinal,
-  fetchAckRegister,
-  type AckRegisterRow,
-} from '@/lib/document-queries'
+import { versionOrdinal, fetchAckRegisters } from '@/lib/document-queries'
 import type { DocCategory, DocSystem, DocStatus } from '@/lib/zod'
 import { DocumentsTable, type DocumentRow } from './documents-table'
 
@@ -46,15 +42,12 @@ export default async function DocumentsPage() {
   )
 
   // Acknowledgement registers for issued documents only (current version).
-  const issued = (docs ?? []).filter((d) => d.status === 'issued')
-  const ackRegisters = new Map<string, AckRegisterRow[]>()
-  await Promise.all(
-    issued.map(async (d) => {
-      // Match acks by the document ROW id (robust to predecessor deletion).
-      const register = await fetchAckRegister(supabase, d.id as string)
-      ackRegisters.set(d.id as string, register)
-    })
-  )
+  // Match acks by the document ROW id (robust to predecessor deletion) —
+  // one staff query + one batched acks query across all issued docs.
+  const issuedIds = (docs ?? [])
+    .filter((d) => d.status === 'issued')
+    .map((d) => d.id as string)
+  const ackRegisters = await fetchAckRegisters(supabase, issuedIds)
 
   const myId = me?.id ?? null
   const rows: DocumentRow[] = (docs ?? []).map((d) => {

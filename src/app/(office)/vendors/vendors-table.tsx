@@ -5,6 +5,7 @@ import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { todayAUClient } from '@/lib/tz-client'
 import { TruckIcon } from 'lucide-react'
 
 // ─── Traffic light derivation ─────────────────────────────────────────────────
@@ -24,18 +25,19 @@ export function deriveComplianceStatus(
 ): ComplianceStatus {
   if (docs.length === 0) return 'red'
 
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const in30 = new Date(today)
-  in30.setDate(in30.getDate() + 30)
+  // Compare 'YYYY-MM-DD' strings against the AU (Brisbane) calendar day so the
+  // traffic light agrees with the server-side registers regardless of the
+  // browser's local clock. Amber threshold: expiring within the next 30 days.
+  const today = todayAUClient()
+  const cutoff = new Date(`${today}T00:00:00Z`)
+  cutoff.setUTCDate(cutoff.getUTCDate() + 30)
+  const in30 = cutoff.toISOString().slice(0, 10)
 
   let hasAmber = false
 
   for (const doc of docs) {
-    const expiry = new Date(doc.expiry_date)
-    if (expiry < today) return 'red'
-    if (expiry <= in30) hasAmber = true
+    if (doc.expiry_date < today) return 'red'
+    if (doc.expiry_date <= in30) hasAmber = true
   }
 
   return hasAmber ? 'amber' : 'green'

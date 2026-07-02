@@ -3,7 +3,7 @@
 import React, { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { format, parseISO, differenceInCalendarDays } from 'date-fns'
+import { format, parseISO } from 'date-fns'
 import {
   PlusIcon,
   PencilIcon,
@@ -48,6 +48,7 @@ import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList, type AttachmentItem } from '@/components/AttachmentList'
 import { AuditHistory } from '@/components/AuditHistory'
 import { fmtDate } from '@/lib/format'
+import { todayAUClient } from '@/lib/tz-client'
 import { cn } from '@/lib/utils'
 import type { AuditRow } from '@/lib/audit-queries'
 import {
@@ -509,7 +510,8 @@ export function IncidentDetailClient({
     CorrectiveActionRow | undefined
   >(undefined)
 
-  const today = new Date().toISOString().slice(0, 10)
+  // AU calendar day, so overdue flags agree with the server-side registers.
+  const today = todayAUClient()
   const isAdmin = role === 'admin'
   const canEdit = role === 'admin' || role === 'office'
 
@@ -732,10 +734,12 @@ export function IncidentDetailClient({
                       action.status === 'open' &&
                       action.due_date != null &&
                       action.due_date < today
+                    // Pure calendar-date maths against the AU 'today' string.
                     const daysOverdue = overdue
-                      ? differenceInCalendarDays(
-                          new Date(),
-                          parseISO(action.due_date!)
+                      ? Math.round(
+                          (Date.parse(`${today}T00:00:00Z`) -
+                            Date.parse(`${action.due_date}T00:00:00Z`)) /
+                            86_400_000
                         )
                       : 0
                     return (

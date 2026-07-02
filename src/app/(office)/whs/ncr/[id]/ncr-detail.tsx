@@ -3,7 +3,6 @@
 import React, { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { parseISO, differenceInCalendarDays } from 'date-fns'
 import {
   PlusIcon,
   PencilIcon,
@@ -44,6 +43,7 @@ import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList, type AttachmentItem } from '@/components/AttachmentList'
 import { AuditHistory } from '@/components/AuditHistory'
 import { fmtDate } from '@/lib/format'
+import { todayAUClient } from '@/lib/tz-client'
 import { cn } from '@/lib/utils'
 import type { AuditRow } from '@/lib/audit-queries'
 import {
@@ -652,7 +652,8 @@ export function NcrDetailClient({
     undefined
   )
 
-  const today = new Date().toISOString().slice(0, 10)
+  // AU calendar day, so overdue flags agree with the server-side registers.
+  const today = todayAUClient()
   const isAdmin = role === 'admin'
   const canManage = role === 'admin' || role === 'office' || role === 'supervisor'
 
@@ -791,7 +792,12 @@ export function NcrDetailClient({
             </Button>
           )}
           {canManage && ncr.status !== 'closed' && (
-            <Button size="sm" variant="outline" onClick={() => setEditOpen(true)}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={pending}
+              onClick={() => setEditOpen(true)}
+            >
               <PencilIcon className="mr-1 size-3.5" />
               Edit
             </Button>
@@ -900,10 +906,12 @@ export function NcrDetailClient({
                       action.status === 'open' &&
                       action.due_date != null &&
                       action.due_date < today
+                    // Pure calendar-date maths against the AU 'today' string.
                     const daysOverdue = overdue
-                      ? differenceInCalendarDays(
-                          new Date(),
-                          parseISO(action.due_date!)
+                      ? Math.round(
+                          (Date.parse(`${today}T00:00:00Z`) -
+                            Date.parse(`${action.due_date}T00:00:00Z`)) /
+                            86_400_000
                         )
                       : 0
                     return (

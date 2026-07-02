@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
+import { fetchAttachmentsForParents } from '@/lib/attachment-queries'
 import { VariationsTable, type VariationRow } from './variations-table'
 import { NewVariationDialog } from './variation-dialog'
 import type { AttachmentItem } from '@/components/AttachmentList'
@@ -44,13 +44,13 @@ export default async function ProjectVariationsPage({
     notes: v.notes ?? null,
   }))
 
-  // Fetch attachments for all variations
-  const attachmentsByVariation: Record<string, AttachmentItem[]> = {}
-  await Promise.all(
-    rows.map(async (v) => {
-      attachmentsByVariation[v.id] = await fetchAttachmentsWithUrls(supabase, 'variation', v.id)
-    })
-  )
+  // Fetch attachments for all variations (one select + one signed-URL batch)
+  const attachmentsByVariation: Record<string, AttachmentItem[]> =
+    await fetchAttachmentsForParents(
+      supabase,
+      'variation',
+      rows.map((v) => v.id)
+    )
 
   return (
     <section className="flex flex-col gap-4">

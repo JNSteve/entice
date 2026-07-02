@@ -1,8 +1,9 @@
 'use client'
 
-import React, { useTransition } from 'react'
+import React, { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
+import { toast } from 'sonner'
 import { format, parseISO } from 'date-fns'
 import { DownloadIcon, ChevronLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -26,6 +27,7 @@ import {
 import { downloadCsv } from '@/lib/csv'
 import { summariseDetail } from '@/components/AuditHistory'
 import type { AuditRow } from '@/lib/audit-queries'
+import { fetchAuditExport } from './actions'
 
 // ─── Entity type config ───────────────────────────────────────────────────────
 
@@ -289,8 +291,7 @@ interface AuditTableProps {
   projects: { id: string; number: string; name: string }[]
   actors: string[]
   filters: AuditFilters
-  /** Rows for CSV export (all pages, up to 5000). */
-  exportRows: AuditRow[]
+  /** True when the current filters match more rows than the 5,000 export cap. */
   capped: boolean
 }
 
@@ -304,12 +305,12 @@ export function AuditTable({
   projects,
   actors,
   filters,
-  exportRows,
   capped,
 }: AuditTableProps) {
   const router = useRouter()
   const pathname = usePathname()
   const [, startTransition] = useTransition()
+  const [exporting, setExporting] = useState(false)
 
   const totalPages = Math.max(1, Math.ceil(total / pageSize))
 
@@ -343,20 +344,39 @@ export function AuditTable({
     })
   }
 
-  function handleCsvExport() {
-    const csvRows = exportRows.map((r) => ({
-      at: format(parseISO(r.at), 'dd/MM/yyyy HH:mm:ss'),
-      actor: r.actor_name ?? '',
-      action: r.action,
-      entity_type: ENTITY_TYPE_LABELS[r.entity_type] ?? r.entity_type,
-      entity_id: r.entity_id,
-      project_id: r.project_id ?? '',
-      detail: JSON.stringify(r.detail),
-    }))
-    downloadCsv(
-      `audit-log-${format(new Date(), 'yyyy-MM-dd')}.csv`,
-      csvRows
-    )
+  async function handleCsvExport() {
+    setExporting(true)
+    try {
+      // Export dataset is fetched on demand (up to the 5,000-row cap) so the
+      // register page itself stays light.
+      const result = await fetchAuditExport({
+        from: filters.from,
+        to: filters.to,
+        project_id: filters.project_id,
+        entity_type: filters.entity_type,
+        actor: filters.actor,
+        action: filters.action,
+      })
+      if (result.error || !result.rows) {
+        toast.error(result.error ?? 'Export failed')
+        return
+      }
+      const csvRows = result.rows.map((r) => ({
+        at: format(parseISO(r.at), 'dd/MM/yyyy HH:mm:ss'),
+        actor: r.actor_name ?? '',
+        action: r.action,
+        entity_type: ENTITY_TYPE_LABELS[r.entity_type] ?? r.entity_type,
+        entity_id: r.entity_id,
+        project_id: r.project_id ?? '',
+        detail: JSON.stringify(r.detail),
+      }))
+      downloadCsv(
+        `audit-log-${format(new Date(), 'yyyy-MM-dd')}.csv`,
+        csvRows
+      )
+    } finally {
+      setExporting(false)
+    }
   }
 
   return (
@@ -373,11 +393,15 @@ export function AuditTable({
           variant="outline"
           size="sm"
           onClick={handleCsvExport}
-          disabled={exportRows.length === 0}
-          title={capped ? 'Export capped at 5,000 rows' : undefined}
+          disabled={exporting || total === 0}
+          title={
+            capped
+              ? 'Export capped at 5,000 rows'
+              : 'Exports up to 5,000 rows for the current filters'
+          }
         >
           <DownloadIcon className="size-4" />
-          CSV{capped ? ' (5k cap)' : ''}
+          {exporting ? 'Exporting…' : `CSV${capped ? ' (5k cap)' : ''}`}
         </Button>
       </div>
 

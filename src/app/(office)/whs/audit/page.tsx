@@ -44,13 +44,12 @@ export default async function WhsAuditPage({
 
   const supabase = await createClient()
 
-  // Build base queries and apply filters manually (avoid generic helper to
-  // keep TypeScript happy with the varying return types).
-  function buildQuery(withCount: boolean) {
+  // Build the page query and apply filters manually. The CSV export dataset is
+  // NOT fetched here — it is loaded on demand by the export button via the
+  // fetchAuditExport server action (see ./actions.ts).
+  function buildQuery() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let q: any = withCount
-      ? supabase.from('audit_log').select(SELECT, { count: 'exact' })
-      : supabase.from('audit_log').select(SELECT)
+    let q: any = supabase.from('audit_log').select(SELECT, { count: 'exact' })
 
     q = q.gte('at', from + 'T00:00:00').lte('at', to + 'T23:59:59')
     if (projectId) q = q.eq('project_id', projectId)
@@ -68,14 +67,9 @@ export default async function WhsAuditPage({
     return q
   }
 
-  const [{ data: rows, count }, { data: exportRows }] = await Promise.all([
-    buildQuery(true)
-      .order('at', { ascending: false })
-      .range(offset, offset + PAGE_SIZE - 1),
-    buildQuery(false)
-      .order('at', { ascending: false })
-      .limit(EXPORT_CAP),
-  ])
+  const { data: rows, count } = await buildQuery()
+    .order('at', { ascending: false })
+    .range(offset, offset + PAGE_SIZE - 1)
 
   const total = (count as number | null) ?? 0
   const capped = total > EXPORT_CAP
@@ -120,7 +114,6 @@ export default async function WhsAuditPage({
   }
 
   const auditRows: AuditRow[] = ((rows ?? []) as Record<string, unknown>[]).map(shapeRow)
-  const auditExport: AuditRow[] = ((exportRows ?? []) as Record<string, unknown>[]).map(shapeRow)
 
   const filters: AuditFilters = {
     from,
@@ -150,7 +143,6 @@ export default async function WhsAuditPage({
         }))}
         actors={actorNames}
         filters={filters}
-        exportRows={auditExport}
         capped={capped}
       />
     </div>

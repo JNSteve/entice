@@ -67,6 +67,24 @@ export async function fetchAckRegister(
   supabase: SupabaseClient,
   documentId: string
 ): Promise<AckRegisterRow[]> {
+  const registers = await fetchAckRegisters(supabase, [documentId])
+  return registers.get(documentId) ?? []
+}
+
+/**
+ * Batched variant of fetchAckRegister: builds the acknowledgement register for
+ * MANY issued documents with ONE active-staff query and ONE acknowledgements
+ * query (`.in('document_id', …)`). Matching semantics are identical — acks
+ * match by `document_id` alone. Every requested id is present in the result
+ * (all-outstanding register when the document has no acks yet).
+ */
+export async function fetchAckRegisters(
+  supabase: SupabaseClient,
+  documentIds: string[]
+): Promise<Map<string, AckRegisterRow[]>> {
+  const registers = new Map<string, AckRegisterRow[]>()
+  if (documentIds.length === 0) return registers
+
   const [{ data: staff }, { data: acks }] = await Promise.all([
     supabase
       .from('profiles')
@@ -75,20 +93,34 @@ export async function fetchAckRegister(
       .order('full_name'),
     supabase
       .from('document_acknowledgements')
-      .select('user_id, acknowledged_at')
-      .eq('document_id', documentId),
+      .select('document_id, user_id, acknowledged_at')
+      .in('document_id', documentIds),
   ])
 
-  const ackedAtByUser = new Map(
-    (acks ?? [])
-      .filter((a) => a.user_id !== null)
-      .map((a) => [a.user_id as string, a.acknowledged_at as string])
-  )
+  // document_id → (user_id → acknowledged_at)
+  const ackedByDoc = new Map<string, Map<string, string>>()
+  for (const a of acks ?? []) {
+    if (a.user_id === null) continue
+    const docId = a.document_id as string
+    let byUser = ackedByDoc.get(docId)
+    if (!byUser) {
+      byUser = new Map<string, string>()
+      ackedByDoc.set(docId, byUser)
+    }
+    byUser.set(a.user_id as string, a.acknowledged_at as string)
+  }
 
-  return (staff ?? []).map((p) => ({
-    user_id: p.id as string,
-    name: p.full_name as string,
-    role: p.role as AckRegisterRow['role'],
-    acknowledged_at: ackedAtByUser.get(p.id as string) ?? null,
-  }))
+  for (const docId of documentIds) {
+    const ackedAtByUser = ackedByDoc.get(docId)
+    registers.set(
+      docId,
+      (staff ?? []).map((p) => ({
+        user_id: p.id as string,
+        name: p.full_name as string,
+        role: p.role as AckRegisterRow['role'],
+        acknowledged_at: ackedAtByUser?.get(p.id as string) ?? null,
+      }))
+    )
+  }
+  return registers
 }

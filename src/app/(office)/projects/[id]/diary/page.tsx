@@ -1,7 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
+import { fetchAttachmentsForParents } from '@/lib/attachment-queries'
 import { DiaryList, type DiaryEntry } from './diary-list'
 import type { AttachmentItem } from '@/components/AttachmentList'
 
@@ -60,16 +60,8 @@ export default async function ProjectDiaryPage({
       : Promise.resolve({ data: [] as never[] }),
   ])
 
-  const attachmentsByDiary: Record<string, AttachmentItem[]> = {}
-  await Promise.all(
-    diaryIds.map(async (diaryId) => {
-      attachmentsByDiary[diaryId] = await fetchAttachmentsWithUrls(
-        supabase,
-        'diary',
-        diaryId
-      )
-    })
-  )
+  const attachmentsByDiary: Record<string, AttachmentItem[]> =
+    await fetchAttachmentsForParents(supabase, 'diary', diaryIds)
 
   const entries: DiaryEntry[] = (diaries ?? []).map((d) => {
     const authorRel = d.profiles as unknown as { full_name: string } | null

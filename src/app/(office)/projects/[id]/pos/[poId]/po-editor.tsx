@@ -32,6 +32,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge } from '@/components/StatusBadge'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud, fmtDate } from '@/lib/format'
+import { todayAUClient } from '@/lib/tz-client'
 import { lineTotal, round2 } from '@/lib/money'
 import { cn } from '@/lib/utils'
 import { PlusIcon, Trash2Icon, FileTextIcon, CheckCircleIcon, XCircleIcon, LockIcon } from 'lucide-react'
@@ -231,7 +232,8 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
         toast.error(result.error)
         return
       }
-      setPo((prev) => ({ ...prev, status: 'issued', issue_date: new Date().toISOString().slice(0, 10) }))
+      // Optimistic issue_date in the AU calendar day, matching the server's todayAU.
+      setPo((prev) => ({ ...prev, status: 'issued', issue_date: todayAUClient() }))
       setIssueConfirmOpen(false)
       toast.success('PO issued — lines are now locked')
     })
