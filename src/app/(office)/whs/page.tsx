@@ -95,6 +95,7 @@ export default async function WhsOverviewPage() {
     { data: openAuditFindings },
     { data: overdueRiskReviews },
     { data: highResidualRisks },
+    { data: overdueMrActions },
     { data: auditRows },
   ] = await Promise.all([
     supabase.from('incidents').select('id, status, severity'),
@@ -173,6 +174,14 @@ export default async function WhsOverviewPage() {
       .neq('status', 'closed')
       .in('residual_rating', ['High', 'Extreme'])
       .order('residual_score', { ascending: false }),
+    // Open management-review output actions past their due date (ISO 9.3.3).
+    supabase
+      .from('management_review_actions')
+      .select('id, review_id, description, due_date, management_reviews(number)')
+      .eq('status', 'open')
+      .not('due_date', 'is', null)
+      .lt('due_date', todayStr)
+      .order('due_date', { ascending: true }),
     supabase
       .from('audit_log')
       .select('id, at, actor_id, actor_name, entity_type, entity_id, project_id, action, detail')
@@ -290,6 +299,18 @@ export default async function WhsOverviewPage() {
     score: Number(r.residual_score),
   }))
 
+  const mrActionRows = (overdueMrActions ?? []).map((a) => ({
+    id: a.id as string,
+    reviewId: a.review_id as string,
+    reviewNumber:
+      (a.management_reviews as unknown as { number: string } | null)?.number ?? '—',
+    description: a.description as string,
+    daysOverdue: Math.max(
+      0,
+      differenceInCalendarDays(today, parseISO(a.due_date as string))
+    ),
+  }))
+
   const needsAttentionCount =
     overdueActionRows.length +
     holdPointRows.length +
@@ -299,6 +320,7 @@ export default async function WhsOverviewPage() {
     openFindingRows.length +
     riskReviewRows.length +
     highRiskRows.length +
+    mrActionRows.length +
     competencyRows.length +
     objectiveRows.length
 
@@ -377,7 +399,8 @@ export default async function WhsOverviewPage() {
               <p className="text-sm text-muted-foreground">
                 Nothing outstanding — corrective actions, hold points, vendor
                 compliance, document reviews, internal audits, risk reviews,
-                worker competencies and objectives are all in order.
+                management review actions, worker competencies and objectives
+                are all in order.
               </p>
             ) : (
               <>
@@ -552,6 +575,27 @@ export default async function WhsOverviewPage() {
                       }
                     >
                       {r.rating} {r.score}
+                    </span>
+                  </div>
+                ))}
+                {mrActionRows.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href={`/whs/reviews/${a.reviewId}`}
+                        className="truncate hover:underline"
+                      >
+                        {a.description}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Management review action · {a.reviewNumber}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                      {a.daysOverdue}d overdue
                     </span>
                   </div>
                 ))}

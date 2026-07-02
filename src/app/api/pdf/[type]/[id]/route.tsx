@@ -41,6 +41,19 @@ import {
   type ObjectivesPdfSummaryRow,
 } from '@/pdf/ObjectivesPdf'
 import {
+  MgmtReviewPdf,
+  type MgmtReviewPdfAttendee,
+  type MgmtReviewPdfInput,
+  type MgmtReviewPdfAction,
+} from '@/pdf/MgmtReviewPdf'
+import {
+  MGMT_REVIEW_INPUT_KEYS,
+  MGMT_REVIEW_INPUT_DEFS,
+  MGMT_REVIEW_STANDARD_LABELS,
+  type MgmtReviewInputKey,
+} from '@/lib/mgmt-review'
+import type { InputSnapshot } from '@/lib/mgmt-review-data'
+import {
   deriveObjectiveStatus,
   periodKeyLabel,
   OBJECTIVE_TRAFFIC_LABELS,
@@ -136,7 +149,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -191,6 +204,8 @@ export async function GET(
     case 'objectives':
       // [id] is a placeholder (use 'list') — covers all objectives + values.
       return objectivesPdf()
+    case 'mgmt-review':
+      return mgmtReviewPdf(id)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -1990,6 +2005,144 @@ async function objectivesPdf(): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'inline; filename="objectives-kpis.pdf"',
+    },
+  })
+}
+
+// ─── Management Review Report (ISO 9.3) ───────────────────────────────────────
+
+async function mgmtReviewPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: review }, { data: inputs }, { data: attendees }, { data: actions }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('management_reviews')
+        .select(
+          `id, number, review_date, period_covered, status, general_minutes,
+           closed_at,
+           chair:profiles!management_reviews_chaired_by_fkey(full_name)`
+        )
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('management_review_inputs')
+        .select(
+          `input_key, rag, minute, data, reviewed, reviewed_at,
+           reviewer:profiles!management_review_inputs_reviewed_by_fkey(full_name)`
+        )
+        .eq('review_id', id),
+      supabase
+        .from('management_review_attendees')
+        .select(
+          `profile_id, name, role_title,
+           profiles!management_review_attendees_profile_id_fkey(full_name)`
+        )
+        .eq('review_id', id)
+        .order('created_at'),
+      supabase
+        .from('management_review_actions')
+        .select(
+          `description, due_date, status, completed_at,
+           profiles!management_review_actions_assigned_to_fkey(full_name)`
+        )
+        .eq('review_id', id)
+        .order('due_date', { ascending: true, nullsFirst: false })
+        .order('created_at'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  if (!review) return new Response('Not found', { status: 404 })
+
+  const { RAG_LABELS } = await import('@/lib/zod')
+
+  const chairRel = review.chair as unknown as { full_name: string } | null
+
+  // Render in the controlled-list order — the auditor reads 9.3.2 top to bottom.
+  const inputByKey = new Map(
+    (inputs ?? []).map((i) => [i.input_key as MgmtReviewInputKey, i])
+  )
+  const pdfInputs: MgmtReviewPdfInput[] = MGMT_REVIEW_INPUT_KEYS.flatMap((key) => {
+    const i = inputByKey.get(key)
+    if (!i) return []
+    const def = MGMT_REVIEW_INPUT_DEFS[key]
+    const snapshot = (i.data as InputSnapshot | null) ?? null
+    const reviewer = i.reviewer as unknown as { full_name: string } | null
+    const rag = (i.rag as 'green' | 'amber' | 'red' | null) ?? null
+    return [
+      {
+        label: def.label,
+        standards: def.standards
+          .map((s) => MGMT_REVIEW_STANDARD_LABELS[s])
+          .join(', '),
+        rag,
+        ragLabel: rag ? RAG_LABELS[rag] : null,
+        minute: (i.minute as string | null) ?? null,
+        reviewed: Boolean(i.reviewed),
+        reviewedLine: i.reviewed
+          ? `Reviewed${reviewer ? ` by ${reviewer.full_name}` : ''}${
+              i.reviewed_at ? ` on ${fmtDate(i.reviewed_at as string)}` : ''
+            }`
+          : null,
+        windowLine: snapshot
+          ? `Register data ${fmtDate(snapshot.window.start)} – ${fmtDate(snapshot.window.end)} (${
+              snapshot.window.basis === 'last_closed_review'
+                ? 'since the last closed review'
+                : 'trailing 12 months'
+            }), snapshot taken ${fmtDate(snapshot.computed_at)}`
+          : null,
+        figures: snapshot?.figures ?? [],
+        rows: snapshot?.rows ?? [],
+      },
+    ]
+  })
+
+  const pdfAttendees: MgmtReviewPdfAttendee[] = (attendees ?? []).map((a) => {
+    const p = a.profiles as unknown as { full_name: string } | null
+    return {
+      name: p?.full_name ?? (a.name as string | null) ?? '—',
+      role_title: (a.role_title as string | null) ?? null,
+      external: a.profile_id == null,
+    }
+  })
+
+  const pdfActions: MgmtReviewPdfAction[] = (actions ?? []).map((a) => {
+    const assignee = a.profiles as unknown as { full_name: string } | null
+    return {
+      description: a.description as string,
+      assigned_to: assignee?.full_name ?? null,
+      due_date: a.due_date ? fmtDate(a.due_date as string) : null,
+      status: a.status as string,
+      completed_at: a.completed_at ? fmtDate(a.completed_at as string) : null,
+    }
+  })
+
+  const buffer = await renderToBuffer(
+    <MgmtReviewPdf
+      review={{
+        number: review.number as string,
+        date: fmtDate(review.review_date as string),
+        periodCovered: (review.period_covered as string | null) ?? null,
+        chair: chairRel?.full_name ?? null,
+        status: review.status as string,
+        closed: review.closed_at ? fmtDate(review.closed_at as string) : null,
+        generalMinutes: (review.general_minutes as string | null) ?? null,
+      }}
+      company={toCompany(settings)}
+      attendees={pdfAttendees}
+      inputs={pdfInputs}
+      actions={pdfActions}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${review.number as string}-management-review.pdf"`,
     },
   })
 }

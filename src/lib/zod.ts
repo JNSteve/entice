@@ -2257,3 +2257,123 @@ export const objectiveActionUpdateSchema = z.object({
 })
 
 export type ObjectiveActionUpdateInput = z.infer<typeof objectiveActionUpdateSchema>
+
+// ─── Management Review (ISO 9001/14001/45001 §9.3) ────────────────────────────
+// The controlled 9.3.2 input list + close/transition gates live in
+// src/lib/mgmt-review.ts; the server-side snapshot engine in
+// src/lib/mgmt-review-data.ts. Inputs are addressed by row id — the key set
+// is fixed (DB CHECK), so no schema here ever accepts an input_key.
+
+export const MGMT_REVIEW_STATUSES = ['draft', 'in_progress', 'closed'] as const
+export type MgmtReviewStatus = (typeof MGMT_REVIEW_STATUSES)[number]
+
+export const MGMT_REVIEW_STATUS_LABELS: Record<MgmtReviewStatus, string> = {
+  draft: 'Draft',
+  in_progress: 'In Progress',
+  closed: 'Closed',
+}
+
+export const RAG_STATUSES = ['green', 'amber', 'red'] as const
+export type RagStatus = (typeof RAG_STATUSES)[number]
+
+export const RAG_LABELS: Record<RagStatus, string> = {
+  green: 'Green — satisfactory',
+  amber: 'Amber — monitor',
+  red: 'Red — action required',
+}
+
+export const mgmtReviewCreateSchema = z.object({
+  review_date: isoDate,
+  period_covered: optionalText,
+  chaired_by: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type MgmtReviewCreateInput = z.infer<typeof mgmtReviewCreateSchema>
+
+export const mgmtReviewUpdateSchema = z.object({
+  review_date: isoDate.optional(),
+  period_covered: optionalText.optional(),
+  chaired_by: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  general_minutes: optionalText.optional(),
+})
+
+export type MgmtReviewUpdateInput = z.infer<typeof mgmtReviewUpdateSchema>
+
+/**
+ * Close request. The confirm flag drives the SOFT gate: without it a close
+ * with un-reviewed inputs is rejected (listing them); with it the close
+ * proceeds. Open output actions never block a close.
+ */
+export const mgmtReviewCloseSchema = z.object({
+  confirm: z.boolean().default(false),
+})
+
+export type MgmtReviewCloseInput = z.infer<typeof mgmtReviewCloseSchema>
+
+/** RAG / minute / reviewed flags on one seeded input row. */
+export const mgmtReviewInputUpdateSchema = z.object({
+  rag: z
+    .enum(RAG_STATUSES)
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  minute: optionalText.optional(),
+  reviewed: z.boolean().optional(),
+})
+
+export type MgmtReviewInputUpdateInput = z.infer<typeof mgmtReviewInputUpdateSchema>
+
+/** An attendee is an internal profile OR an external name (or a named profile
+ *  stand-in) — mirrors the DB CHECK. */
+export const mgmtReviewAttendeeSchema = z
+  .object({
+    review_id: z.uuid(),
+    profile_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    name: optionalText,
+    role_title: optionalText,
+  })
+  .refine((d) => d.profile_id !== null || d.name !== null, {
+    message: 'Pick a team member or enter an external attendee name',
+    path: ['name'],
+  })
+
+export type MgmtReviewAttendeeInput = z.infer<typeof mgmtReviewAttendeeSchema>
+
+export const mgmtReviewActionSchema = z.object({
+  review_id: z.uuid(),
+  description: z.string().min(1, 'Description is required'),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  due_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+})
+
+export type MgmtReviewActionInput = z.infer<typeof mgmtReviewActionSchema>
+
+export const mgmtReviewActionUpdateSchema = z.object({
+  description: z.string().min(1, 'Description is required').optional(),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  due_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null))
+    .optional(),
+})
+
+export type MgmtReviewActionUpdateInput = z.infer<typeof mgmtReviewActionUpdateSchema>
