@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import {
   AlertTriangleIcon,
+  AwardIcon,
   ChevronRightIcon,
   ClipboardCheckIcon,
   ClipboardListIcon,
@@ -16,7 +17,14 @@ import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { fetchMyFieldSwms } from '@/lib/swms-queries'
 import { FieldSwmsCard } from '@/components/FieldSwmsCard'
+import { CompetencyLight } from '@/components/CompetencyLight'
 import { fmtDate } from '@/lib/format'
+import { todayAU } from '@/lib/tz'
+import {
+  deriveCompetencyStatus,
+  latestRecords,
+  type CompetencyRecordLike,
+} from '@/lib/competency'
 import {
   DOC_CATEGORIES,
   DOC_CATEGORY_LABELS,
@@ -114,6 +122,40 @@ export default async function FieldSafetyPage() {
       .eq('status', 'issued')
       .order('title'),
   ])
+
+  // ── My tickets (read-only) — RLS already limits competency_records to the
+  // signed-in user's own worker row for the field role.
+  const { data: myWorker } = await supabase
+    .from('workers')
+    .select('id')
+    .eq('profile_id', profile.id)
+    .maybeSingle()
+
+  const { data: myRecords } = myWorker
+    ? await supabase
+        .from('competency_records')
+        .select(
+          `id, worker_id, competency_type_id, reference_no, issue_date,
+           expiry_date, superseded_by, created_at, competency_types(name)`
+        )
+        .eq('worker_id', myWorker.id as string)
+        .is('superseded_by', null)
+    : { data: null }
+
+  const today = todayAU()
+  const myTickets = [...latestRecords((myRecords ?? []) as unknown as CompetencyRecordLike[]).values()]
+    .map((r) => {
+      const raw = (myRecords ?? []).find((x) => x.id === r.id)
+      const typeRel = raw?.competency_types as unknown as { name: string } | null
+      return {
+        id: r.id,
+        name: typeRel?.name ?? 'Competency',
+        reference: (raw?.reference_no as string | null) ?? null,
+        expiry: r.expiry_date,
+        status: deriveCompetencyStatus(r.expiry_date, today),
+      }
+    })
+    .sort((a, b) => a.name.localeCompare(b.name))
 
   // Sign the document files server-side (private bucket, 1h links).
   // Defensive null filter — issued docs should always have a file, but that
@@ -234,6 +276,41 @@ export default async function FieldSafetyPage() {
         </div>
         <ChevronRightIcon className="ml-auto size-4 shrink-0 text-muted-foreground" />
       </Link>
+
+      {/* My tickets (read-only) */}
+      {myTickets.length > 0 && (
+        <section className="flex flex-col gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+            My tickets
+          </h2>
+          <div className="flex flex-col divide-y rounded-xl border">
+            {myTickets.map((t) => (
+              <div
+                key={t.id}
+                className="flex items-center justify-between gap-3 px-4 py-3"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <AwardIcon className="size-4 shrink-0 text-muted-foreground" />
+                  <span className="flex min-w-0 flex-col">
+                    <span className="truncate text-sm font-medium">{t.name}</span>
+                    {t.reference && (
+                      <span className="truncate text-xs text-muted-foreground">
+                        {t.reference}
+                      </span>
+                    )}
+                  </span>
+                </span>
+                <span className="flex shrink-0 items-center gap-2">
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {t.expiry ? `exp ${fmtDate(t.expiry)}` : 'no expiry'}
+                  </span>
+                  <CompetencyLight status={t.status} />
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Controlled documents (issued, read-only) */}
       {docGroups.length > 0 && (

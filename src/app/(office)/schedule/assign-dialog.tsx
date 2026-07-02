@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useEffect, useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { TriangleAlertIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -20,7 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import { createAssignment, updateAssignment, deleteAssignment } from './actions'
+import {
+  createAssignment,
+  deleteAssignment,
+  fetchAssigneeCompetencyWarnings,
+  updateAssignment,
+} from './actions'
 
 export type SchedulableJob = {
   id: string
@@ -91,6 +97,25 @@ function AssignForm({
   const [pending, startTransition] = useTransition()
   const [deletePending, startDeleteTransition] = useTransition()
 
+  // Competency roster check (ISO 7.2) — non-blocking: lists any mandatory
+  // competencies the person is missing / has expired or expiring, but never
+  // prevents the assignment. Mirrors the server-side check in
+  // createAssignment (which returns the same warning so it can't be skipped).
+  const [competencyWarnings, setCompetencyWarnings] = useState<string[]>([])
+  useEffect(() => {
+    let cancelled = false
+    fetchAssigneeCompetencyWarnings(userId)
+      .then((result) => {
+        if (!cancelled) setCompetencyWarnings(result.items)
+      })
+      .catch(() => {
+        /* warning only — never block the dialog */
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [userId])
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!targetId) {
@@ -124,6 +149,9 @@ function AssignForm({
             ? `${count} assignment${count !== 1 ? 's' : ''} created`
             : 'Already assigned — skipped'
         )
+        if (result.warning) {
+          toast.warning(result.warning, { duration: 8000 })
+        }
       }
       onClose()
     })
@@ -244,6 +272,21 @@ function AssignForm({
           rows={2}
         />
       </div>
+
+      {/* Competency warning — informational only, never blocks */}
+      {competencyWarnings.length > 0 && (
+        <div className="flex flex-col gap-1 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200">
+          <span className="flex items-center gap-1.5 font-medium">
+            <TriangleAlertIcon className="size-4 shrink-0" />
+            Competency warning — you can still assign
+          </span>
+          <ul className="list-disc pl-6">
+            {competencyWarnings.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <DialogFooter>
         {isEdit && (

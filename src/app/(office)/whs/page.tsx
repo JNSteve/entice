@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { differenceInCalendarDays, format, parseISO, subDays } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { nowAU } from '@/lib/tz'
+import { fetchCompetencyAttention } from '@/lib/competency-queries'
 import {
   Card,
   CardContent,
@@ -160,6 +161,10 @@ export default async function WhsOverviewPage() {
       .limit(10),
   ])
 
+  // Mandatory competencies expiring ≤30d or expired (latest non-superseded
+  // record per worker/type, derived in Brisbane time — ISO 7.2).
+  const competencyRows = await fetchCompetencyAttention(supabase, todayStr)
+
   // ── Stats ──────────────────────────────────────────────────────────────────
 
   const openIncidents = (incidents ?? []).filter((i) => i.status !== 'closed')
@@ -250,7 +255,8 @@ export default async function WhsOverviewPage() {
     complianceRows.length +
     docReviewRows.length +
     overdueAuditRows.length +
-    openFindingRows.length
+    openFindingRows.length +
+    competencyRows.length
 
   const recentActivity: AuditRow[] = ((auditRows ?? []) as Record<string, unknown>[]).map(
     (r) => ({
@@ -326,8 +332,8 @@ export default async function WhsOverviewPage() {
             {needsAttentionCount === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Nothing outstanding — corrective actions, hold points, vendor
-                compliance, document reviews and internal audits are all in
-                order.
+                compliance, document reviews, internal audits and worker
+                competencies are all in order.
               </p>
             ) : (
               <>
@@ -454,6 +460,36 @@ export default async function WhsOverviewPage() {
                     </div>
                     <span className="shrink-0 text-xs font-medium capitalize text-red-600 dark:text-red-400">
                       {f.classification}
+                    </span>
+                  </div>
+                ))}
+                {competencyRows.map((c) => (
+                  <div
+                    key={c.recordId}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href="/whs/training"
+                        className="truncate hover:underline"
+                      >
+                        {c.workerName}
+                      </Link>
+                      <span className="truncate text-xs text-muted-foreground">
+                        {c.status === 'expired'
+                          ? 'Competency expired'
+                          : 'Competency expiring'}{' '}
+                        · {c.typeName}
+                      </span>
+                    </div>
+                    <span
+                      className={
+                        c.status === 'expired'
+                          ? 'shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400'
+                          : 'shrink-0 text-xs font-medium text-amber-600 tabular-nums dark:text-amber-400'
+                      }
+                    >
+                      {fmtDate(c.expiry)}
                     </span>
                   </div>
                 ))}

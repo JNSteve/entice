@@ -13,6 +13,8 @@ import {
   checklistTemplateSchema,
   swmsTemplateSchema,
   formTemplateSchema,
+  competencyTypeSchema,
+  roleRequirementSchema,
 } from '@/lib/zod'
 
 // ─── Company settings ────────────────────────────────────────────────────────
@@ -399,5 +401,103 @@ export async function setFormTemplateActive(
   if (error) return { error: error.message }
 
   revalidatePath('/settings')
+  return {}
+}
+
+// ─── Training & competency configuration (ISO 7.2) ───────────────────────────
+
+function revalidateCompetencyConfig() {
+  revalidatePath('/settings')
+  revalidatePath('/whs/training')
+  revalidatePath('/whs')
+  revalidatePath('/schedule')
+}
+
+export async function upsertCompetencyType(data: unknown): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const parsed = competencyTypeSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { id, ...rest } = parsed.data
+
+  if (id) {
+    const { error } = await supabase.from('competency_types').update(rest).eq('id', id)
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await supabase.from('competency_types').insert(rest)
+    if (error) return { error: error.message }
+  }
+
+  revalidateCompetencyConfig()
+  return {}
+}
+
+export async function setCompetencyTypeActive(
+  id: string,
+  active: boolean
+): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('competency_types')
+    .update({ active })
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  revalidateCompetencyConfig()
+  return {}
+}
+
+export async function upsertRoleRequirement(data: unknown): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const parsed = roleRequirementSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { id, ...rest } = parsed.data
+
+  if (id) {
+    const { error } = await supabase
+      .from('role_competency_requirements')
+      .update(rest)
+      .eq('id', id)
+    if (error) return { error: error.message }
+  } else {
+    const { error } = await supabase
+      .from('role_competency_requirements')
+      .insert(rest)
+    if (error) {
+      if (error.code === '23505') {
+        return { error: 'That role already requires this competency' }
+      }
+      return { error: error.message }
+    }
+  }
+
+  revalidateCompetencyConfig()
+  return {}
+}
+
+export async function deleteRoleRequirement(id: string): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('role_competency_requirements')
+    .delete()
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  revalidateCompetencyConfig()
   return {}
 }

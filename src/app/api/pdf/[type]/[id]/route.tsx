@@ -23,7 +23,28 @@ import {
 } from '@/pdf/AuditReportPdf'
 import { QrPosterPdf } from '@/pdf/QrPosterPdf'
 import { DocumentRegisterPdf, type DocumentRegisterPdfRow } from '@/pdf/DocumentRegisterPdf'
-import { DOC_CATEGORY_LABELS, DOC_SYSTEM_LABELS, type DocCategory, type DocSystem } from '@/lib/zod'
+import {
+  TrainingMatrixPdf,
+  type MatrixPdfCell,
+  type MatrixPdfRow,
+} from '@/pdf/TrainingMatrixPdf'
+import { CompetencyPdf, type CompetencyPdfRecord } from '@/pdf/CompetencyPdf'
+import {
+  deriveCompetencyStatus,
+  latestRecords,
+  workerTypeKey,
+  type CompetencyRecordLike,
+} from '@/lib/competency'
+import {
+  DOC_CATEGORY_LABELS,
+  DOC_SYSTEM_LABELS,
+  COMPETENCY_CATEGORY_LABELS,
+  WORKER_ROLE_LABELS,
+  type DocCategory,
+  type DocSystem,
+  type CompetencyCategory,
+  type WorkerRole,
+} from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
 import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
@@ -87,7 +108,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -130,6 +151,12 @@ export async function GET(
     case 'document-register':
       // [id] is a placeholder (use 'list') — the register PDF covers all docs.
       return documentRegisterPdf()
+    case 'training-matrix':
+      // [id] is a placeholder (use 'list') — the matrix covers active workers.
+      return trainingMatrixPdf()
+    case 'competency':
+      // [id] = workers row id → per-worker competency report
+      return competencyPdf(id)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -1542,6 +1569,185 @@ async function documentRegisterPdf(): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'inline; filename="master-document-list.pdf"',
+    },
+  })
+}
+
+// ─── Training & competency (ISO 7.2) ─────────────────────────────────────────
+
+const COMPETENCY_RECORD_COLUMNS =
+  'id, number, worker_id, competency_type_id, issuer, reference_no, issue_date, expiry_date, superseded_by, created_at'
+
+async function trainingMatrixPdf(): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: workers }, { data: types }, { data: records }, { data: requirements }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('workers')
+        .select('id, name, company, role')
+        .eq('active', true)
+        .order('name'),
+      supabase
+        .from('competency_types')
+        .select('id, name, active')
+        .order('name'),
+      supabase
+        .from('competency_records')
+        .select(COMPETENCY_RECORD_COLUMNS)
+        .is('superseded_by', null),
+      supabase
+        .from('role_competency_requirements')
+        .select('role, competency_type_id, is_mandatory'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  const today = todayAU()
+  const latest = latestRecords((records ?? []) as CompetencyRecordLike[])
+
+  // Columns: types required by at least one role (matching the on-screen matrix).
+  const requiredIds = new Set((requirements ?? []).map((r) => r.competency_type_id as string))
+  const matrixTypes = (types ?? []).filter(
+    (t) => (t.active as boolean) && requiredIds.has(t.id as string)
+  )
+  const reqByRoleType = new Set(
+    (requirements ?? []).map((r) => `${r.role}::${r.competency_type_id}`)
+  )
+
+  const rows: MatrixPdfRow[] = (workers ?? []).map((w) => {
+    const cells: MatrixPdfCell[] = matrixTypes.map((t) => {
+      const rec = latest.get(workerTypeKey(w.id as string, t.id as string))
+      const required = reqByRoleType.has(`${w.role}::${t.id}`)
+      if (!rec && !required) return { status: null, expiry: null }
+      if (!rec) return { status: 'missing', expiry: null }
+      return {
+        status: deriveCompetencyStatus(rec.expiry_date, today),
+        expiry: rec.expiry_date ? fmtDate(rec.expiry_date) : null,
+      }
+    })
+    return {
+      worker: w.name as string,
+      role: WORKER_ROLE_LABELS[w.role as WorkerRole] ?? (w.role as string),
+      company: (w.company as string | null) ?? null,
+      cells,
+    }
+  })
+
+  const buffer = await renderToBuffer(
+    <TrainingMatrixPdf
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      typeNames={matrixTypes.map((t) => t.name as string)}
+      rows={rows}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="competency-matrix.pdf"',
+    },
+  })
+}
+
+async function competencyPdf(workerId: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: worker }, { data: records }, { data: types }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('workers')
+        .select('id, name, company, role')
+        .eq('id', workerId)
+        .single(),
+      supabase
+        .from('competency_records')
+        .select(COMPETENCY_RECORD_COLUMNS)
+        .eq('worker_id', workerId)
+        .order('issue_date', { ascending: false }),
+      supabase
+        .from('competency_types')
+        .select('id, name, category, active'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  if (!worker) return new Response('Not found', { status: 404 })
+
+  const { data: requirements } = await supabase
+    .from('role_competency_requirements')
+    .select('competency_type_id, is_mandatory')
+    .eq('role', worker.role as string)
+
+  const today = todayAU()
+  const typeById = new Map(
+    (types ?? []).map((t) => [
+      t.id as string,
+      { name: t.name as string, category: t.category as CompetencyCategory, active: t.active as boolean },
+    ])
+  )
+  const latest = latestRecords((records ?? []) as CompetencyRecordLike[])
+
+  const pdfRequirements = ((requirements ?? []) as { competency_type_id: string; is_mandatory: boolean }[])
+    .map((req) => {
+      const type = typeById.get(req.competency_type_id)
+      if (!type || !type.active) return null
+      const rec = latest.get(workerTypeKey(worker.id as string, req.competency_type_id))
+      const statusLabel = rec
+        ? rec.expiry_date
+          ? `${
+              { current: 'Current', expiring: 'Expiring', expired: 'Expired' }[
+                deriveCompetencyStatus(rec.expiry_date, today)
+              ]
+            } — expires ${fmtDate(rec.expiry_date)}`
+          : 'Current — no expiry'
+        : 'No record on file'
+      return { name: type.name, statusLabel, mandatory: req.is_mandatory }
+    })
+    .filter((r): r is NonNullable<typeof r> => r !== null)
+    .sort((a, b) => a.name.localeCompare(b.name))
+
+  const pdfRecords: CompetencyPdfRecord[] = (records ?? []).map((r) => {
+    const type = typeById.get(r.competency_type_id as string)
+    return {
+      number: r.number as string,
+      competency: type?.name ?? '—',
+      category: type ? COMPETENCY_CATEGORY_LABELS[type.category] : '—',
+      issuer: (r.issuer as string | null) ?? null,
+      reference: (r.reference_no as string | null) ?? null,
+      issued: fmtDate(r.issue_date as string),
+      expiry: r.expiry_date ? fmtDate(r.expiry_date as string) : null,
+      status: r.superseded_by
+        ? 'superseded'
+        : deriveCompetencyStatus((r.expiry_date as string | null) ?? null, today),
+    }
+  })
+
+  const buffer = await renderToBuffer(
+    <CompetencyPdf
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      worker={{
+        name: worker.name as string,
+        role: WORKER_ROLE_LABELS[worker.role as WorkerRole] ?? (worker.role as string),
+        company: (worker.company as string | null) ?? null,
+      }}
+      requirements={pdfRequirements}
+      records={pdfRecords}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="competency-${(worker.name as string).replace(/[^a-zA-Z0-9-]+/g, '-').toLowerCase()}.pdf"`,
     },
   })
 }

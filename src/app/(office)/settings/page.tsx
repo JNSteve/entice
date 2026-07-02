@@ -12,6 +12,7 @@ const VALID_TABS: SettingsTab[] = [
   'checklists',
   'swms',
   'whs-forms',
+  'competencies',
   'backup',
 ]
 
@@ -40,6 +41,8 @@ export default async function SettingsPage({
     { data: swmsTemplates },
     { data: rawFormTemplates },
     { data: submissionCounts },
+    { data: competencyTypes },
+    { data: roleRequirements },
   ] = await Promise.all([
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
@@ -74,6 +77,13 @@ export default async function SettingsPage({
     supabase
       .from('form_submissions')
       .select('template_id'),
+    supabase
+      .from('competency_types')
+      .select('id, name, category, validity_months, is_system, active')
+      .order('name'),
+    supabase
+      .from('role_competency_requirements')
+      .select('id, role, competency_type_id, is_mandatory'),
   ])
 
   // Build per-template submission counts
@@ -105,6 +115,8 @@ export default async function SettingsPage({
         checklists={checklists ?? []}
         swmsTemplates={swmsTemplates ?? []}
         formTemplates={formTemplates}
+        competencyTypes={competencyTypes ?? []}
+        roleRequirements={roleRequirements ?? []}
       />
     </div>
   )

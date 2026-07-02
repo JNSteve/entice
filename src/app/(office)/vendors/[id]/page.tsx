@@ -24,20 +24,8 @@ import {
 } from '../vendor-dialogs'
 import { COMPLIANCE_DOC_KIND_LABELS, type ComplianceDocKind } from '@/lib/zod'
 import { fmtDate, aud } from '@/lib/format'
-
-// ─── Expiry colour helper ─────────────────────────────────────────────────────
-
-function expiryColour(expiryDate: string): string {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const expiry = new Date(expiryDate)
-  const in30 = new Date(today)
-  in30.setDate(in30.getDate() + 30)
-
-  if (expiry < today) return 'text-red-600 font-medium'
-  if (expiry <= in30) return 'text-amber-600 font-medium'
-  return ''
-}
+import { expiryColour } from '@/lib/compliance'
+import { todayAU } from '@/lib/tz'
 
 export default async function VendorDetailPage({
   params,
@@ -233,7 +221,7 @@ export default async function VendorDetailPage({
                     <TableCell className="text-muted-foreground">
                       {doc.reference ?? '—'}
                     </TableCell>
-                    <TableCell className={expiryColour(doc.expiry_date)}>
+                    <TableCell className={expiryColour(doc.expiry_date, todayAU())}>
                       {fmtDate(doc.expiry_date)}
                     </TableCell>
                     {canEdit && (

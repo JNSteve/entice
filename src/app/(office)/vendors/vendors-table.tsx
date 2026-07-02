@@ -5,69 +5,18 @@ import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { todayAUClient } from '@/lib/tz-client'
+import { ComplianceLight } from '@/components/ComplianceLight'
+import { deriveComplianceStatus, type ComplianceDocSummary } from '@/lib/compliance'
 import { TruckIcon } from 'lucide-react'
 
-// ─── Traffic light derivation ─────────────────────────────────────────────────
-//
-// green  = has ≥1 doc AND all expiry_date > 30 days away
-// amber  = any doc expiring within 30 days (but none expired)
-// red    = any expired OR zero docs
-
-export type ComplianceStatus = 'green' | 'amber' | 'red'
-
-export interface ComplianceDocSummary {
-  expiry_date: string // ISO date string
-}
-
-export function deriveComplianceStatus(
-  docs: ComplianceDocSummary[]
-): ComplianceStatus {
-  if (docs.length === 0) return 'red'
-
-  // Compare 'YYYY-MM-DD' strings against the AU (Brisbane) calendar day so the
-  // traffic light agrees with the server-side registers regardless of the
-  // browser's local clock. Amber threshold: expiring within the next 30 days.
-  const today = todayAUClient()
-  const cutoff = new Date(`${today}T00:00:00Z`)
-  cutoff.setUTCDate(cutoff.getUTCDate() + 30)
-  const in30 = cutoff.toISOString().slice(0, 10)
-
-  let hasAmber = false
-
-  for (const doc of docs) {
-    if (doc.expiry_date < today) return 'red'
-    if (doc.expiry_date <= in30) hasAmber = true
-  }
-
-  return hasAmber ? 'amber' : 'green'
-}
-
-function complianceTitle(status: ComplianceStatus): string {
-  switch (status) {
-    case 'green':
-      return 'All compliance documents current'
-    case 'amber':
-      return 'One or more documents expire within 30 days'
-    case 'red':
-      return 'Expired or missing compliance documents'
-  }
-}
-
-function ComplianceLight({ status }: { status: ComplianceStatus }) {
-  const colours = {
-    green: 'bg-green-500',
-    amber: 'bg-amber-400',
-    red: 'bg-red-500',
-  }
-  return (
-    <span
-      className={`inline-block size-3 rounded-full ${colours[status]}`}
-      title={complianceTitle(status)}
-      aria-label={complianceTitle(status)}
-    />
-  )
-}
+// Traffic-light derivation (30-day amber rule) lives in src/lib/compliance.ts,
+// shared with the training/competency register. Re-exported for existing
+// importers of this module.
+export {
+  deriveComplianceStatus,
+  type ComplianceDocSummary,
+  type ComplianceStatus,
+} from '@/lib/compliance'
 
 // ─── Row type ─────────────────────────────────────────────────────────────────
 

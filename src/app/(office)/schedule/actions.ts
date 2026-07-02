@@ -4,20 +4,45 @@ import { revalidatePath } from 'next/cache'
 import { eachDayOfInterval, parseISO } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { competencyWarningsForProfile } from '@/lib/competency-queries'
+import { todayAU } from '@/lib/tz'
 import { assignmentSchema, assignmentUpdateSchema } from '@/lib/zod'
 
 type Result = { error?: string }
+
+// ─── Competency roster warning (ISO 7.2 — warn, never block) ─────────────────
+
+/**
+ * Mandatory competencies missing/expired/expiring for the person's role.
+ * Used by the assign dialog (inline warning) and echoed from createAssignment
+ * so the check cannot be bypassed silently. Best-effort: an error here must
+ * never break scheduling.
+ */
+export async function fetchAssigneeCompetencyWarnings(
+  userId: string
+): Promise<{ items: string[] }> {
+  await requireRole('admin', 'office', 'supervisor')
+  try {
+    const supabase = await createClient()
+    const items = await competencyWarningsForProfile(supabase, userId, todayAU())
+    return { items }
+  } catch {
+    return { items: [] }
+  }
+}
 
 // ─── Create assignment(s) ────────────────────────────────────────────────────
 
 /**
  * Creates one assignment, or multiple when `repeat_until` is supplied.
  * Duplicates (same user_id + date + target) are silently skipped.
- * Returns the count of rows actually inserted.
+ * Returns the count of rows actually inserted, plus a NON-BLOCKING competency
+ * `warning` when the person lacks a current mandatory competency for their
+ * role (owner decision: warn but allow — the assignment always proceeds).
  */
 export async function createAssignment(
   data: unknown
-): Promise<{ error?: string; created?: number }> {
+): Promise<{ error?: string; created?: number; warning?: string }> {
   const profile = await requireRole('admin', 'office', 'supervisor')
 
   const parsed = assignmentSchema.safeParse(data)
@@ -66,7 +91,19 @@ export async function createAssignment(
   const existingDates = new Set((existing ?? []).map((r) => r.date as string))
   const toInsert = dates.filter((d) => !existingDates.has(d))
 
-  if (toInsert.length === 0) return { created: 0 }
+  // Competency check (warn but ALLOW): computed server-side so the dialog UI
+  // cannot silently bypass it. Best-effort — never blocks the assignment.
+  let warning: string | undefined
+  try {
+    const items = await competencyWarningsForProfile(supabase, user_id, todayAU())
+    if (items.length > 0) {
+      warning = `Competency warning — ${items.join('; ')}. The assignment was still created.`
+    }
+  } catch {
+    // ignore — a warning failure must not break scheduling
+  }
+
+  if (toInsert.length === 0) return { created: 0, warning }
 
   const rows = toInsert.map((d) => ({
     user_id,
@@ -81,7 +118,7 @@ export async function createAssignment(
   if (error) return { error: error.message }
 
   revalidatePath('/schedule')
-  return { created: rows.length }
+  return { created: rows.length, warning }
 }
 
 // ─── Update assignment ────────────────────────────────────────────────────────

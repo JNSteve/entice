@@ -13,6 +13,11 @@ import {
 } from './checklists-section'
 import { SwmsSection, type SwmsTemplateRow } from './swms-section'
 import { WhsFormsSection, type FormTemplateRow } from './whs-forms-section'
+import {
+  CompetencySection,
+  type CompetencyTypeRow,
+  type RoleRequirementRow,
+} from './competency-section'
 import { BackupSection } from './backup-section'
 
 export type SettingsTab =
@@ -24,6 +29,7 @@ export type SettingsTab =
   | 'checklists'
   | 'swms'
   | 'whs-forms'
+  | 'competencies'
   | 'backup'
 
 const TABS: { value: SettingsTab; label: string }[] = [
@@ -35,6 +41,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'checklists', label: 'Checklists' },
   { value: 'swms', label: 'SWMS' },
   { value: 'whs-forms', label: 'WHS Forms' },
+  { value: 'competencies', label: 'Competencies' },
   { value: 'backup', label: 'Data & Backup' },
 ]
 
@@ -49,6 +56,8 @@ interface SettingsTabsProps {
   checklists: ChecklistTemplateRow[]
   swmsTemplates: SwmsTemplateRow[]
   formTemplates: FormTemplateRow[]
+  competencyTypes: CompetencyTypeRow[]
+  roleRequirements: RoleRequirementRow[]
 }
 
 export function SettingsTabs({
@@ -62,6 +71,8 @@ export function SettingsTabs({
   checklists,
   swmsTemplates,
   formTemplates,
+  competencyTypes,
+  roleRequirements,
 }: SettingsTabsProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab)
 
@@ -104,6 +115,9 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="whs-forms" className="pt-4">
         <WhsFormsSection templates={formTemplates} />
+      </TabsContent>
+      <TabsContent value="competencies" className="pt-4">
+        <CompetencySection types={competencyTypes} requirements={roleRequirements} />
       </TabsContent>
       <TabsContent value="backup" className="pt-4">
         <BackupSection />

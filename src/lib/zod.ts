@@ -1817,4 +1817,103 @@ export const findingRaiseNcrSchema = z.object({
 
 export type FindingRaiseNcrInput = z.infer<typeof findingRaiseNcrSchema>
 
+// ─── Training & competency register (ISO 7.2) ─────────────────────────────────
+
+export const COMPETENCY_CATEGORIES = [
+  'licence',
+  'ticket',
+  'voc',
+  'induction',
+  'course',
+  'medical',
+] as const
+export type CompetencyCategory = (typeof COMPETENCY_CATEGORIES)[number]
+
+export const COMPETENCY_CATEGORY_LABELS: Record<CompetencyCategory, string> = {
+  licence: 'Licence',
+  ticket: 'Ticket',
+  voc: 'VOC',
+  induction: 'Induction',
+  course: 'Course',
+  medical: 'Medical',
+}
+
+/** Roles used for role→required-competency mapping (mirrors profiles.role). */
+export const WORKER_ROLES = ['field', 'supervisor', 'office', 'admin'] as const
+export type WorkerRole = (typeof WORKER_ROLES)[number]
+
+export const WORKER_ROLE_LABELS: Record<WorkerRole, string> = {
+  field: 'Field',
+  supervisor: 'Supervisor',
+  office: 'Office',
+  admin: 'Admin',
+}
+
+/** Worker (staff-linked or standalone subbie individual). */
+export const workerSchema = z.object({
+  id: z.uuid().optional(),
+  name: z.string().min(1, 'Name is required'),
+  company: optionalText, // null = direct employee
+  role: z.enum(WORKER_ROLES),
+  active: z.boolean().default(true),
+})
+
+export type WorkerInput = z.infer<typeof workerSchema>
+
+export const competencyTypeSchema = z.object({
+  id: z.uuid().optional(),
+  name: z.string().min(1, 'Name is required'),
+  category: z.enum(COMPETENCY_CATEGORIES),
+  validity_months: z.coerce
+    .number()
+    .int()
+    .positive('Validity must be a positive number of months')
+    .nullish()
+    .transform((v) => v ?? null),
+  active: z.boolean().default(true),
+})
+
+export type CompetencyTypeInput = z.infer<typeof competencyTypeSchema>
+
+/**
+ * New competency record. Evidence, when present, is uploaded by the browser
+ * to attachments/competency/ first (documents-register pattern); this
+ * validates the row the server action records afterwards. The action also
+ * auto-supersedes any previous non-superseded record of the same
+ * (worker, type) — the de-dup rule.
+ */
+export const competencyRecordSchema = z
+  .object({
+    worker_id: z.uuid('Pick a worker'),
+    competency_type_id: z.uuid('Pick a competency type'),
+    issuer: optionalText,
+    reference_no: optionalText,
+    issue_date: isoDate,
+    expiry_date: isoDate
+      .nullish()
+      .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+    evidence_path: z
+      .string()
+      .regex(/^competency\//, 'Invalid evidence path')
+      .refine((v) => !v.includes('..'), 'Invalid evidence path')
+      .nullish()
+      .transform((v) => v ?? null),
+    evidence_filename: optionalText,
+  })
+  .refine(
+    (d) => d.expiry_date === null || d.expiry_date >= d.issue_date,
+    'Expiry cannot be before the issue date'
+  )
+
+export type CompetencyRecordInput = z.infer<typeof competencyRecordSchema>
+
+export const roleRequirementSchema = z.object({
+  id: z.uuid().optional(),
+  role: z.enum(WORKER_ROLES),
+  competency_type_id: z.uuid('Pick a competency type'),
+  is_mandatory: z.boolean().default(true),
+})
+
+export type RoleRequirementInput = z.infer<typeof roleRequirementSchema>
+
 export type DocumentUpdateInput = z.infer<typeof documentUpdateSchema>
