@@ -1337,6 +1337,7 @@ export const NCR_SOURCES = [
   'audit_finding',
   'supplier',
   'safety',
+  'legal_compliance',
   'other',
 ] as const
 export type NcrSource = (typeof NCR_SOURCES)[number]
@@ -1348,6 +1349,7 @@ export const NCR_SOURCE_LABELS: Record<NcrSource, string> = {
   audit_finding: 'Audit finding',
   supplier: 'Supplier',
   safety: 'Safety',
+  legal_compliance: 'Legal compliance',
   other: 'Other',
 }
 
@@ -2377,3 +2379,165 @@ export const mgmtReviewActionUpdateSchema = z.object({
 })
 
 export type MgmtReviewActionUpdateInput = z.infer<typeof mgmtReviewActionUpdateSchema>
+
+// ─── Legal & compliance obligations register (ISO 6.1.3 / 9.1.2) ─────────────
+// current_compliance is DERIVED by DB trigger from the latest evaluation and
+// is deliberately absent from every schema here — the app can never set it.
+// Latest-evaluation / next-review helpers live in src/lib/legal.ts.
+
+export const LEGAL_CATEGORIES = [
+  'act',
+  'regulation',
+  'code_of_practice',
+  'standard',
+  'permit',
+  'licence',
+  'client_requirement',
+  'other',
+] as const
+export type LegalCategory = (typeof LEGAL_CATEGORIES)[number]
+
+export const LEGAL_CATEGORY_LABELS: Record<LegalCategory, string> = {
+  act: 'Act',
+  regulation: 'Regulation',
+  code_of_practice: 'Code of Practice',
+  standard: 'Standard',
+  permit: 'Permit',
+  licence: 'Licence',
+  client_requirement: 'Client requirement',
+  other: 'Other',
+}
+
+// Single-valued by design (locked decision) — duplicate the obligation per
+// state if cross-border work ever needs it.
+export const LEGAL_JURISDICTIONS = [
+  'commonwealth',
+  'qld',
+  'nsw',
+  'local',
+  'other',
+] as const
+export type LegalJurisdiction = (typeof LEGAL_JURISDICTIONS)[number]
+
+export const LEGAL_JURISDICTION_LABELS: Record<LegalJurisdiction, string> = {
+  commonwealth: 'Commonwealth',
+  qld: 'Queensland',
+  nsw: 'New South Wales',
+  local: 'Local government',
+  other: 'Other / national',
+}
+
+export const COMPLIANCE_STATES = ['compliant', 'gap', 'not_evaluated'] as const
+export type ComplianceState = (typeof COMPLIANCE_STATES)[number]
+
+export const COMPLIANCE_STATE_LABELS: Record<ComplianceState, string> = {
+  compliant: 'Compliant',
+  gap: 'Gap',
+  not_evaluated: 'Not evaluated',
+}
+
+export const COMPLIANCE_VERDICTS = ['compliant', 'gap'] as const
+export type ComplianceVerdict = (typeof COMPLIANCE_VERDICTS)[number]
+
+export const COMPLIANCE_VERDICT_LABELS: Record<ComplianceVerdict, string> = {
+  compliant: 'Compliant',
+  gap: 'Gap',
+}
+
+export const OBLIGATION_STATUSES = ['active', 'retired'] as const
+export type ObligationStatus = (typeof OBLIGATION_STATUSES)[number]
+
+export const OBLIGATION_STATUS_LABELS: Record<ObligationStatus, string> = {
+  active: 'Active',
+  retired: 'Retired',
+}
+
+export const legalObligationCreateSchema = z.object({
+  title: z.string().min(1, 'Title is required'),
+  category: z.enum(LEGAL_CATEGORIES),
+  jurisdiction: z.enum(LEGAL_JURISDICTIONS),
+  iso_domain: z.enum(RISK_DOMAINS),
+  summary: optionalText,
+  how_it_applies: optionalText,
+  how_we_comply: optionalText,
+  controlling_document_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  responsible_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  review_frequency_months: z.coerce.number().int().min(1).max(120).default(12),
+  next_review_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+})
+
+export type LegalObligationCreateInput = z.infer<typeof legalObligationCreateSchema>
+
+/** Edit while active. next_review_date stays manually adjustable (initial
+ *  scheduling); after an evaluation the DB trigger advances it. */
+export const legalObligationUpdateSchema = z.object({
+  title: z.string().min(1, 'Title is required').optional(),
+  category: z.enum(LEGAL_CATEGORIES).optional(),
+  jurisdiction: z.enum(LEGAL_JURISDICTIONS).optional(),
+  iso_domain: z.enum(RISK_DOMAINS).optional(),
+  summary: optionalText.optional(),
+  how_it_applies: optionalText.optional(),
+  how_we_comply: optionalText.optional(),
+  controlling_document_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  responsible_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  review_frequency_months: z.coerce.number().int().min(1).max(120).optional(),
+  next_review_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null))
+    .optional(),
+})
+
+export type LegalObligationUpdateInput = z.infer<typeof legalObligationUpdateSchema>
+
+/**
+ * Record a compliance evaluation — always a NEW row (append-only; no update
+ * schema exists by design). A 'gap' verdict MUST escalate into the NCR/CAPA
+ * spine: either link an existing NCR or create one (source 'legal_compliance',
+ * description prefilled from the obligation in the server action).
+ */
+export const recordEvaluationSchema = z
+  .object({
+    obligation_id: z.uuid(),
+    evaluated_on: isoDate,
+    verdict: z.enum(COMPLIANCE_VERDICTS),
+    notes: optionalText,
+    /** Link an existing NCR (gap only)… */
+    ncr_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    /** …or raise a new one. */
+    create_ncr: z.boolean().default(false),
+    /** Severity for the raised NCR (create_ncr only). */
+    ncr_severity: z.coerce.number().int().min(1).max(5).default(3),
+  })
+  .refine((d) => d.verdict !== 'gap' || d.create_ncr || d.ncr_id !== null, {
+    message: 'A gap must raise a new NCR or link an existing one',
+    path: ['ncr_id'],
+  })
+  .refine((d) => !(d.create_ncr && d.ncr_id !== null), {
+    message: 'Choose to raise a new NCR or link an existing one, not both',
+    path: ['ncr_id'],
+  })
+  .refine((d) => d.verdict === 'gap' || (!d.create_ncr && d.ncr_id === null), {
+    message: 'Only a gap verdict carries an NCR',
+    path: ['ncr_id'],
+  })
+
+export type RecordEvaluationInput = z.infer<typeof recordEvaluationSchema>

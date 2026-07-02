@@ -47,6 +47,12 @@ import {
   type MgmtReviewPdfAction,
 } from '@/pdf/MgmtReviewPdf'
 import {
+  LegalRegisterPdf,
+  type LegalRegisterPdfGroup,
+  type LegalRegisterPdfRow,
+} from '@/pdf/LegalRegisterPdf'
+import { latestEvaluation } from '@/lib/legal'
+import {
   MGMT_REVIEW_INPUT_KEYS,
   MGMT_REVIEW_INPUT_DEFS,
   MGMT_REVIEW_STANDARD_LABELS,
@@ -76,6 +82,9 @@ import {
   OBJECTIVE_PERIOD_LABELS,
   OBJECTIVE_SOURCE_LABELS,
   OBJECTIVE_STATUS_LABELS,
+  LEGAL_CATEGORY_LABELS,
+  LEGAL_JURISDICTION_LABELS,
+  COMPLIANCE_STATE_LABELS,
   type DocCategory,
   type DocSystem,
   type CompetencyCategory,
@@ -85,6 +94,9 @@ import {
   type ObjectivePeriod,
   type ObjectiveSource,
   type ObjectiveStatus,
+  type LegalCategory,
+  type LegalJurisdiction,
+  type ComplianceState,
 } from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
 import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
@@ -149,7 +161,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -206,6 +218,9 @@ export async function GET(
       return objectivesPdf()
     case 'mgmt-review':
       return mgmtReviewPdf(id)
+    case 'legal-register':
+      // [id] is a placeholder (use 'list') — covers the whole register.
+      return legalRegisterPdf()
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -1945,7 +1960,9 @@ async function objectivesPdf(): Promise<Response> {
     const direction = o.direction as ObjectiveDirection
     const unit = o.unit as string
     const target = Number(o.target_value)
-    const targetStr = `${direction === 'at_most' ? '≤' : '≥'} ${fmtValue(target, unit)}`
+    // Font-safe wording — '≤'/'≥' glyphs are missing from the WinAnsi PDF
+    // font encoding (same fix as the management-review PDF).
+    const targetStr = `${direction === 'at_most' ? 'at most' : 'at least'} ${fmtValue(target, unit)}`
     const series = (valuesByObjective.get(o.id as string) ?? []).map((v) => ({
       ...v,
       value: Number(v.value),
@@ -2143,6 +2160,98 @@ async function mgmtReviewPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${review.number as string}-management-review.pdf"`,
+    },
+  })
+}
+
+// ─── Legal & Compliance Obligations Register (ISO 6.1.3 / 9.1.2) ─────────────
+
+async function legalRegisterPdf(): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: obligations }, { data: evaluations }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('legal_obligations')
+        .select(
+          `id, number, title, category, jurisdiction, iso_domain,
+           how_we_comply, next_review_date, current_compliance, status,
+           responsible:profiles!legal_obligations_responsible_id_fkey(full_name)`
+        )
+        .order('iso_domain')
+        .order('number'),
+      supabase
+        .from('compliance_evaluations')
+        .select('obligation_id, evaluated_on, verdict, created_at'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  const today = todayAU()
+
+  type EvalRel = {
+    obligation_id: string
+    evaluated_on: string
+    verdict: string
+    created_at: string
+  }
+  const evalsByObligation = new Map<string, EvalRel[]>()
+  for (const raw of evaluations ?? []) {
+    const e = raw as unknown as EvalRel
+    const list = evalsByObligation.get(e.obligation_id)
+    if (list) list.push(e)
+    else evalsByObligation.set(e.obligation_id, [e])
+  }
+
+  // Group by ISO domain in the fixed register order.
+  const groups: LegalRegisterPdfGroup[] = RISK_DOMAINS.map((domain) => ({
+    domain: RISK_DOMAIN_LABELS[domain],
+    rows: (obligations ?? [])
+      .filter((o) => o.iso_domain === domain)
+      .map((o): LegalRegisterPdfRow => {
+        const responsible = o.responsible as unknown as {
+          full_name: string
+        } | null
+        const latest = latestEvaluation(
+          evalsByObligation.get(o.id as string) ?? []
+        )
+        const compliance = o.current_compliance as ComplianceState
+        const nextReview = (o.next_review_date as string | null) ?? null
+        return {
+          number: o.number as string,
+          title: o.title as string,
+          categoryJurisdiction: `${
+            LEGAL_CATEGORY_LABELS[o.category as LegalCategory]
+          } · ${LEGAL_JURISDICTION_LABELS[o.jurisdiction as LegalJurisdiction]}`,
+          howWeComply: (o.how_we_comply as string | null) ?? null,
+          responsible: responsible?.full_name ?? null,
+          lastVerdict: latest
+            ? `${COMPLIANCE_STATE_LABELS[latest.verdict as ComplianceState]} — ${fmtDate(latest.evaluated_on)}`
+            : 'Not evaluated',
+          compliance,
+          nextReview: nextReview ? fmtDate(nextReview) : null,
+          reviewOverdue:
+            o.status === 'active' && nextReview != null && nextReview < today,
+          retired: o.status === 'retired',
+        }
+      }),
+  })).filter((g) => g.rows.length > 0)
+
+  const buffer = await renderToBuffer(
+    <LegalRegisterPdf
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      groups={groups}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="legal-register.pdf"',
     },
   })
 }

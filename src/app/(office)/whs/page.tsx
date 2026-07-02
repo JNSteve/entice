@@ -96,6 +96,8 @@ export default async function WhsOverviewPage() {
     { data: overdueRiskReviews },
     { data: highResidualRisks },
     { data: overdueMrActions },
+    { data: overdueLegalReviews },
+    { data: legalGaps },
     { data: auditRows },
   ] = await Promise.all([
     supabase.from('incidents').select('id, status, severity'),
@@ -182,6 +184,21 @@ export default async function WhsOverviewPage() {
       .not('due_date', 'is', null)
       .lt('due_date', todayStr)
       .order('due_date', { ascending: true }),
+    // Active legal obligations past their compliance-review date (ISO 6.1.3/9.1.2).
+    supabase
+      .from('legal_obligations')
+      .select('id, number, title, next_review_date')
+      .eq('status', 'active')
+      .not('next_review_date', 'is', null)
+      .lt('next_review_date', todayStr)
+      .order('next_review_date', { ascending: true }),
+    // Active obligations whose latest evaluation found a gap.
+    supabase
+      .from('legal_obligations')
+      .select('id, number, title')
+      .eq('status', 'active')
+      .eq('current_compliance', 'gap')
+      .order('number', { ascending: true }),
     supabase
       .from('audit_log')
       .select('id, at, actor_id, actor_name, entity_type, entity_id, project_id, action, detail')
@@ -311,6 +328,22 @@ export default async function WhsOverviewPage() {
     ),
   }))
 
+  const legalReviewRows = (overdueLegalReviews ?? []).map((o) => ({
+    id: o.id as string,
+    number: o.number as string,
+    title: o.title as string,
+    daysOverdue: Math.max(
+      0,
+      differenceInCalendarDays(today, parseISO(o.next_review_date as string))
+    ),
+  }))
+
+  const legalGapRows = (legalGaps ?? []).map((o) => ({
+    id: o.id as string,
+    number: o.number as string,
+    title: o.title as string,
+  }))
+
   const needsAttentionCount =
     overdueActionRows.length +
     holdPointRows.length +
@@ -321,6 +354,8 @@ export default async function WhsOverviewPage() {
     riskReviewRows.length +
     highRiskRows.length +
     mrActionRows.length +
+    legalReviewRows.length +
+    legalGapRows.length +
     competencyRows.length +
     objectiveRows.length
 
@@ -399,8 +434,8 @@ export default async function WhsOverviewPage() {
               <p className="text-sm text-muted-foreground">
                 Nothing outstanding — corrective actions, hold points, vendor
                 compliance, document reviews, internal audits, risk reviews,
-                management review actions, worker competencies and objectives
-                are all in order.
+                management review actions, legal obligations, worker
+                competencies and objectives are all in order.
               </p>
             ) : (
               <>
@@ -596,6 +631,48 @@ export default async function WhsOverviewPage() {
                     </div>
                     <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
                       {a.daysOverdue}d overdue
+                    </span>
+                  </div>
+                ))}
+                {legalReviewRows.map((o) => (
+                  <div
+                    key={o.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href={`/whs/legal/${o.id}`}
+                        className="truncate hover:underline"
+                      >
+                        {o.title}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Compliance review due · {o.number}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                      {o.daysOverdue}d overdue
+                    </span>
+                  </div>
+                ))}
+                {legalGapRows.map((o) => (
+                  <div
+                    key={o.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href={`/whs/legal/${o.id}`}
+                        className="truncate hover:underline"
+                      >
+                        {o.title}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Compliance gap · {o.number}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400">
+                      Gap
                     </span>
                   </div>
                 ))}

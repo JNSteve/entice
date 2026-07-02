@@ -7,7 +7,7 @@ export type ObjectivesPdfSummaryRow = {
   title: string
   domain: string
   metric: string
-  /** e.g. '≤ 0 rate' / '≥ 95%' */
+  /** Font-safe wording (WinAnsi has no ≤/≥ glyphs) — e.g. 'at most 0' / 'at least 95%' */
   target: string
   period: string
   source: string
