@@ -36,6 +36,17 @@ import {
   type RiskRegisterBandCount,
 } from '@/pdf/RiskRegisterPdf'
 import {
+  ObjectivesPdf,
+  type ObjectivesPdfObjectiveBlock,
+  type ObjectivesPdfSummaryRow,
+} from '@/pdf/ObjectivesPdf'
+import {
+  deriveObjectiveStatus,
+  periodKeyLabel,
+  OBJECTIVE_TRAFFIC_LABELS,
+} from '@/lib/objectives'
+import { latestKpiValue } from '@/lib/objective-queries'
+import {
   deriveCompetencyStatus,
   latestRecords,
   workerTypeKey,
@@ -49,11 +60,18 @@ import {
   RISK_DOMAINS,
   RISK_DOMAIN_LABELS,
   RISK_STATUS_LABELS,
+  OBJECTIVE_PERIOD_LABELS,
+  OBJECTIVE_SOURCE_LABELS,
+  OBJECTIVE_STATUS_LABELS,
   type DocCategory,
   type DocSystem,
   type CompetencyCategory,
   type WorkerRole,
   type RiskStatus,
+  type ObjectiveDirection,
+  type ObjectivePeriod,
+  type ObjectiveSource,
+  type ObjectiveStatus,
 } from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
 import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
@@ -118,7 +136,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -170,6 +188,9 @@ export async function GET(
     case 'risk-register':
       // [id] is a placeholder (use 'list') — the register PDF covers all items.
       return riskRegisterPdf()
+    case 'objectives':
+      // [id] is a placeholder (use 'list') — covers all objectives + values.
+      return objectivesPdf()
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -1848,6 +1869,127 @@ async function riskRegisterPdf(): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'inline; filename="risk-register.pdf"',
+    },
+  })
+}
+
+// ─── Objectives & KPIs (ISO 6.2 / 9.1) ───────────────────────────────────────
+
+async function objectivesPdf(): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: objectives }, { data: values }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('objectives')
+        .select(
+          `id, number, title, iso_domain, metric_name, unit, target_value,
+           direction, period, source, status,
+           owner:profiles!objectives_owner_id_fkey(full_name)`
+        )
+        .order('number'),
+      supabase
+        .from('kpi_values')
+        .select(
+          `objective_id, period_key, value, note, computed_at,
+           enterer:profiles!kpi_values_entered_by_fkey(full_name)`
+        )
+        .order('period_key'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  const fmtValue = (value: number, unit: string): string => {
+    const n = parseFloat(value.toFixed(2))
+    return unit === '%' ? `${n}%` : String(n)
+  }
+
+  type ValueRel = {
+    objective_id: string
+    period_key: string
+    value: number
+    note: string | null
+    computed_at: string
+    enterer: { full_name: string } | null
+  }
+  const valuesByObjective = new Map<string, ValueRel[]>()
+  for (const raw of values ?? []) {
+    const v = raw as unknown as ValueRel
+    const list = valuesByObjective.get(v.objective_id)
+    if (list) list.push(v)
+    else valuesByObjective.set(v.objective_id, [v])
+  }
+
+  const summary: ObjectivesPdfSummaryRow[] = []
+  const blocks: ObjectivesPdfObjectiveBlock[] = []
+
+  for (const o of objectives ?? []) {
+    const direction = o.direction as ObjectiveDirection
+    const unit = o.unit as string
+    const target = Number(o.target_value)
+    const targetStr = `${direction === 'at_most' ? '≤' : '≥'} ${fmtValue(target, unit)}`
+    const series = (valuesByObjective.get(o.id as string) ?? []).map((v) => ({
+      ...v,
+      value: Number(v.value),
+    }))
+    const latest = latestKpiValue(series)
+    const traffic = deriveObjectiveStatus(direction, target, latest?.value ?? null)
+    const owner = o.owner as unknown as { full_name: string } | null
+
+    summary.push({
+      number: o.number as string,
+      title: o.title as string,
+      domain: RISK_DOMAIN_LABELS[o.iso_domain as keyof typeof RISK_DOMAIN_LABELS],
+      metric: o.metric_name as string,
+      target: targetStr,
+      period: OBJECTIVE_PERIOD_LABELS[o.period as ObjectivePeriod],
+      source: OBJECTIVE_SOURCE_LABELS[o.source as ObjectiveSource],
+      latestPeriod: latest ? periodKeyLabel(latest.period_key) : null,
+      latestValue: latest ? fmtValue(latest.value, unit) : null,
+      traffic,
+      trafficLabel: OBJECTIVE_TRAFFIC_LABELS[traffic],
+      owner: owner?.full_name ?? null,
+      status: OBJECTIVE_STATUS_LABELS[o.status as ObjectiveStatus],
+    })
+
+    blocks.push({
+      number: o.number as string,
+      title: o.title as string,
+      metric: `${o.metric_name as string} (${unit})`,
+      target: targetStr,
+      values: [...series]
+        .sort((a, b) => b.period_key.localeCompare(a.period_key))
+        .map((v) => {
+          const s = deriveObjectiveStatus(direction, target, v.value)
+          return {
+            period: periodKeyLabel(v.period_key),
+            value: fmtValue(v.value, unit),
+            traffic: s,
+            trafficLabel: OBJECTIVE_TRAFFIC_LABELS[s],
+            note: v.note,
+            source: v.enterer?.full_name ?? 'Auto',
+            recorded: fmtDate(v.computed_at),
+          }
+        }),
+    })
+  }
+
+  const buffer = await renderToBuffer(
+    <ObjectivesPdf
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      summary={summary}
+      blocks={blocks}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="objectives-kpis.pdf"',
     },
   })
 }

@@ -2097,3 +2097,163 @@ export const riskTreatmentUpdateSchema = z.object({
 })
 
 export type RiskTreatmentUpdateInput = z.infer<typeof riskTreatmentUpdateSchema>
+
+// ─── Objectives & KPIs (ISO 9001/14001/45001 §6.2 / §9.1) ────────────────────
+// Period/traffic-light logic lives in src/lib/objectives.ts; the auto-metric
+// compute registry in src/lib/kpi-metrics.ts (server-only). Objectives share
+// the RISK_DOMAINS iso_domain vocabulary.
+
+export const OBJECTIVE_DIRECTIONS = ['at_most', 'at_least'] as const
+export type ObjectiveDirection = (typeof OBJECTIVE_DIRECTIONS)[number]
+
+export const OBJECTIVE_DIRECTION_LABELS: Record<ObjectiveDirection, string> = {
+  at_most: 'At most (lower is better)',
+  at_least: 'At least (higher is better)',
+}
+
+export const OBJECTIVE_PERIODS = ['monthly', 'quarterly'] as const
+export type ObjectivePeriod = (typeof OBJECTIVE_PERIODS)[number]
+
+export const OBJECTIVE_PERIOD_LABELS: Record<ObjectivePeriod, string> = {
+  monthly: 'Monthly',
+  quarterly: 'Quarterly',
+}
+
+export const OBJECTIVE_SOURCES = ['manual', 'auto'] as const
+export type ObjectiveSource = (typeof OBJECTIVE_SOURCES)[number]
+
+export const OBJECTIVE_SOURCE_LABELS: Record<ObjectiveSource, string> = {
+  manual: 'Manual entry',
+  auto: 'Auto-derived',
+}
+
+export const OBJECTIVE_STATUSES = ['active', 'achieved', 'retired'] as const
+export type ObjectiveStatus = (typeof OBJECTIVE_STATUSES)[number]
+
+export const OBJECTIVE_STATUS_LABELS: Record<ObjectiveStatus, string> = {
+  active: 'Active',
+  achieved: 'Achieved',
+  retired: 'Retired',
+}
+
+const monthKey = z
+  .string()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, 'Invalid month (YYYY-MM)')
+
+const anyPeriodKey = z
+  .string()
+  .regex(
+    /^\d{4}-((0[1-9]|1[0-2])|Q[1-4])$/,
+    'Invalid period key (YYYY-MM or YYYY-Qn)'
+  )
+
+/**
+ * New objective. One source per objective: auto requires an auto_metric_key
+ * (validated against the registry keys in the server action); manual forbids
+ * one. Mirrors the DB CHECK.
+ */
+export const objectiveCreateSchema = z
+  .object({
+    title: z.string().min(1, 'Title is required'),
+    description: optionalText,
+    iso_domain: z.enum(RISK_DOMAINS),
+    metric_name: z.string().min(1, 'Metric name is required'),
+    unit: z.string().min(1, 'Unit is required'),
+    target_value: z.coerce.number(),
+    direction: z.enum(OBJECTIVE_DIRECTIONS),
+    period: z.enum(OBJECTIVE_PERIODS),
+    source: z.enum(OBJECTIVE_SOURCES),
+    auto_metric_key: optionalText,
+    owner_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+  })
+  .refine((d) => (d.source === 'auto') === (d.auto_metric_key !== null), {
+    message: 'Auto objectives need a metric; manual objectives must not set one',
+    path: ['auto_metric_key'],
+  })
+
+export type ObjectiveCreateInput = z.infer<typeof objectiveCreateSchema>
+
+/**
+ * Edit while active. Source/metric/period are FIXED after creation — changing
+ * how a KPI is measured mid-history would silently reinterpret every stored
+ * period value; retire the objective and raise a new one instead.
+ */
+export const objectiveUpdateSchema = z.object({
+  title: z.string().min(1, 'Title is required').optional(),
+  description: optionalText.optional(),
+  iso_domain: z.enum(RISK_DOMAINS).optional(),
+  metric_name: z.string().min(1, 'Metric name is required').optional(),
+  unit: z.string().min(1, 'Unit is required').optional(),
+  target_value: z.coerce.number().optional(),
+  direction: z.enum(OBJECTIVE_DIRECTIONS).optional(),
+  owner_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+})
+
+export type ObjectiveUpdateInput = z.infer<typeof objectiveUpdateSchema>
+
+export const objectiveStatusSchema = z.object({
+  status: z.enum(OBJECTIVE_STATUSES),
+})
+
+export type ObjectiveStatusInput = z.infer<typeof objectiveStatusSchema>
+
+/**
+ * Manual KPI value for a period (manual objectives only — guarded in the
+ * server action AND by the kpi_values entry-guard DB trigger). The period must
+ * be current or elapsed, never future (checked in the action against AU today).
+ */
+export const kpiManualValueSchema = z.object({
+  objective_id: z.uuid(),
+  period_key: anyPeriodKey,
+  value: z.coerce.number(),
+  note: optionalText,
+})
+
+export type KpiManualValueInput = z.infer<typeof kpiManualValueSchema>
+
+/** Monthly hours-worked entry (LTIFR denominator — payroll figure). */
+export const companyHoursSchema = z.object({
+  period_key: monthKey,
+  hours: z.coerce
+    .number()
+    .min(0, 'Hours cannot be negative')
+    .max(1_000_000, 'Hours look wrong'),
+})
+
+export type CompanyHoursInput = z.infer<typeof companyHoursSchema>
+
+export const objectiveActionSchema = z.object({
+  objective_id: z.uuid(),
+  description: z.string().min(1, 'Description is required'),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  due_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+})
+
+export type ObjectiveActionInput = z.infer<typeof objectiveActionSchema>
+
+export const objectiveActionUpdateSchema = z.object({
+  description: z.string().min(1, 'Description is required').optional(),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  due_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null))
+    .optional(),
+})
+
+export type ObjectiveActionUpdateInput = z.infer<typeof objectiveActionUpdateSchema>

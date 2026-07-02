@@ -3,6 +3,7 @@ import { differenceInCalendarDays, format, parseISO, subDays } from 'date-fns'
 import { createClient } from '@/lib/supabase/server'
 import { nowAU } from '@/lib/tz'
 import { fetchCompetencyAttention } from '@/lib/competency-queries'
+import { fetchObjectiveAttention } from '@/lib/objective-queries'
 import {
   Card,
   CardContent,
@@ -183,6 +184,10 @@ export default async function WhsOverviewPage() {
   // record per worker/type, derived in Brisbane time — ISO 7.2).
   const competencyRows = await fetchCompetencyAttention(supabase, todayStr)
 
+  // Active objectives whose latest KPI value is off-track against the
+  // direction-aware target (ISO 6.2 / 9.1).
+  const objectiveRows = await fetchObjectiveAttention(supabase)
+
   // ── Stats ──────────────────────────────────────────────────────────────────
 
   const openIncidents = (incidents ?? []).filter((i) => i.status !== 'closed')
@@ -294,7 +299,8 @@ export default async function WhsOverviewPage() {
     openFindingRows.length +
     riskReviewRows.length +
     highRiskRows.length +
-    competencyRows.length
+    competencyRows.length +
+    objectiveRows.length
 
   const recentActivity: AuditRow[] = ((auditRows ?? []) as Record<string, unknown>[]).map(
     (r) => ({
@@ -370,8 +376,8 @@ export default async function WhsOverviewPage() {
             {needsAttentionCount === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Nothing outstanding — corrective actions, hold points, vendor
-                compliance, document reviews, internal audits, risk reviews and
-                worker competencies are all in order.
+                compliance, document reviews, internal audits, risk reviews,
+                worker competencies and objectives are all in order.
               </p>
             ) : (
               <>
@@ -546,6 +552,29 @@ export default async function WhsOverviewPage() {
                       }
                     >
                       {r.rating} {r.score}
+                    </span>
+                  </div>
+                ))}
+                {objectiveRows.map((o) => (
+                  <div
+                    key={o.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href={`/whs/objectives/${o.id}`}
+                        className="truncate hover:underline"
+                      >
+                        {o.title}
+                      </Link>
+                      <span className="truncate text-xs text-muted-foreground">
+                        Objective off track · {o.number} · {o.periodLabel}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                      {o.unit === '%' ? `${o.value}%` : o.value} vs{' '}
+                      {o.direction === 'at_most' ? '≤' : '≥'}
+                      {o.unit === '%' ? `${o.target}%` : o.target}
                     </span>
                   </div>
                 ))}
