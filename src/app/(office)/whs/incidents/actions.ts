@@ -97,9 +97,21 @@ export async function updateIncident(
     return { error: 'Cannot edit a closed incident' }
   }
 
+  // datetime-local has no timezone; the value is Brisbane wall-clock time.
+  // Convert it to a UTC instant before storing — mirror createIncident. Other
+  // fields pass through unchanged.
+  const update = { ...parsed.data }
+  if (update.occurred_at) {
+    try {
+      update.occurred_at = auLocalToInstant(update.occurred_at)
+    } catch {
+      return { error: 'Invalid date/time for when it happened' }
+    }
+  }
+
   const { error } = await supabase
     .from('incidents')
-    .update(parsed.data)
+    .update(update)
     .eq('id', incidentId)
 
   if (error) return { error: error.message }

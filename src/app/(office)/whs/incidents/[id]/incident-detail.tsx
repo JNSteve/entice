@@ -3,7 +3,6 @@
 import React, { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { format, parseISO } from 'date-fns'
 import {
   PlusIcon,
   PencilIcon,
@@ -48,7 +47,7 @@ import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList, type AttachmentItem } from '@/components/AttachmentList'
 import { AuditHistory } from '@/components/AuditHistory'
 import { fmtDate } from '@/lib/format'
-import { todayAUClient } from '@/lib/tz-client'
+import { todayAUClient, instantToAUInput } from '@/lib/tz-client'
 import { cn } from '@/lib/utils'
 import type { AuditRow } from '@/lib/audit-queries'
 import {
@@ -181,7 +180,7 @@ function EditIncidentDialog({
   const [form, setForm] = useState({
     type: incident.type,
     severity: String(incident.severity),
-    occurred_at: incident.occurred_at.slice(0, 16),
+    occurred_at: instantToAUInput(incident.occurred_at),
     location: incident.location ?? '',
     description: incident.description,
     immediate_action: incident.immediate_action ?? '',
@@ -551,8 +550,16 @@ export function IncidentDetailClient({
     { label: 'Status', value: <StatusBadge status={incident.status} /> },
     {
       label: 'Occurred',
+      // Render the stored UTC instant in Brisbane wall-clock (dd/MM/yyyy HH:mm),
+      // not the render environment's local zone (UTC on the server).
       value: incident.occurred_at
-        ? format(parseISO(incident.occurred_at), 'dd/MM/yyyy HH:mm')
+        ? (() => {
+            const [date, time] = instantToAUInput(incident.occurred_at).split(
+              'T'
+            )
+            const [y, m, d] = date.split('-')
+            return `${d}/${m}/${y} ${time}`
+          })()
         : '—',
     },
     { label: 'Location', value: incident.location ?? '—' },

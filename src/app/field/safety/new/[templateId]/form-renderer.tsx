@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Textarea } from '@/components/ui/textarea'
 import { SignaturePad } from '@/components/SignaturePad'
+import { nowAUInput } from '@/lib/tz-client'
 import { cn } from '@/lib/utils'
 import {
   validateSubmissionData,
@@ -366,12 +367,6 @@ function SchemaField({
 
 // ─── Incident structured form ────────────────────────────────────────────────
 
-function nowLocalDatetime(): string {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
-
 // ─── Main renderer ───────────────────────────────────────────────────────────
 
 export function FormRenderer({
@@ -395,7 +390,7 @@ export function FormRenderer({
   // Incident structured state
   const [incidentType, setIncidentType] = useState<IncidentType | ''>('')
   const [severity, setSeverity] = useState<number | null>(null)
-  const [occurredAt, setOccurredAt] = useState(nowLocalDatetime())
+  const [occurredAt, setOccurredAt] = useState(nowAUInput())
   const [location, setLocation] = useState('')
   const [description, setDescription] = useState('')
   const [immediateAction, setImmediateAction] = useState('')

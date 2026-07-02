@@ -34,6 +34,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { fmtDate } from '@/lib/format'
+import { nowAUInput } from '@/lib/tz-client'
 import { cn } from '@/lib/utils'
 import {
   INCIDENT_TYPES,
@@ -153,7 +154,7 @@ function CreateIncidentDialog({
   const [form, setForm] = useState({
     type: 'near_miss' as IncidentType,
     severity: '3',
-    occurred_at: new Date().toISOString().slice(0, 16),
+    occurred_at: nowAUInput(),
     location: '',
     description: '',
     immediate_action: '',
