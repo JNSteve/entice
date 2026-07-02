@@ -30,6 +30,12 @@ import {
 } from '@/pdf/TrainingMatrixPdf'
 import { CompetencyPdf, type CompetencyPdfRecord } from '@/pdf/CompetencyPdf'
 import {
+  RiskRegisterPdf,
+  type RiskRegisterPdfGroup,
+  type RiskRegisterPdfRow,
+  type RiskRegisterBandCount,
+} from '@/pdf/RiskRegisterPdf'
+import {
   deriveCompetencyStatus,
   latestRecords,
   workerTypeKey,
@@ -40,10 +46,14 @@ import {
   DOC_SYSTEM_LABELS,
   COMPETENCY_CATEGORY_LABELS,
   WORKER_ROLE_LABELS,
+  RISK_DOMAINS,
+  RISK_DOMAIN_LABELS,
+  RISK_STATUS_LABELS,
   type DocCategory,
   type DocSystem,
   type CompetencyCategory,
   type WorkerRole,
+  type RiskStatus,
 } from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
 import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
@@ -108,7 +118,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -157,6 +167,9 @@ export async function GET(
     case 'competency':
       // [id] = workers row id → per-worker competency report
       return competencyPdf(id)
+    case 'risk-register':
+      // [id] is a placeholder (use 'list') — the register PDF covers all items.
+      return riskRegisterPdf()
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -1748,6 +1761,93 @@ async function competencyPdf(workerId: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="competency-${(worker.name as string).replace(/[^a-zA-Z0-9-]+/g, '-').toLowerCase()}.pdf"`,
+    },
+  })
+}
+
+// ─── Risk & Opportunity register (ISO 6.1) ────────────────────────────────────
+
+async function riskRegisterPdf(): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: items }, { data: settings }] = await Promise.all([
+    supabase
+      .from('risk_items')
+      .select(
+        `id, number, kind, title, iso_domain, category, status, review_date,
+         likelihood, consequence, inherent_score, inherent_rating,
+         residual_score, residual_rating,
+         projects(number, name),
+         owner:profiles!risk_items_owner_id_fkey(full_name)`
+      )
+      .order('iso_domain')
+      .order('number'),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  const today = todayAU()
+
+  // Band summary (the heat-map counts-per-band table).
+  const bandCounts: RiskRegisterBandCount[] = (
+    ['Low', 'Medium', 'High', 'Extreme'] as const
+  ).map((band) => ({
+    band,
+    inherent: (items ?? []).filter((r) => r.inherent_rating === band).length,
+    residual: (items ?? []).filter((r) => r.residual_rating === band).length,
+  }))
+
+  // Group by ISO domain in a fixed, meaningful order.
+  const groups: RiskRegisterPdfGroup[] = RISK_DOMAINS.map((domain) => ({
+    domain: RISK_DOMAIN_LABELS[domain],
+    rows: (items ?? [])
+      .filter((r) => r.iso_domain === domain)
+      .map((r): RiskRegisterPdfRow => {
+        const project = r.projects as unknown as {
+          number: string
+          name: string
+        } | null
+        const owner = r.owner as unknown as { full_name: string } | null
+        const reviewDue = (r.review_date as string | null) ?? null
+        return {
+          number: r.number as string,
+          kind: r.kind as 'risk' | 'opportunity',
+          title: r.title as string,
+          category: (r.category as string | null) ?? null,
+          scope: project ? project.number : 'Company-wide',
+          likelihood: Number(r.likelihood),
+          consequence: Number(r.consequence),
+          inherentScore: Number(r.inherent_score),
+          inherentRating: r.inherent_rating as string,
+          residualScore:
+            r.residual_score == null ? null : Number(r.residual_score),
+          residualRating: (r.residual_rating as string | null) ?? null,
+          status:
+            RISK_STATUS_LABELS[r.status as RiskStatus] ?? (r.status as string),
+          owner: owner?.full_name ?? null,
+          reviewDue: reviewDue ? fmtDate(reviewDue) : null,
+          reviewOverdue:
+            r.status !== 'closed' && reviewDue != null && reviewDue < today,
+        }
+      }),
+  })).filter((g) => g.rows.length > 0)
+
+  const buffer = await renderToBuffer(
+    <RiskRegisterPdf
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      groups={groups}
+      bandCounts={bandCounts}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="risk-register.pdf"',
     },
   })
 }

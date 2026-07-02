@@ -92,6 +92,8 @@ export default async function WhsOverviewPage() {
     { data: overdueDocReviews },
     { data: overduePlannedAudits },
     { data: openAuditFindings },
+    { data: overdueRiskReviews },
+    { data: highResidualRisks },
     { data: auditRows },
   ] = await Promise.all([
     supabase.from('incidents').select('id, status, severity'),
@@ -154,6 +156,22 @@ export default async function WhsOverviewPage() {
       .select('id, audit_id, classification, description, audits(number)')
       .eq('status', 'open')
       .order('created_at', { ascending: true }),
+    // Risk register items past their review date (ISO 6.1).
+    supabase
+      .from('risk_items')
+      .select('id, number, title, review_date')
+      .neq('status', 'closed')
+      .not('review_date', 'is', null)
+      .lt('review_date', todayStr)
+      .order('review_date', { ascending: true }),
+    // Open risks still rated High/Extreme after treatment (residual).
+    supabase
+      .from('risk_items')
+      .select('id, number, title, residual_rating, residual_score')
+      .eq('kind', 'risk')
+      .neq('status', 'closed')
+      .in('residual_rating', ['High', 'Extreme'])
+      .order('residual_score', { ascending: false }),
     supabase
       .from('audit_log')
       .select('id, at, actor_id, actor_name, entity_type, entity_id, project_id, action, detail')
@@ -249,6 +267,24 @@ export default async function WhsOverviewPage() {
     description: f.description as string,
   }))
 
+  const riskReviewRows = (overdueRiskReviews ?? []).map((r) => ({
+    id: r.id as string,
+    number: r.number as string,
+    title: r.title as string,
+    daysOverdue: Math.max(
+      0,
+      differenceInCalendarDays(today, parseISO(r.review_date as string))
+    ),
+  }))
+
+  const highRiskRows = (highResidualRisks ?? []).map((r) => ({
+    id: r.id as string,
+    number: r.number as string,
+    title: r.title as string,
+    rating: r.residual_rating as string,
+    score: Number(r.residual_score),
+  }))
+
   const needsAttentionCount =
     overdueActionRows.length +
     holdPointRows.length +
@@ -256,6 +292,8 @@ export default async function WhsOverviewPage() {
     docReviewRows.length +
     overdueAuditRows.length +
     openFindingRows.length +
+    riskReviewRows.length +
+    highRiskRows.length +
     competencyRows.length
 
   const recentActivity: AuditRow[] = ((auditRows ?? []) as Record<string, unknown>[]).map(
@@ -332,8 +370,8 @@ export default async function WhsOverviewPage() {
             {needsAttentionCount === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Nothing outstanding — corrective actions, hold points, vendor
-                compliance, document reviews, internal audits and worker
-                competencies are all in order.
+                compliance, document reviews, internal audits, risk reviews and
+                worker competencies are all in order.
               </p>
             ) : (
               <>
@@ -460,6 +498,54 @@ export default async function WhsOverviewPage() {
                     </div>
                     <span className="shrink-0 text-xs font-medium capitalize text-red-600 dark:text-red-400">
                       {f.classification}
+                    </span>
+                  </div>
+                ))}
+                {riskReviewRows.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href={`/whs/risks/${r.id}`}
+                        className="truncate hover:underline"
+                      >
+                        {r.title}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Risk review due · {r.number}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                      {r.daysOverdue}d overdue
+                    </span>
+                  </div>
+                ))}
+                {highRiskRows.map((r) => (
+                  <div
+                    key={r.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href={`/whs/risks/${r.id}`}
+                        className="truncate hover:underline"
+                      >
+                        {r.title}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Open {r.rating.toLowerCase()} residual risk · {r.number}
+                      </span>
+                    </div>
+                    <span
+                      className={
+                        r.rating === 'Extreme'
+                          ? 'shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400'
+                          : 'shrink-0 text-xs font-medium text-orange-600 tabular-nums dark:text-orange-400'
+                      }
+                    >
+                      {r.rating} {r.score}
                     </span>
                   </div>
                 ))}

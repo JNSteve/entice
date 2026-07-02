@@ -37,4 +37,6 @@ test('qr poster pdf renders (%PDF magic, non-trivial size)', async () => {
   )
   expect(buffer.subarray(0, 4).toString()).toBe('%PDF')
   expect(buffer.length).toBeGreaterThan(1000)
-})
+  // First react-pdf render in a worker includes font setup — needs headroom
+  // beyond the 5s default when the whole suite runs in parallel.
+}, 20000)

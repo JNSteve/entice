@@ -1917,3 +1917,183 @@ export const roleRequirementSchema = z.object({
 export type RoleRequirementInput = z.infer<typeof roleRequirementSchema>
 
 export type DocumentUpdateInput = z.infer<typeof documentUpdateSchema>
+
+// ─── Risk & Opportunity register (ISO 9001/14001/45001 §6.1) ─────────────────
+// The 5×5 rating bands live in src/lib/risk.ts (mirroring the DB fn) — NOT here.
+
+export const RISK_KINDS = ['risk', 'opportunity'] as const
+export type RiskKind = (typeof RISK_KINDS)[number]
+
+export const RISK_KIND_LABELS: Record<RiskKind, string> = {
+  risk: 'Risk',
+  opportunity: 'Opportunity',
+}
+
+export const RISK_SOURCES = [
+  'context_analysis',
+  'interested_party',
+  'legal',
+  'incident',
+  'audit',
+  'process',
+  'project',
+  'other',
+] as const
+export type RiskSource = (typeof RISK_SOURCES)[number]
+
+export const RISK_SOURCE_LABELS: Record<RiskSource, string> = {
+  context_analysis: 'Context analysis',
+  interested_party: 'Interested party',
+  legal: 'Legal / compliance',
+  incident: 'Incident',
+  audit: 'Audit',
+  process: 'Process',
+  project: 'Project',
+  other: 'Other',
+}
+
+export const RISK_DOMAINS = ['quality', 'environmental', 'ohs', 'multi'] as const
+export type RiskDomain = (typeof RISK_DOMAINS)[number]
+
+export const RISK_DOMAIN_LABELS: Record<RiskDomain, string> = {
+  quality: 'Quality (9001)',
+  environmental: 'Environmental (14001)',
+  ohs: 'OHS (45001)',
+  multi: 'Multi-standard',
+}
+
+export const RISK_STATUSES = ['open', 'treating', 'accepted', 'closed'] as const
+export type RiskStatus = (typeof RISK_STATUSES)[number]
+
+export const RISK_STATUS_LABELS: Record<RiskStatus, string> = {
+  open: 'Open',
+  treating: 'Treating',
+  accepted: 'Accepted',
+  closed: 'Closed',
+}
+
+/** Seeded starter category list (risk_items.category is free text in the DB —
+ *  this const is the curated pick list, matching the migration 0022 seed). */
+export const RISK_CATEGORIES = [
+  'Strategic',
+  'People',
+  'Subcontractor',
+  'Environmental',
+  'Safety',
+  'Financial',
+  'Compliance',
+  'Project Delivery',
+] as const
+
+const score1to5 = z.coerce.number().int().min(1).max(5)
+
+/** Optional residual score field: '' / null → null, else 1–5. */
+const residualScore = z
+  .union([score1to5, z.literal('').transform(() => null), z.null(), z.undefined()])
+  .transform((v) => v ?? null)
+
+export const riskItemCreateSchema = z
+  .object({
+    kind: z.enum(RISK_KINDS),
+    title: z.string().min(1, 'Title is required'),
+    context: optionalText,
+    source: z.enum(RISK_SOURCES),
+    iso_domain: z.enum(RISK_DOMAINS),
+    project_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    category: optionalText,
+    existing_controls: optionalText,
+    likelihood: score1to5,
+    consequence: score1to5,
+    residual_likelihood: residualScore,
+    residual_consequence: residualScore,
+    owner_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    review_date: isoDate
+      .nullish()
+      .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+  })
+  .refine(
+    (d) => (d.residual_likelihood == null) === (d.residual_consequence == null),
+    'Score both residual likelihood and consequence, or neither'
+  )
+
+export type RiskItemCreateInput = z.infer<typeof riskItemCreateSchema>
+
+export const riskItemUpdateSchema = z
+  .object({
+    kind: z.enum(RISK_KINDS).optional(),
+    title: z.string().min(1, 'Title is required').optional(),
+    context: optionalText.optional(),
+    source: z.enum(RISK_SOURCES).optional(),
+    iso_domain: z.enum(RISK_DOMAINS).optional(),
+    project_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null)
+      .optional(),
+    category: optionalText.optional(),
+    existing_controls: optionalText.optional(),
+    likelihood: score1to5.optional(),
+    consequence: score1to5.optional(),
+    residual_likelihood: residualScore.optional(),
+    residual_consequence: residualScore.optional(),
+    owner_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null)
+      .optional(),
+    review_date: isoDate
+      .nullish()
+      .transform((v) => (v?.trim() === '' ? null : v ?? null))
+      .optional(),
+  })
+  .refine(
+    (d) =>
+      (d.residual_likelihood === undefined &&
+        d.residual_consequence === undefined) ||
+      (d.residual_likelihood == null) === (d.residual_consequence == null),
+    'Score both residual likelihood and consequence, or neither'
+  )
+
+export type RiskItemUpdateInput = z.infer<typeof riskItemUpdateSchema>
+
+/** Status transition — the close gates live in src/lib/risk.ts + the action. */
+export const riskStatusSchema = z.object({
+  status: z.enum(RISK_STATUSES),
+})
+
+export type RiskStatusInput = z.infer<typeof riskStatusSchema>
+
+export const riskTreatmentSchema = z.object({
+  risk_item_id: z.uuid(),
+  description: z.string().min(1, 'Description is required'),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  due_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+})
+
+export type RiskTreatmentInput = z.infer<typeof riskTreatmentSchema>
+
+export const riskTreatmentUpdateSchema = z.object({
+  description: z.string().min(1, 'Description is required').optional(),
+  assigned_to: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  due_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null))
+    .optional(),
+})
+
+export type RiskTreatmentUpdateInput = z.infer<typeof riskTreatmentUpdateSchema>
