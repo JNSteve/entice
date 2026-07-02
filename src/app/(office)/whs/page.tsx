@@ -20,6 +20,7 @@ const KIND_SHORT: Record<FormTemplateKind, string> = {
   induction: 'induction',
   incident: 'incident',
   custom: 'custom',
+  audit: 'audit',
 }
 
 function dateStr(d: Date): string {
@@ -88,6 +89,8 @@ export default async function WhsOverviewPage() {
     { data: overdueHoldPoints },
     { data: expiredCompliance },
     { data: overdueDocReviews },
+    { data: overduePlannedAudits },
+    { data: openAuditFindings },
     { data: auditRows },
   ] = await Promise.all([
     supabase.from('incidents').select('id, status, severity'),
@@ -136,6 +139,20 @@ export default async function WhsOverviewPage() {
       .not('review_due', 'is', null)
       .lt('review_due', todayStr)
       .order('review_due', { ascending: true }),
+    // Internal audits still 'planned' past their planned date.
+    supabase
+      .from('audits')
+      .select('id, number, planned_date, audit_areas(name)')
+      .eq('status', 'planned')
+      .not('planned_date', 'is', null)
+      .lt('planned_date', todayStr)
+      .order('planned_date', { ascending: true }),
+    // Open internal-audit findings awaiting closure.
+    supabase
+      .from('audit_findings')
+      .select('id, audit_id, classification, description, audits(number)')
+      .eq('status', 'open')
+      .order('created_at', { ascending: true }),
     supabase
       .from('audit_log')
       .select('id, at, actor_id, actor_name, entity_type, entity_id, project_id, action, detail')
@@ -208,11 +225,32 @@ export default async function WhsOverviewPage() {
     ),
   }))
 
+  const overdueAuditRows = (overduePlannedAudits ?? []).map((a) => ({
+    id: a.id as string,
+    number: a.number as string,
+    area: (a.audit_areas as unknown as { name: string } | null)?.name ?? '—',
+    daysOverdue: Math.max(
+      0,
+      differenceInCalendarDays(today, parseISO(a.planned_date as string))
+    ),
+  }))
+
+  const openFindingRows = (openAuditFindings ?? []).map((f) => ({
+    id: f.id as string,
+    auditId: f.audit_id as string,
+    auditNumber:
+      (f.audits as unknown as { number: string } | null)?.number ?? '—',
+    classification: (f.classification as string).replace(/_nc$/, ' NC'),
+    description: f.description as string,
+  }))
+
   const needsAttentionCount =
     overdueActionRows.length +
     holdPointRows.length +
     complianceRows.length +
-    docReviewRows.length
+    docReviewRows.length +
+    overdueAuditRows.length +
+    openFindingRows.length
 
   const recentActivity: AuditRow[] = ((auditRows ?? []) as Record<string, unknown>[]).map(
     (r) => ({
@@ -288,7 +326,8 @@ export default async function WhsOverviewPage() {
             {needsAttentionCount === 0 ? (
               <p className="text-sm text-muted-foreground">
                 Nothing outstanding — corrective actions, hold points, vendor
-                compliance and document reviews are all in order.
+                compliance, document reviews and internal audits are all in
+                order.
               </p>
             ) : (
               <>
@@ -373,6 +412,48 @@ export default async function WhsOverviewPage() {
                     </div>
                     <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
                       {d.daysOverdue}d overdue
+                    </span>
+                  </div>
+                ))}
+                {overdueAuditRows.map((a) => (
+                  <div
+                    key={a.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href={`/whs/audits/${a.id}`}
+                        className="truncate hover:underline"
+                      >
+                        {a.area}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Audit overdue · {a.number}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                      {a.daysOverdue}d overdue
+                    </span>
+                  </div>
+                ))}
+                {openFindingRows.map((f) => (
+                  <div
+                    key={f.id}
+                    className="flex items-start justify-between gap-2 text-sm"
+                  >
+                    <div className="flex min-w-0 flex-col">
+                      <Link
+                        href={`/whs/audits/${f.auditId}`}
+                        className="truncate hover:underline"
+                      >
+                        {f.description}
+                      </Link>
+                      <span className="text-xs text-muted-foreground">
+                        Open audit finding · {f.auditNumber}
+                      </span>
+                    </div>
+                    <span className="shrink-0 text-xs font-medium capitalize text-red-600 dark:text-red-400">
+                      {f.classification}
                     </span>
                   </div>
                 ))}

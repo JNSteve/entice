@@ -17,8 +17,9 @@ const TABS: Tab[] = [
   { label: 'Forms', href: '/whs/forms' },
   { label: 'Incidents', href: '/whs/incidents' },
   { label: 'NCR / CAPA', href: '/whs/ncr' },
+  { label: 'Audits', href: '/whs/audits' },
   { label: 'Subbie SWMS', href: '/whs/subbie-swms' },
-  { label: 'Audit', href: '/whs/audit' },
+  { label: 'Audit log', href: '/whs/audit' },
 ]
 
 export function WhsTabs() {

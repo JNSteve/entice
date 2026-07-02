@@ -16,6 +16,11 @@ import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
 import { FormPdf, type FormPdfSignon } from '@/pdf/FormPdf'
 import { IncidentPdf, type IncidentPdfAction } from '@/pdf/IncidentPdf'
 import { NcrPdf, type NcrPdfAction } from '@/pdf/NcrPdf'
+import {
+  AuditReportPdf,
+  type AuditReportPdfChecklistRow,
+  type AuditReportPdfFinding,
+} from '@/pdf/AuditReportPdf'
 import { QrPosterPdf } from '@/pdf/QrPosterPdf'
 import { DocumentRegisterPdf, type DocumentRegisterPdfRow } from '@/pdf/DocumentRegisterPdf'
 import { DOC_CATEGORY_LABELS, DOC_SYSTEM_LABELS, type DocCategory, type DocSystem } from '@/lib/zod'
@@ -82,7 +87,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'qr-poster' || type === 'document-register'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -117,6 +122,8 @@ export async function GET(
       return incidentPdf(id)
     case 'ncr':
       return ncrPdf(id)
+    case 'audit':
+      return auditPdf(id)
     case 'qr-poster':
       // [id] = share_links row id
       return qrPosterPdf(id, request)
@@ -1267,6 +1274,133 @@ async function ncrPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="${ncr.number as string}.pdf"`,
+    },
+  })
+}
+
+// ─── Internal audit report ────────────────────────────────────────────────────
+
+async function auditPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: audit }, { data: findings }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('audits')
+        .select(
+          `id, number, standards, auditee, planned_date, conducted_date,
+           status, summary, closed_at, created_at,
+           audit_programmes(year, title),
+           audit_areas(name),
+           auditor:profiles!audits_auditor_id_fkey(full_name),
+           checklist_template:form_templates(name),
+           checklist_submission:form_submissions(data, schema_snapshot)`
+        )
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('audit_findings')
+        .select('classification, clause_ref, description, status, ncrs(number, status)')
+        .eq('audit_id', id)
+        .order('created_at'),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  if (!audit) return new Response('Not found', { status: 404 })
+
+  const programmeRel = audit.audit_programmes as unknown as {
+    year: string
+    title: string
+  } | null
+  const areaRel = audit.audit_areas as unknown as { name: string } | null
+  const auditorRel = audit.auditor as unknown as { full_name: string } | null
+  const templateRel = audit.checklist_template as unknown as { name: string } | null
+  const submissionRel = audit.checklist_submission as unknown as {
+    data: Record<string, unknown>
+    schema_snapshot: FormField[] | null
+  } | null
+
+  const { AUDIT_STANDARD_LABELS, FINDING_CLASSIFICATION_LABELS } = await import(
+    '@/lib/zod'
+  )
+
+  const standards = ((audit.standards as string[]) ?? [])
+    .map(
+      (s) =>
+        AUDIT_STANDARD_LABELS[s as keyof typeof AUDIT_STANDARD_LABELS] ?? s
+    )
+    .join(', ')
+
+  // Checklist summary rendered against the snapshot captured at conduct time.
+  const checklistRows: AuditReportPdfChecklistRow[] = (
+    submissionRel?.schema_snapshot ?? []
+  )
+    .filter((f) => f.type !== 'photo')
+    .map((f) => {
+      const raw = submissionRel?.data?.[f.key]
+      const value =
+        raw === undefined || raw === null || raw === ''
+          ? '—'
+          : typeof raw === 'boolean'
+            ? raw
+              ? 'Yes'
+              : 'No'
+            : String(raw)
+      return { label: f.label, value }
+    })
+
+  const pdfFindings: AuditReportPdfFinding[] = (findings ?? []).map((f) => {
+    const ncrRel = f.ncrs as unknown as { number: string; status: string } | null
+    return {
+      classification:
+        FINDING_CLASSIFICATION_LABELS[
+          f.classification as keyof typeof FINDING_CLASSIFICATION_LABELS
+        ] ?? (f.classification as string),
+      clause_ref: (f.clause_ref as string | null) ?? null,
+      description: f.description as string,
+      status: f.status as string,
+      ncr_number: ncrRel?.number ?? null,
+      ncr_status: ncrRel?.status ?? null,
+    }
+  })
+
+  const buffer = await renderToBuffer(
+    <AuditReportPdf
+      audit={{
+        number: audit.number as string,
+        date: fmtDate(
+          (audit.conducted_date as string | null) ??
+            (audit.planned_date as string | null) ??
+            (audit.created_at as string)
+        ),
+        programme: programmeRel?.year ?? '—',
+        area: areaRel?.name ?? '—',
+        standards: standards || '—',
+        status: audit.status as string,
+        auditor: auditorRel?.full_name ?? null,
+        auditee: (audit.auditee as string | null) ?? null,
+        planned: audit.planned_date ? fmtDate(audit.planned_date as string) : null,
+        conducted: audit.conducted_date
+          ? fmtDate(audit.conducted_date as string)
+          : null,
+        closed: audit.closed_at ? fmtDate(audit.closed_at as string) : null,
+        summary: (audit.summary as string | null) ?? null,
+        checklistName: templateRel?.name ?? null,
+      }}
+      company={toCompany(settings)}
+      checklist={checklistRows}
+      findings={pdfFindings}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${audit.number as string}.pdf"`,
     },
   })
 }

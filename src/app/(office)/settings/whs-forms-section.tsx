@@ -63,6 +63,7 @@ const KIND_LABELS: Record<FormTemplateKind, string> = {
   induction: 'Induction',
   incident: 'Incident',
   custom: 'Custom',
+  audit: 'Audit',
 }
 
 const KIND_COLORS: Record<FormTemplateKind, string> = {
@@ -72,6 +73,7 @@ const KIND_COLORS: Record<FormTemplateKind, string> = {
   induction: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300',
   incident: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300',
   custom: 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300',
+  audit: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300',
 }
 
 export function WhsFormsSection({ templates }: { templates: FormTemplateRow[] }) {

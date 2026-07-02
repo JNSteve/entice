@@ -1108,6 +1108,7 @@ export const FORM_TEMPLATE_KINDS = [
   'induction',
   'incident',
   'custom',
+  'audit',
 ] as const
 export type FormTemplateKind = (typeof FORM_TEMPLATE_KINDS)[number]
 
@@ -1668,5 +1669,152 @@ export const documentUpdateSchema = z.object({
     .optional(),
   notes: optionalText.optional(),
 })
+
+// ─── Internal audit programme (ISO 9001/14001/45001 §9.2) ────────────────────
+
+export const AUDIT_STANDARDS = ['9001', '14001', '45001'] as const
+export type AuditStandard = (typeof AUDIT_STANDARDS)[number]
+
+export const AUDIT_STANDARD_LABELS: Record<AuditStandard, string> = {
+  '9001': 'ISO 9001',
+  '14001': 'ISO 14001',
+  '45001': 'ISO 45001',
+}
+
+export const AUDIT_PROGRAMME_STATUSES = ['draft', 'active', 'closed'] as const
+export type AuditProgrammeStatus = (typeof AUDIT_PROGRAMME_STATUSES)[number]
+
+// Lifecycle, in order. 'complete' requires a conducted checklist; 'closed'
+// requires no open findings — both enforced in the server action.
+export const AUDIT_STATUSES = [
+  'planned',
+  'in_progress',
+  'complete',
+  'closed',
+] as const
+export type AuditStatus = (typeof AUDIT_STATUSES)[number]
+
+export const AUDIT_STATUS_LABELS: Record<AuditStatus, string> = {
+  planned: 'Planned',
+  in_progress: 'In progress',
+  complete: 'Complete',
+  closed: 'Closed',
+}
+
+export const FINDING_CLASSIFICATIONS = [
+  'observation',
+  'minor_nc',
+  'major_nc',
+  'opportunity',
+] as const
+export type FindingClassification = (typeof FINDING_CLASSIFICATIONS)[number]
+
+export const FINDING_CLASSIFICATION_LABELS: Record<FindingClassification, string> = {
+  observation: 'Observation',
+  minor_nc: 'Minor NC',
+  major_nc: 'Major NC',
+  opportunity: 'Opportunity',
+}
+
+export const auditProgrammeSchema = z.object({
+  year: z.string().min(1, 'Year is required'),
+  title: z.string().min(1, 'Title is required'),
+  notes: optionalText,
+})
+
+export type AuditProgrammeInput = z.infer<typeof auditProgrammeSchema>
+
+export const auditCreateSchema = z.object({
+  programme_id: z.uuid('Pick a programme'),
+  area_id: z.uuid('Pick an area'),
+  standards: z
+    .array(z.enum(AUDIT_STANDARDS))
+    .min(1, 'Pick at least one standard'),
+  auditor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  auditee: optionalText,
+  planned_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+  checklist_template_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type AuditCreateInput = z.infer<typeof auditCreateSchema>
+
+/** Edit while not closed. Summary is captured at close-out. */
+export const auditUpdateSchema = z.object({
+  area_id: z.uuid().optional(),
+  standards: z
+    .array(z.enum(AUDIT_STANDARDS))
+    .min(1, 'Pick at least one standard')
+    .optional(),
+  auditor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  auditee: optionalText.optional(),
+  planned_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  checklist_template_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  summary: optionalText.optional(),
+})
+
+export type AuditUpdateInput = z.infer<typeof auditUpdateSchema>
+
+export const auditStatusSchema = z.object({
+  status: z.enum(AUDIT_STATUSES),
+})
+
+export type AuditStatusInput = z.infer<typeof auditStatusSchema>
+
+/** Conduct the checklist: dynamic data validated against the template schema. */
+export const auditChecklistSchema = z.object({
+  audit_id: z.uuid(),
+  data: z.record(z.string(), z.unknown()).default({}),
+})
+
+export type AuditChecklistInput = z.infer<typeof auditChecklistSchema>
+
+export const findingCreateSchema = z.object({
+  audit_id: z.uuid(),
+  classification: z.enum(FINDING_CLASSIFICATIONS),
+  description: z.string().min(1, 'Describe the finding'),
+  clause_ref: optionalText,
+})
+
+export type FindingCreateInput = z.infer<typeof findingCreateSchema>
+
+export const findingUpdateSchema = z.object({
+  classification: z.enum(FINDING_CLASSIFICATIONS).optional(),
+  description: z.string().min(1, 'Describe the finding').optional(),
+  clause_ref: optionalText.optional(),
+})
+
+export type FindingUpdateInput = z.infer<typeof findingUpdateSchema>
+
+/** Raise an NCR from a finding — prefilled create, source 'audit_finding'. */
+export const findingRaiseNcrSchema = z.object({
+  finding_id: z.uuid(),
+  severity: z.coerce.number().int().min(1).max(5),
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().min(1, 'Describe the nonconformance'),
+  category: optionalText,
+})
+
+export type FindingRaiseNcrInput = z.infer<typeof findingRaiseNcrSchema>
 
 export type DocumentUpdateInput = z.infer<typeof documentUpdateSchema>

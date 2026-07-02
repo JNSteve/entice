@@ -41,6 +41,7 @@ const KIND_LABELS: Record<FormTemplateKind, string> = {
   induction: 'Site Induction',
   incident: 'Incident Report',
   custom: 'Custom Form',
+  audit: 'Audit Checklist',
 }
 
 // ─── Styles ───────────────────────────────────────────────────────────────────

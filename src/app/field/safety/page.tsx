@@ -31,6 +31,7 @@ const KIND_ICONS: Record<FormTemplateKind, React.ComponentType<{ className?: str
   induction: ClipboardListIcon,
   incident: AlertTriangleIcon,
   custom: FileIcon,
+  audit: ClipboardCheckIcon,
 }
 
 const KIND_LABELS: Record<FormTemplateKind, string> = {
@@ -40,6 +41,7 @@ const KIND_LABELS: Record<FormTemplateKind, string> = {
   induction: 'Induction',
   incident: 'Incident',
   custom: 'Custom',
+  audit: 'Audit',
 }
 
 const KIND_ORDER: FormTemplateKind[] = [
@@ -86,6 +88,9 @@ export default async function FieldSafetyPage() {
       .from('form_templates')
       .select('id, kind, name')
       .eq('active', true)
+      // Audit checklists are conducted from the office audit detail page —
+      // they are not field safety forms.
+      .neq('kind', 'audit')
       .order('name'),
     fetchMyFieldSwms(supabase, profile.id),
     supabase

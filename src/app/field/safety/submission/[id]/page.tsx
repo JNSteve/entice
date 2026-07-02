@@ -19,6 +19,7 @@ const KIND_LABELS: Record<FormTemplateKind, string> = {
   induction: 'Induction',
   incident: 'Incident',
   custom: 'Custom',
+  audit: 'Audit',
 }
 
 function fmtDateTime(value: string): string {
