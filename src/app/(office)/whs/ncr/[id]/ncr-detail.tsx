@@ -379,7 +379,7 @@ function EditNcrDialog({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Vendor</Label>
+              <Label>Supplier</Label>
               <Select
                 value={form.vendor_id}
                 onValueChange={(v) =>
@@ -696,7 +696,7 @@ export function NcrDetailClient({
       value: ncr.occurred_on ? fmtDate(ncr.occurred_on) : '—',
     },
     {
-      label: 'Project / Job / Vendor',
+      label: 'Project / Job / Supplier',
       value: ncr.project_id ? (
         <Link href={`/projects/${ncr.project_id}`} className="hover:underline">
           {ncr.project_label}

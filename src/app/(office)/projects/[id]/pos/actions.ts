@@ -44,7 +44,7 @@ export async function createPo(
     .eq('id', parsed.data.vendor_id)
     .eq('archived', false)
     .single()
-  if (!vendor) return { error: 'Vendor not found or archived' }
+  if (!vendor) return { error: 'Supplier not found or archived' }
 
   let number: string
   try {

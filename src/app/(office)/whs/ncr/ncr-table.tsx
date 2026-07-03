@@ -347,7 +347,7 @@ function RaiseNcrDialog({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Vendor</Label>
+              <Label>Supplier</Label>
               <Select
                 value={form.vendor_id}
                 onValueChange={(v) =>

@@ -67,7 +67,7 @@ export function NewPoDialog({ projectId, vendors: initialVendors }: NewPoDialogP
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!vendorId) {
-      toast.error('Pick a vendor')
+      toast.error('Pick a supplier')
       return
     }
     startTransition(async () => {
@@ -95,7 +95,7 @@ export function NewPoDialog({ projectId, vendors: initialVendors }: NewPoDialogP
         toast.error(result.error)
         return
       }
-      toast.success(`Vendor "${result.name}" added`)
+      toast.success(`Supplier "${result.name}" added`)
       setVendors((prev) => [...prev, { id: result.id!, name: result.name! }])
       setVendorId(result.id!)
       setQuickOpen(false)
@@ -117,7 +117,7 @@ export function NewPoDialog({ projectId, vendors: initialVendors }: NewPoDialogP
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="po-vendor">Vendor</Label>
+              <Label htmlFor="po-vendor">Supplier</Label>
               <Select
                 value={vendorId || null}
                 onValueChange={(v) => {
@@ -130,7 +130,7 @@ export function NewPoDialog({ projectId, vendors: initialVendors }: NewPoDialogP
                 }}
               >
                 <SelectTrigger id="po-vendor" className="w-full">
-                  <SelectValue placeholder="Pick a vendor…" />
+                  <SelectValue placeholder="Pick a supplier…" />
                 </SelectTrigger>
                 <SelectContent>
                   {vendors.map((v) => (
@@ -140,7 +140,7 @@ export function NewPoDialog({ projectId, vendors: initialVendors }: NewPoDialogP
                   ))}
                   <SelectItem value="__new__" className="text-primary font-medium">
                     <PlusIcon className="mr-1 inline size-3" />
-                    New vendor…
+                    New supplier…
                   </SelectItem>
                 </SelectContent>
               </Select>
@@ -171,11 +171,11 @@ export function NewPoDialog({ projectId, vendors: initialVendors }: NewPoDialogP
       <Dialog open={quickOpen} onOpenChange={setQuickOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
-            <DialogTitle>Add vendor</DialogTitle>
+            <DialogTitle>Add supplier</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleQuickAdd} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="qv-name">Vendor name</Label>
+              <Label htmlFor="qv-name">Supplier name</Label>
               <Input
                 id="qv-name"
                 value={quickName}
@@ -208,7 +208,7 @@ export function NewPoDialog({ projectId, vendors: initialVendors }: NewPoDialogP
                 Cancel
               </Button>
               <Button type="submit" disabled={quickPending || !quickName}>
-                {quickPending ? 'Adding…' : 'Add vendor'}
+                {quickPending ? 'Adding…' : 'Add supplier'}
               </Button>
             </DialogFooter>
           </form>

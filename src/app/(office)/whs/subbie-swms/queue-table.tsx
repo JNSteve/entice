@@ -153,16 +153,16 @@ function ReviewDialog({ row, verdict, vendors, onClose }: ReviewDialogProps) {
             </p>
             {verdict === 'accepted' && vendors.length > 0 && (
               <div className="flex flex-col gap-1.5">
-                <Label>Vendor (optional)</Label>
+                <Label>Supplier (optional)</Label>
                 <Select
                   value={vendorId}
                   onValueChange={(v) => setVendorId(!v || v === '__none' ? '' : v)}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="No vendor match" />
+                    <SelectValue placeholder="No supplier match" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none">No vendor match</SelectItem>
+                    <SelectItem value="__none">No supplier match</SelectItem>
                     {vendors.map((v) => (
                       <SelectItem key={v.id} value={v.id}>
                         {v.name}
@@ -379,7 +379,7 @@ export function SubbieSwmsQueue({
                       <span className="text-sm font-medium">{row.company_name}</span>
                       {row.vendor_name && (
                         <span className="text-xs text-muted-foreground">
-                          Vendor: {row.vendor_name}
+                          Supplier: {row.vendor_name}
                         </span>
                       )}
                     </div>

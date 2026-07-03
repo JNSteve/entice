@@ -556,7 +556,7 @@ const externalProviderPerformance: Compute = async (supabase, ctx) => {
         label: 'Still open',
         value: String(rows.filter((r) => r.status !== 'closed').length),
       },
-      { label: 'Vendor compliance docs expired', value: String(expiredDocs ?? 0) },
+      { label: 'Supplier compliance docs expired', value: String(expiredDocs ?? 0) },
     ],
     rows.map((r) => ({
       label: `${r.number as string} — ${truncate(r.title as string)}`,

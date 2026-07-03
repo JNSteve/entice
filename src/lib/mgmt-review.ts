@@ -128,7 +128,7 @@ export const MGMT_REVIEW_INPUT_DEFS: Record<MgmtReviewInputKey, MgmtReviewInputD
   external_provider_performance: {
     label: 'Performance of external providers',
     helper:
-      'Subcontractor and supplier performance — supplier-sourced NCRs this period and vendors with expired compliance documents.',
+      'Subcontractor and supplier performance — supplier-sourced NCRs this period and suppliers with expired compliance documents.',
     standards: ['9001'],
     auto: true,
   },

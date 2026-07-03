@@ -35,7 +35,7 @@ export function PosTable({ projectId, pos }: PosTableProps) {
       <EmptyState
         icon={<FileTextIcon className="size-8" />}
         title="No purchase orders yet"
-        description="Create a PO to order goods or services from a vendor."
+        description="Create a PO to order goods or services from a supplier."
       />
     )
   }
@@ -46,7 +46,7 @@ export function PosTable({ projectId, pos }: PosTableProps) {
         <TableHeader>
           <TableRow>
             <TableHead>Number</TableHead>
-            <TableHead>Vendor</TableHead>
+            <TableHead>Supplier</TableHead>
             <TableHead>Status</TableHead>
             <TableHead className="text-right">Total ex GST</TableHead>
             <TableHead>Issue date</TableHead>

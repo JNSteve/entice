@@ -132,7 +132,7 @@ export function PoPdf({ po, company, lines, totals }: PoPdfProps) {
 
       <View style={styles.toBlock}>
         <View style={styles.vendorBlock}>
-          <Text style={styles.blockLabel}>Vendor</Text>
+          <Text style={styles.blockLabel}>Supplier</Text>
           <Text style={styles.vendorName}>{po.vendorName}</Text>
           {po.vendorEmail ? (
             <Text style={styles.vendorLine}>{po.vendorEmail}</Text>

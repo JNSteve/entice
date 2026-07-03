@@ -153,7 +153,7 @@ export function NcrPdf({ ncr, company, actions }: NcrPdfProps) {
     { label: 'Category', value: ncr.category ?? '—' },
     { label: 'Status', value: cap(ncr.status) },
     { label: 'Occurred', value: ncr.occurred ?? '—' },
-    { label: 'Project / Vendor', value: ncr.project ?? ncr.vendor ?? '—' },
+    { label: 'Project / Supplier', value: ncr.project ?? ncr.vendor ?? '—' },
     { label: 'Raised by', value: ncr.raisedBy ?? '—' },
   ]
 

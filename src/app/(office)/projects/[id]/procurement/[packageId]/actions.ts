@@ -145,7 +145,7 @@ export async function upsertQuote(
     .eq('package_id', packageId)
     .eq('vendor_id', parsed.data.vendor_id)
     .single()
-  if (!rfq) return { error: 'Vendor has not been invited to this package' }
+  if (!rfq) return { error: 'Supplier has not been invited to this package' }
 
   const { error } = await supabase.from('package_quotes').upsert(
     {
@@ -259,7 +259,7 @@ export async function awardPackage(
     .eq('package_id', packageId)
     .eq('vendor_id', parsed.data.vendor_id)
     .single()
-  if (!quote) return { error: 'Selected vendor has no quote on this package' }
+  if (!quote) return { error: 'Selected supplier has no quote on this package' }
 
   const { error: insertError } = await supabase.from('commitments').insert({
     project_id: projectId,

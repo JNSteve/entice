@@ -276,7 +276,7 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
               {!isDraft && <LockIcon className="size-4 text-muted-foreground" />}
             </div>
             <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-              <span>Vendor: <span className="font-medium text-foreground">{po.vendor_name}</span></span>
+              <span>Supplier: <span className="font-medium text-foreground">{po.vendor_name}</span></span>
               {po.issue_date && (
                 <span>Issued: <span className="font-medium text-foreground tabular-nums">{fmtDate(po.issue_date)}</span></span>
               )}

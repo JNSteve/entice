@@ -207,7 +207,7 @@ export function RfqSection({
     }
     if (selectedVendors.length > selectedEmails.length) {
       toast.warning(
-        `${selectedVendors.length - selectedEmails.length} selected vendor(s) have no email address`
+        `${selectedVendors.length - selectedEmails.length} selected supplier(s) have no email address`
       )
     }
     const params = new URLSearchParams()
@@ -221,7 +221,7 @@ export function RfqSection({
 
   function handleMarkSent() {
     if (selected.size === 0) {
-      toast.error('Select at least one vendor')
+      toast.error('Select at least one supplier')
       return
     }
     startTransition(async () => {
@@ -282,10 +282,10 @@ export function RfqSection({
       <div className="grid gap-4 lg:grid-cols-2">
         {/* Vendor multi-select */}
         <div className="rounded-xl border bg-card p-4 flex flex-col gap-3">
-          <h3 className="text-sm font-semibold">Select vendors</h3>
+          <h3 className="text-sm font-semibold">Select suppliers</h3>
           <div className="flex gap-2">
             <Input
-              placeholder="Search vendors…"
+              placeholder="Search suppliers…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="flex-1"
@@ -308,7 +308,7 @@ export function RfqSection({
           <div className="max-h-72 overflow-y-auto rounded-lg border divide-y">
             {filteredVendors.length === 0 ? (
               <p className="p-3 text-sm text-muted-foreground">
-                No vendors match.
+                No suppliers match.
               </p>
             ) : (
               filteredVendors.map((v) => {
@@ -353,7 +353,7 @@ export function RfqSection({
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            {selected.size} vendor{selected.size === 1 ? '' : 's'} selected
+            {selected.size} supplier{selected.size === 1 ? '' : 's'} selected
           </p>
 
           {/* Scope documents */}

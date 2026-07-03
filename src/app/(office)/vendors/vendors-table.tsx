@@ -105,7 +105,7 @@ export function VendorsTable({ rows }: { rows: VendorRow[] }) {
   return (
     <div className="flex flex-col gap-4">
       <Input
-        placeholder="Search vendors…"
+        placeholder="Search suppliers…"
         value={search}
         onChange={(e) => setSearch(e.target.value)}
         className="max-w-sm"
@@ -118,14 +118,14 @@ export function VendorsTable({ rows }: { rows: VendorRow[] }) {
         empty={
           search.trim() ? (
             <EmptyState
-              title="No vendors match your search"
+              title="No suppliers match your search"
               description="Try a different name or trade."
             />
           ) : (
             <EmptyState
               icon={<TruckIcon className="size-8" />}
-              title="No vendors yet"
-              description="Add your first vendor to get started."
+              title="No suppliers yet"
+              description="Add your first supplier to get started."
             />
           )
         }

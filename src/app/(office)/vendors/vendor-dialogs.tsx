@@ -206,7 +206,7 @@ export function NewVendorDialog() {
         toast.error(result.error)
         return
       }
-      toast.success('Vendor created')
+      toast.success('Supplier created')
       setOpen(false)
       reset()
       if (result.id) {
@@ -219,12 +219,12 @@ export function NewVendorDialog() {
     <>
       <Button onClick={() => setOpen(true)}>
         <PlusIcon />
-        New vendor
+        New supplier
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>New vendor</DialogTitle>
+            <DialogTitle>New supplier</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <VendorFormFields
@@ -234,7 +234,7 @@ export function NewVendorDialog() {
             />
             <DialogFooter>
               <Button type="submit" disabled={pending}>
-                {pending ? 'Creating…' : 'Create vendor'}
+                {pending ? 'Creating…' : 'Create supplier'}
               </Button>
             </DialogFooter>
           </form>
@@ -289,7 +289,7 @@ export function EditVendorDialog({ vendor }: { vendor: VendorDetail }) {
         toast.error(result.error)
         return
       }
-      toast.success('Vendor updated')
+      toast.success('Supplier updated')
       setOpen(false)
     })
   }
@@ -303,7 +303,7 @@ export function EditVendorDialog({ vendor }: { vendor: VendorDetail }) {
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Edit vendor</DialogTitle>
+            <DialogTitle>Edit supplier</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <VendorFormFields
@@ -337,8 +337,8 @@ export function ArchiveVendorButton({
 
   function handleToggle() {
     const message = archived
-      ? 'Unarchive this vendor? They will appear in the vendor list again.'
-      : 'Archive this vendor? They will no longer appear in the vendor list.'
+      ? 'Unarchive this supplier? They will appear in the supplier list again.'
+      : 'Archive this supplier? They will no longer appear in the supplier list.'
     if (!confirm(message)) return
     startTransition(async () => {
       const result = await setVendorArchived(vendorId, !archived)
@@ -346,7 +346,7 @@ export function ArchiveVendorButton({
         toast.error(result.error)
         return
       }
-      toast.success(archived ? 'Vendor unarchived' : 'Vendor archived')
+      toast.success(archived ? 'Supplier unarchived' : 'Supplier archived')
       if (!archived) {
         router.push('/vendors')
       }

@@ -108,7 +108,7 @@ export default async function PackageDetailPage({
     return {
       id: r.id,
       vendor_id: r.vendor_id,
-      vendor_name: vendorRel?.name ?? 'Unknown vendor',
+      vendor_name: vendorRel?.name ?? 'Unknown supplier',
       status: r.status,
       invited_at: r.invited_at,
     }
@@ -135,7 +135,7 @@ export default async function PackageDetailPage({
     return {
       id: q.id,
       vendor_id: q.vendor_id,
-      vendor_name: vendorRel?.name ?? vendorNameById.get(q.vendor_id) ?? 'Unknown vendor',
+      vendor_name: vendorRel?.name ?? vendorNameById.get(q.vendor_id) ?? 'Unknown supplier',
       amount: Number(q.amount),
       recommended: q.recommended,
     }
@@ -157,7 +157,7 @@ export default async function PackageDetailPage({
           id: awardedRow.id,
           vendor_name:
             (awardedRow.vendors as unknown as { name: string } | null)?.name ??
-            'Unknown vendor',
+            'Unknown supplier',
           amount: Number(awardedRow.amount),
           date: awardedRow.date,
           description: awardedRow.description,

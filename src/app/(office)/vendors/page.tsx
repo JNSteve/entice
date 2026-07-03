@@ -51,7 +51,7 @@ export default async function VendorsPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Vendors"
+        title="Suppliers"
         description="Manage subcontractors and suppliers."
         actions={canCreate ? <NewVendorDialog /> : undefined}
       />

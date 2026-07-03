@@ -535,7 +535,7 @@ export type PoStatus = (typeof PO_STATUSES)[number]
 
 export const poCreateSchema = z.object({
   project_id: z.uuid(),
-  vendor_id: z.uuid('Pick a vendor'),
+  vendor_id: z.uuid('Pick a supplier'),
   notes: optionalText.optional(),
 })
 
@@ -650,7 +650,7 @@ export type ClaimCertifyInput = z.infer<typeof claimCertifySchema>
 // ─── Vendors ─────────────────────────────────────────────────────────────────
 
 export const vendorQuickSchema = z.object({
-  name: z.string().min(1, 'Vendor name is required'),
+  name: z.string().min(1, 'Supplier name is required'),
   email: optionalText.refine(
     (v) => v === null || z.email().safeParse(v).success,
     'Invalid email address'
@@ -764,7 +764,7 @@ export const RFQ_STATUSES = ['invited', 'quoted', 'declined'] as const
 export type RfqStatus = (typeof RFQ_STATUSES)[number]
 
 export const rfqSendSchema = z.object({
-  vendor_ids: z.array(z.uuid()).min(1, 'Select at least one vendor'),
+  vendor_ids: z.array(z.uuid()).min(1, 'Select at least one supplier'),
   email_snapshot: z.string().min(1, 'Email body is required'),
 })
 
@@ -777,7 +777,7 @@ export const rfqStatusSchema = z.object({
 export type RfqStatusInput = z.infer<typeof rfqStatusSchema>
 
 export const packageQuoteSchema = z.object({
-  vendor_id: z.uuid('Pick a vendor'),
+  vendor_id: z.uuid('Pick a supplier'),
   amount: z.coerce.number().min(0, 'Amount cannot be negative'),
   inclusions: optionalText,
   exclusions: optionalText,
@@ -788,7 +788,7 @@ export const packageQuoteSchema = z.object({
 export type PackageQuoteInput = z.infer<typeof packageQuoteSchema>
 
 export const packageAwardSchema = z.object({
-  vendor_id: z.uuid('Pick a vendor'),
+  vendor_id: z.uuid('Pick a supplier'),
   amount: z.coerce.number().positive('Amount must be positive'),
   cost_code_id: z
     .uuid()

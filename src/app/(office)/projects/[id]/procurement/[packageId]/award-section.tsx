@@ -117,7 +117,7 @@ export function AwardSection({
   function handleAward(e: React.FormEvent) {
     e.preventDefault()
     if (!vendorId) {
-      toast.error('Pick a vendor')
+      toast.error('Pick a supplier')
       return
     }
     if (amount == null || amount <= 0) {
@@ -292,10 +292,10 @@ export function AwardSection({
           </DialogHeader>
           <form onSubmit={handleAward} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="award-vendor">Vendor</Label>
+              <Label htmlFor="award-vendor">Supplier</Label>
               <Select value={vendorId || null} onValueChange={handleVendorChange}>
                 <SelectTrigger id="award-vendor" className="w-full">
-                  <SelectValue placeholder="Pick a vendor…" />
+                  <SelectValue placeholder="Pick a supplier…" />
                 </SelectTrigger>
                 <SelectContent>
                   {quotes.map((q) => (

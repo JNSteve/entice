@@ -112,7 +112,7 @@ export default async function VendorDetailPage({
         description={
           vendor.trades && vendor.trades.length > 0
             ? vendor.trades.join(', ')
-            : 'Vendor'
+            : 'Supplier'
         }
         actions={
           <div className="flex items-center gap-2">

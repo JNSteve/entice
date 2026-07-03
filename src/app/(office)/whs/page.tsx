@@ -432,7 +432,7 @@ export default async function WhsOverviewPage() {
           <CardContent className="flex flex-col gap-2">
             {needsAttentionCount === 0 ? (
               <p className="text-sm text-muted-foreground">
-                Nothing outstanding — corrective actions, hold points, vendor
+                Nothing outstanding — corrective actions, hold points, supplier
                 compliance, document reviews, internal audits, risk reviews,
                 management review actions, legal obligations, worker
                 competencies and objectives are all in order.

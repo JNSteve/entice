@@ -56,7 +56,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: 'Quotes', href: '/quotes', icon: FileTextIcon, roles: ['admin', 'office'] },
   { label: 'Jobs', href: '/jobs', icon: BriefcaseIcon },
   { label: 'Projects', href: '/projects', icon: FolderKanbanIcon },
-  { label: 'Vendors', href: '/vendors', icon: TruckIcon },
+  { label: 'Suppliers', href: '/vendors', icon: TruckIcon },
   { label: 'Schedule', href: '/schedule', icon: CalendarIcon },
   { label: 'WHS', href: '/whs', icon: ShieldCheckIcon, roles: ['admin', 'office', 'supervisor'] },
   { label: 'Documents', href: '/documents', icon: FolderClosedIcon, roles: ['admin', 'office', 'supervisor'] },
