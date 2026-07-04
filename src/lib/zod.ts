@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { PROPERTY_COMPLIANCE_KINDS } from '@/lib/portal'
 
 export const CLIENT_TYPES = [
   'builder',
@@ -2541,3 +2542,66 @@ export const recordEvaluationSchema = z
   })
 
 export type RecordEvaluationInput = z.infer<typeof recordEvaluationSchema>
+
+// ─── Client portal (CP1): property compliance items + client links ──────────
+// Kinds/labels + light derivation live in src/lib/portal.ts (pure, tested).
+
+export const propertyComplianceItemSchema = z
+  .object({
+    site_id: z.uuid(),
+    kind: z.enum(PROPERTY_COMPLIANCE_KINDS),
+    title: z.string().min(1, 'Title is required').max(300),
+    issue_date: isoDate,
+    /** null = no review/expiry (clearances, air monitoring). */
+    review_due: isoDate
+      .nullish()
+      .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+    /** Set after the browser two-phase upload; prefix enforced by DB CHECK too. */
+    evidence_path: z
+      .string()
+      .startsWith('property-compliance/', 'Evidence must be under property-compliance/')
+      .refine((v) => !v.includes('..'), 'Invalid evidence path')
+      .nullish()
+      .transform((v) => v ?? null),
+    evidence_filename: z
+      .string()
+      .max(300)
+      .nullish()
+      .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+    /** Optional link into the controlled document register. */
+    document_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    notes: optionalText,
+    /** Replace flow: the active item this new one supersedes. */
+    supersedes_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+  })
+  .refine((d) => d.review_due === null || d.review_due >= d.issue_date, {
+    message: 'Review date cannot be before the issue date',
+    path: ['review_due'],
+  })
+
+export type PropertyComplianceItemInput = z.infer<typeof propertyComplianceItemSchema>
+
+export const clientLinkCreateSchema = z.object({
+  client_id: z.uuid(),
+  label: z.string().min(1, 'Label is required').max(200),
+  expiresDays: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .max(3650)
+    .nullish()
+    .transform((v) => v ?? null),
+  /** window.location.origin from the caller; env/localhost fallback. */
+  origin: z
+    .string()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type ClientLinkCreateInput = z.infer<typeof clientLinkCreateSchema>

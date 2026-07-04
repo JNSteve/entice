@@ -22,6 +22,10 @@ import {
   SiteDialog,
   DeleteSiteButton,
 } from '../client-dialogs'
+import { ComplianceLight } from '@/components/ComplianceLight'
+import { derivePropertyStatus } from '@/lib/portal'
+import { todayAU } from '@/lib/tz'
+import { PortalLinks, type ClientLinkRow } from './portal-links'
 
 const TYPE_LABELS: Record<string, string> = {
   builder: 'Builder',
@@ -53,6 +57,7 @@ export default async function ClientDetailPage({
     { data: jobs },
     { data: projects },
     { data: invoices },
+    { data: portalLinks },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase.from('contacts').select('*').eq('client_id', id).order('name'),
@@ -61,11 +66,50 @@ export default async function ClientDetailPage({
     supabase.from('jobs').select('id, number, title, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('projects').select('id, number, name, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('invoices').select('id, number, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('client_links').select('id, token, label, created_at, expires_at, revoked_at').eq('client_id', id).order('created_at', { ascending: false }),
   ])
 
   if (!client) notFound()
 
   const canEdit = profile?.role === 'admin' || profile?.role === 'office'
+
+  // Per-site compliance lights (active items' review dates, 30-day rule) and
+  // the portal access log — office's view of what the client portal shows.
+  const siteIds = (sites ?? []).map((s) => s.id as string)
+  const { data: complianceItems } =
+    siteIds.length > 0
+      ? await supabase
+          .from('property_compliance_items')
+          .select('site_id, review_due')
+          .in('site_id', siteIds)
+          .eq('status', 'active')
+      : { data: [] as { site_id: string; review_due: string | null }[] }
+
+  const today = todayAU()
+  const duesBySite = new Map<string, (string | null)[]>()
+  for (const item of complianceItems ?? []) {
+    const list = duesBySite.get(item.site_id as string) ?? []
+    list.push((item.review_due as string | null) ?? null)
+    duesBySite.set(item.site_id as string, list)
+  }
+
+  // Access log is admin/office only (portal_views RLS) — skip the query for
+  // supervisors so an empty result isn't mistaken for "no views".
+  const linkIds = (portalLinks ?? []).map((l) => l.id as string)
+  const { data: views, count: viewCount } =
+    canEdit && linkIds.length > 0
+      ? await supabase
+          .from('portal_views')
+          .select('id, client_link_id, site_id, path, viewed_at', { count: 'exact' })
+          .in('client_link_id', linkIds)
+          .order('viewed_at', { ascending: false })
+          .limit(15)
+      : { data: [], count: 0 }
+
+  const linkLabelById = new Map(
+    (portalLinks ?? []).map((l) => [l.id as string, (l.label as string | null) ?? '—'])
+  )
+  const siteNameById = new Map((sites ?? []).map((s) => [s.id as string, s.name as string]))
 
   return (
     <div className="flex flex-col gap-8">
@@ -182,6 +226,9 @@ export default async function ClientDetailPage({
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-10">
+                    <span className="sr-only">Compliance</span>
+                  </TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Address</TableHead>
                   <TableHead>Suburb</TableHead>
@@ -193,7 +240,19 @@ export default async function ClientDetailPage({
               <TableBody>
                 {sites.map((site) => (
                   <TableRow key={site.id}>
-                    <TableCell className="font-medium">{site.name}</TableCell>
+                    <TableCell>
+                      <ComplianceLight
+                        status={derivePropertyStatus(duesBySite.get(site.id) ?? [], today)}
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      <Link
+                        href={`/clients/${client.id}/sites/${site.id}`}
+                        className="text-primary hover:underline"
+                      >
+                        {site.name}
+                      </Link>
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{site.address ?? '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{site.suburb ?? '—'}</TableCell>
                     <TableCell className="text-muted-foreground">{site.state ?? '—'}</TableCell>
@@ -215,6 +274,65 @@ export default async function ClientDetailPage({
           <p className="text-sm text-muted-foreground">No sites yet.</p>
         )}
       </section>
+
+      {/* Client portal: links + access log */}
+      <PortalLinks
+        clientId={client.id}
+        clientName={client.name}
+        links={(portalLinks ?? []) as ClientLinkRow[]}
+        canManage={canEdit}
+      />
+      {canEdit && (
+        <section>
+          <h2 className="mb-3 text-base font-semibold">
+            Portal access log
+            {typeof viewCount === 'number' && viewCount > 0 && (
+              <span className="ml-2 text-sm font-normal text-muted-foreground">
+                {viewCount} view{viewCount === 1 ? '' : 's'} recorded
+              </span>
+            )}
+          </h2>
+          {(views ?? []).length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              No portal activity yet. Every page view and file download through
+              the client portal is recorded here.
+            </p>
+          ) : (
+            <div className="rounded-xl border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>When</TableHead>
+                    <TableHead>Link</TableHead>
+                    <TableHead>Property</TableHead>
+                    <TableHead>Page / file</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(views ?? []).map((v) => (
+                    <TableRow key={v.id}>
+                      <TableCell className="text-muted-foreground tabular-nums">
+                        {new Date(v.viewed_at as string).toLocaleString('en-AU', {
+                          timeZone: 'Australia/Brisbane',
+                          dateStyle: 'short',
+                          timeStyle: 'short',
+                        })}
+                      </TableCell>
+                      <TableCell>{linkLabelById.get(v.client_link_id as string) ?? '—'}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {v.site_id ? (siteNameById.get(v.site_id as string) ?? '—') : '—'}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {v.path}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+        </section>
+      )}
 
       {/* Related: Quotes */}
       <section>

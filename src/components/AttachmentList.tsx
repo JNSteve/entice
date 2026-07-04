@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { deleteAttachment } from '@/lib/attachments'
+import { deleteAttachment, setAttachmentClientVisible } from '@/lib/attachments'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -16,6 +16,8 @@ import {
   FileIcon,
   FileTextIcon,
   FileImageIcon,
+  EyeIcon,
+  EyeOffIcon,
 } from 'lucide-react'
 import { fmtDate } from '@/lib/format'
 
@@ -28,6 +30,8 @@ export interface AttachmentItem {
   size: number | null
   kind: 'photo' | 'docket' | 'document' | 'pdf'
   caption: string | null
+  /** Client-portal curation flag; only meaningful when canCurate is set. */
+  client_visible?: boolean
   created_by: string
   created_by_name: string | null
   created_at: string
@@ -37,6 +41,71 @@ export interface AttachmentItem {
 interface AttachmentListProps {
   items: AttachmentItem[]
   canDelete: boolean
+  /**
+   * Shows the per-attachment "Visible to client" toggle (admin/office on
+   * job/project attachments only — the client-portal curation surface).
+   */
+  canCurate?: boolean
+}
+
+// ─── Client-visibility toggle (portal curation) ──────────────────────────────
+
+function useClientVisibleToggle() {
+  const [, startTransition] = useTransition()
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  function toggle(item: AttachmentItem) {
+    const next = !item.client_visible
+    setTogglingId(item.id)
+    startTransition(async () => {
+      const result = await setAttachmentClientVisible(item.id, next)
+      setTogglingId(null)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success(
+          next
+            ? `${item.filename} is now visible in the client portal`
+            : `${item.filename} hidden from the client portal`
+        )
+      }
+    })
+  }
+
+  return { toggle, togglingId }
+}
+
+function CurateButton({
+  item,
+  onToggle,
+  disabled,
+  className,
+}: {
+  item: AttachmentItem
+  onToggle: (item: AttachmentItem) => void
+  disabled: boolean
+  className?: string
+}) {
+  const visible = Boolean(item.client_visible)
+  const label = visible
+    ? `Hide ${item.filename} from the client portal`
+    : `Show ${item.filename} in the client portal`
+  return (
+    <button
+      type="button"
+      className={className}
+      onClick={(e) => {
+        e.stopPropagation()
+        onToggle(item)
+      }}
+      disabled={disabled}
+      aria-label={label}
+      aria-pressed={visible}
+      title={label}
+    >
+      {visible ? <EyeIcon className="size-3.5" /> : <EyeOffIcon className="size-3.5" />}
+    </button>
+  )
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -61,9 +130,20 @@ interface PhotoGridProps {
   canDelete: boolean
   onDelete: (id: string) => void
   deleting: string | null
+  canCurate?: boolean
+  onCurate?: (item: AttachmentItem) => void
+  curating?: string | null
 }
 
-function PhotoGrid({ photos, canDelete, onDelete, deleting }: PhotoGridProps) {
+function PhotoGrid({
+  photos,
+  canDelete,
+  onDelete,
+  deleting,
+  canCurate,
+  onCurate,
+  curating,
+}: PhotoGridProps) {
   const [lightbox, setLightbox] = useState<AttachmentItem | null>(null)
 
   if (photos.length === 0) {
@@ -110,6 +190,18 @@ function PhotoGrid({ photos, canDelete, onDelete, deleting }: PhotoGridProps) {
               >
                 <Trash2Icon className="size-3.5" />
               </button>
+            )}
+            {canCurate && onCurate && (
+              <CurateButton
+                item={photo}
+                onToggle={onCurate}
+                disabled={curating === photo.id}
+                className={`absolute bottom-1 left-1 rounded-md p-1 text-white focus:outline-none ${
+                  photo.client_visible
+                    ? 'bg-green-600/90 hover:bg-green-700'
+                    : 'bg-black/60 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity hover:bg-black/80 focus:opacity-100'
+                }`}
+              />
             )}
           </div>
         ))}
@@ -159,9 +251,20 @@ interface DocListProps {
   canDelete: boolean
   onDelete: (id: string) => void
   deleting: string | null
+  canCurate?: boolean
+  onCurate?: (item: AttachmentItem) => void
+  curating?: string | null
 }
 
-function DocList({ docs, canDelete, onDelete, deleting }: DocListProps) {
+function DocList({
+  docs,
+  canDelete,
+  onDelete,
+  deleting,
+  canCurate,
+  onCurate,
+  curating,
+}: DocListProps) {
   if (docs.length === 0) {
     return <p className="text-sm text-muted-foreground">No documents yet.</p>
   }
@@ -181,6 +284,23 @@ function DocList({ docs, canDelete, onDelete, deleting }: DocListProps) {
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {canCurate && onCurate && (
+              <span
+                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
+                  doc.client_visible
+                    ? 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300'
+                    : 'border-transparent text-muted-foreground'
+                }`}
+              >
+                <CurateButton
+                  item={doc}
+                  onToggle={onCurate}
+                  disabled={curating === doc.id}
+                  className="flex items-center gap-1 focus:outline-none"
+                />
+                {doc.client_visible ? 'Client' : ''}
+              </span>
+            )}
             {doc.signedUrl && (
               <Button
                 type="button"
@@ -224,9 +344,10 @@ function DocList({ docs, canDelete, onDelete, deleting }: DocListProps) {
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
-export function AttachmentList({ items, canDelete }: AttachmentListProps) {
+export function AttachmentList({ items, canDelete, canCurate }: AttachmentListProps) {
   const [pending, startTransition] = useTransition()
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const { toggle: handleCurate, togglingId } = useClientVisibleToggle()
 
   const photos = items.filter((i) => i.kind === 'photo')
   const docs = items.filter((i) => i.kind !== 'photo')
@@ -254,6 +375,9 @@ export function AttachmentList({ items, canDelete }: AttachmentListProps) {
           canDelete={canDelete}
           onDelete={handleDelete}
           deleting={pending ? deletingId : null}
+          canCurate={canCurate}
+          onCurate={handleCurate}
+          curating={togglingId}
         />
       )}
       {docs.length > 0 && (
@@ -262,6 +386,9 @@ export function AttachmentList({ items, canDelete }: AttachmentListProps) {
           canDelete={canDelete}
           onDelete={handleDelete}
           deleting={pending ? deletingId : null}
+          canCurate={canCurate}
+          onCurate={handleCurate}
+          curating={togglingId}
         />
       )}
     </div>

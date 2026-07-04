@@ -165,6 +165,44 @@ export async function recordAttachment(
 }
 
 /**
+ * Client-portal curation: flips an attachment's client_visible flag.
+ * Admin/office only, and only on job/project attachments — the portal's
+ * Works tab is the only surface that ever reads the flag, and NOTHING is
+ * visible until explicitly toggled here.
+ */
+export async function setAttachmentClientVisible(
+  id: string,
+  visible: boolean
+): Promise<{ error?: string }> {
+  const profile = await getProfile()
+  if (!profile) return { error: 'Not authenticated' }
+  if (profile.role !== 'admin' && profile.role !== 'office') {
+    return { error: 'Only admin/office can change client visibility' }
+  }
+
+  const supabase = await createClient()
+
+  const { data: row } = await supabase
+    .from('attachments')
+    .select('id, parent_type, parent_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!row) return { error: 'Attachment not found' }
+  if (row.parent_type !== 'job' && row.parent_type !== 'project') {
+    return { error: 'Only job and project attachments can be shared to the portal' }
+  }
+
+  const { error } = await supabase
+    .from('attachments')
+    .update({ client_visible: visible })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  await revalidateParent(supabase, row.parent_type, row.parent_id)
+  return {}
+}
+
+/**
  * Deletes an attachment row and its backing storage object.
  * Allowed when: role is admin/office OR the caller created the attachment.
  */

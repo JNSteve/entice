@@ -404,6 +404,68 @@ export function ComplianceCard({ data }: { data: ComplianceRow[] | null }) {
   )
 }
 
+// ─── 5b. Property compliance due (client portal recall surface) ───────────────
+
+export type PropertyComplianceDueRow = {
+  id: string
+  clientId: string
+  siteId: string
+  siteName: string
+  clientName: string
+  kindLabel: string
+  title: string
+  reviewDue: string
+  overdue: boolean
+}
+
+export function PropertyComplianceCard({
+  data,
+}: {
+  data: PropertyComplianceDueRow[] | null
+}) {
+  return (
+    <DashboardCard title="Property compliance due" href="/clients">
+      {data === null ? (
+        <LoadError />
+      ) : data.length === 0 ? (
+        <Muted>No property compliance items due in the next 30 days.</Muted>
+      ) : (
+        <>
+          {data.slice(0, MAX_ROWS).map((r) => (
+            <div
+              key={r.id}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <div className="flex min-w-0 flex-col">
+                <Link
+                  href={`/clients/${r.clientId}/sites/${r.siteId}`}
+                  className="truncate hover:underline"
+                >
+                  {r.title}
+                </Link>
+                <span className="truncate text-xs text-muted-foreground">
+                  {r.siteName} · {r.clientName} · {r.kindLabel}
+                </span>
+              </div>
+              <span
+                className={cn(
+                  'shrink-0 text-xs tabular-nums',
+                  r.overdue
+                    ? 'font-medium text-red-600 dark:text-red-400'
+                    : 'font-medium text-amber-600 dark:text-amber-400'
+                )}
+              >
+                {fmtDate(r.reviewDue)}
+              </span>
+            </div>
+          ))}
+          <MoreNote total={data.length} />
+        </>
+      )}
+    </DashboardCard>
+  )
+}
+
 // ─── 6. Retention due ─────────────────────────────────────────────────────────
 
 export type RetentionDueRow = {

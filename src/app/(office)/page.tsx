@@ -14,6 +14,10 @@ import {
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nowAU } from '@/lib/tz'
+import {
+  PROPERTY_COMPLIANCE_KIND_LABELS,
+  type PropertyComplianceKind,
+} from '@/lib/portal'
 import { PageHeader } from '@/components/PageHeader'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import {
@@ -23,6 +27,7 @@ import {
   DiariesMissingCard,
   HoldPointsCard,
   NcrCard,
+  PropertyComplianceCard,
   QuotesAwaitingCard,
   RetentionDueCard,
   SafetyCard,
@@ -37,6 +42,7 @@ import {
   type HoldPointDueRow,
   type NcrData,
   type NcrOverdueCapaRow,
+  type PropertyComplianceDueRow,
   type QuoteAwaitingRow,
   type RetentionDueRow,
   type SafetyData,
@@ -254,6 +260,42 @@ async function loadComplianceExpiries(
     expiry: d.expiry_date as string,
     expired: (d.expiry_date as string) < todayStr,
   }))
+}
+
+// ─── 5b. Property compliance due (client-portal recall surface) ───────────────
+
+async function loadPropertyComplianceDue(
+  supabase: Db,
+  today: Date
+): Promise<PropertyComplianceDueRow[]> {
+  const { data, error } = await supabase
+    .from('property_compliance_items')
+    .select('id, kind, title, review_due, site_id, sites(name, client_id, clients(name))')
+    .eq('status', 'active')
+    .not('review_due', 'is', null)
+    .lte('review_due', dateStr(addDays(today, 30)))
+    .order('review_due', { ascending: true })
+  if (error) throw error
+
+  const todayStr = dateStr(today)
+  return (data ?? []).map((i) => {
+    const site = i.sites as unknown as {
+      name: string
+      client_id: string
+      clients: { name: string } | null
+    } | null
+    return {
+      id: i.id as string,
+      clientId: site?.client_id ?? '',
+      siteId: i.site_id as string,
+      siteName: site?.name ?? '—',
+      clientName: site?.clients?.name ?? '—',
+      kindLabel: PROPERTY_COMPLIANCE_KIND_LABELS[i.kind as PropertyComplianceKind] ?? (i.kind as string),
+      title: i.title as string,
+      reviewDue: i.review_due as string,
+      overdue: (i.review_due as string) < todayStr,
+    }
+  })
 }
 
 // ─── 6. Retention due ─────────────────────────────────────────────────────────
@@ -724,6 +766,7 @@ export default async function DashboardPage() {
     unpaidInvoices,
     timeBars,
     compliance,
+    propertyCompliance,
     retentionDue,
     activeWork,
     todayOnSite,
@@ -738,6 +781,7 @@ export default async function DashboardPage() {
     showMoney ? settle(() => loadUnpaidInvoices(supabase, today)) : none,
     showMoney ? settle(() => loadTimeBarWarnings(supabase, today)) : none,
     showMoney ? settle(() => loadComplianceExpiries(supabase, today)) : none,
+    showMoney ? settle(() => loadPropertyComplianceDue(supabase, today)) : none,
     showMoney ? settle(() => loadRetentionDue(supabase, today)) : none,
     showMoney ? settle(() => loadActiveWork(supabase)) : none,
     settle(() => loadTodayOnSite(supabase, today)),
@@ -766,6 +810,7 @@ export default async function DashboardPage() {
             <UnpaidInvoicesCard data={unpaidInvoices ?? null} />
             <TimeBarCard data={timeBars ?? null} />
             <ComplianceCard data={compliance ?? null} />
+            <PropertyComplianceCard data={propertyCompliance ?? null} />
             <RetentionDueCard data={retentionDue ?? null} />
             <ActiveWorkCard data={activeWork ?? null} />
           </>

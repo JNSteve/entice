@@ -320,6 +320,7 @@ export default async function JobDetailPage({
         <AttachmentList
           items={photoItems}
           canDelete={canDeleteAttachment}
+          canCurate={canDeleteAttachment}
         />
       </section>
 
@@ -361,6 +362,7 @@ export default async function JobDetailPage({
         <AttachmentList
           items={docItems}
           canDelete={canDeleteAttachment}
+          canCurate={canDeleteAttachment}
         />
       </section>
     </div>
