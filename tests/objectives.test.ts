@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
+  closedWithinDaysPct,
+  daysBetween,
   deriveObjectiveStatus,
   enumeratePeriods,
   isCurrent,
@@ -77,6 +79,50 @@ describe('pctOf', () => {
     expect(pctOf(3, 3)).toBe(100)
     expect(pctOf(0, 5)).toBe(0)
     expect(pctOf(0, 0)).toBeNull()
+  })
+})
+
+// ─── CAPA closure age (SMS-M-01 §6.3: corrective actions ≤ 28 days) ──────────
+
+describe('daysBetween', () => {
+  it('whole calendar days between AU date strings', () => {
+    expect(daysBetween('2026-06-01', '2026-06-01')).toBe(0)
+    expect(daysBetween('2026-06-01', '2026-06-29')).toBe(28)
+    expect(daysBetween('2026-06-01', '2026-06-30')).toBe(29)
+    expect(daysBetween('2026-12-20', '2027-01-17')).toBe(28) // year boundary
+    expect(daysBetween('2026-06-10', '2026-06-01')).toBe(-9) // negative when b < a
+  })
+})
+
+describe('closedWithinDaysPct', () => {
+  const row = (createdDate: string, completedDate: string) => ({
+    createdDate,
+    completedDate,
+  })
+
+  it('% closed within the window, 1 dp', () => {
+    expect(
+      closedWithinDaysPct(
+        [
+          row('2026-06-01', '2026-06-05'), // 4 days — within
+          row('2026-06-01', '2026-06-29'), // 28 days — boundary, still within
+          row('2026-06-01', '2026-06-30'), // 29 days — outside
+        ],
+        28
+      )
+    ).toBe(66.7)
+  })
+
+  it('same-day closure is day 0 (within)', () => {
+    expect(closedWithinDaysPct([row('2026-06-01', '2026-06-01')], 28)).toBe(100)
+  })
+
+  it('all outside the window → 0, not null', () => {
+    expect(closedWithinDaysPct([row('2026-01-01', '2026-06-01')], 28)).toBe(0)
+  })
+
+  it('no closures → null (unmeasured, never a fake 0 or 100)', () => {
+    expect(closedWithinDaysPct([], 28)).toBeNull()
   })
 })
 

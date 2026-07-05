@@ -17,6 +17,7 @@ export const AUTO_METRIC_KEYS = [
   'environmental_incident_count',
   'ncr_count',
   'capa_on_time_close_pct',
+  'capa_closed_28d_pct',
   'on_time_delivery_pct',
   'training_compliance_pct',
   'audit_on_time_close_pct',
@@ -29,6 +30,7 @@ export const AUTO_METRIC_LABELS: Record<AutoMetricKey, string> = {
   environmental_incident_count: 'Environmental incidents',
   ncr_count: 'NCRs raised',
   capa_on_time_close_pct: 'CAPA actions closed on time (%)',
+  capa_closed_28d_pct: 'CAPA actions closed within 28 days (%)',
   on_time_delivery_pct: 'Projects delivered on programme (%)',
   training_compliance_pct: 'Training compliance (%)',
   audit_on_time_close_pct: 'Audits closed on time (%)',
@@ -209,6 +211,38 @@ export function ltifr(
 export function pctOf(numerator: number, denominator: number): number | null {
   if (denominator <= 0) return null
   return Math.round((numerator / denominator) * 1000) / 10
+}
+
+// ─── CAPA closure age (SMS-M-01 §6.3: corrective actions closed ≤ 28 days) ────
+
+export interface ClosureLike {
+  /** AU calendar day the action was raised ('YYYY-MM-DD'). */
+  createdDate: string
+  /** AU calendar day the action was completed ('YYYY-MM-DD'). */
+  completedDate: string
+}
+
+/** Whole calendar days from `a` to `b` (both 'YYYY-MM-DD'); negative when b < a. */
+export function daysBetween(a: string, b: string): number {
+  return Math.round(
+    (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000
+  )
+}
+
+/**
+ * % of closures completed within `days` calendar days of being raised
+ * (inclusive — raised and completed the same day is day 0, and a closure ON
+ * day `days` still counts). Returns null when nothing closed — an unmeasured
+ * period is never a fake 0 or 100.
+ */
+export function closedWithinDaysPct(
+  rows: ClosureLike[],
+  days: number
+): number | null {
+  const within = rows.filter(
+    (r) => daysBetween(r.createdDate, r.completedDate) <= days
+  ).length
+  return pctOf(within, rows.length)
 }
 
 // ─── On-time programme delivery (owner decision: programme baseline) ─────────

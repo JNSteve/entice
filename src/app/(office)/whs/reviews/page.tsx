@@ -64,7 +64,7 @@ export default async function WhsReviewsPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Management Reviews"
-        description="Periodic top-management reviews of the integrated QHSE system — the mandated 9.3.2 inputs with live register snapshots, RAG-rated minutes and tracked output actions (ISO 9001/14001/45001 §9.3, per procedure INT-PRO-003)."
+        description="Top-management reviews of the integrated QHSE system — the mandated 9.3.2 inputs with live register snapshots, RAG-rated minutes and tracked output actions (ISO 9001/14001/45001 §9.3). ECR holds management review quarterly as a standing directors' meeting agenda item, with one full review of the entire system each year (SMS-08 Management Review Procedure)."
       />
       <ReviewsClient
         items={rows}

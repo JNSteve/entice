@@ -250,7 +250,7 @@ export function MgmtReviewPdf({
       company={company}
       footerText={
         review.closed
-          ? `Minutes locked on close (${review.closed}) — controlled record per INT-PRO-003`
+          ? `Minutes locked on close (${review.closed}) — controlled record per SMS-08`
           : 'Review in progress — minutes not yet locked'
       }
     >
@@ -401,8 +401,9 @@ export function MgmtReviewPdf({
 
       <Text style={styles.footer}>
         Management review conducted per the Management Review Procedure
-        (INT-PRO-003) — ISO 9001/14001/45001 clause 9.3. Output actions are
-        tracked to completion in the management review register.
+        (SMS-08) — held quarterly with a full annual system review — ISO
+        9001/14001/45001 clause 9.3. Output actions are tracked to completion
+        in the management review register.
       </Text>
     </DocShell>
   )

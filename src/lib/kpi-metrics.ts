@@ -28,6 +28,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { todayAU } from '@/lib/tz'
 import {
+  closedWithinDaysPct,
   ltifr,
   monthsOf,
   onTimeDeliveryPct,
@@ -158,6 +159,30 @@ export const AUTO_METRICS: Record<AutoMetricKey, AutoMetric> = {
         (r) => auDateOf(r.completed_at as string) <= (r.due_date as string)
       ).length
       return pctOf(onTime, rows.length)
+    },
+  },
+
+  // % of CAPA actions COMPLETED in the period that closed within 28 calendar
+  // days of being raised (AU calendar-day comparison, inclusive). SMS-M-01
+  // WHS Manual §6.3: "all corrective actions closed within 28 days of being
+  // raised". No completions in the period → null.
+  capa_closed_28d_pct: {
+    label: AUTO_METRIC_LABELS.capa_closed_28d_pct,
+    compute: async (supabase, periodKey) => {
+      const { start, end } = periodInstants(periodKey)
+      const { data, error } = await supabase
+        .from('capa_actions')
+        .select('created_at, completed_at')
+        .gte('completed_at', start)
+        .lt('completed_at', end)
+      if (error) throw new Error(`capa_actions query failed: ${error.message}`)
+      return closedWithinDaysPct(
+        (data ?? []).map((r) => ({
+          createdDate: auDateOf(r.created_at as string),
+          completedDate: auDateOf(r.completed_at as string),
+        })),
+        28
+      )
     },
   },
 

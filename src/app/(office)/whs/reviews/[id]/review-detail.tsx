@@ -865,9 +865,9 @@ export function ReviewDetailClient({
           <p className="text-xs text-muted-foreground">
             Conducted per the{' '}
             <Link href="/documents" className="underline underline-offset-2 hover:text-foreground">
-              Management Review Procedure (INT-PRO-003)
+              Management Review Procedure (SMS-08)
             </Link>{' '}
-            — ISO 9001/14001/45001 §9.3.
+            — quarterly, with a full annual system review — ISO 9001/14001/45001 §9.3.
           </p>
         </div>
 

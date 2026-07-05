@@ -128,7 +128,7 @@ export default async function WhsObjectivesPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Objectives & KPIs"
-        description="Measurable management objectives with period-by-period actuals — auto-derived from the live registers or entered manually (ISO 9001/14001/45001 §6.2, §9.1)."
+        description="Measurable management objectives with period-by-period actuals — auto-derived from the live registers or entered manually (ISO 9001/14001/45001 §6.2, §9.1). Objectives are set and reviewed per SMS-01 Objectives and Targets Procedure; this register carries the SMS-R-04 Performance Register."
       />
       <ObjectivesClient
         items={rows}
