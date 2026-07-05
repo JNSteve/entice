@@ -68,15 +68,37 @@ The heart of the product; build first.
 - Works tab v1 = list of jobs/projects on the site with status + shared
   documents/photos (curation toggles on attachments).
 
-### CP2 — Live works + approvals (size M)
-- Live works tracking: stage/% from programme, curated photo stream, claim
-  and invoice history per property.
+### CP2 — The client experience release (size L–XL, expanded 2026-07-05 per owner)
+Owner direction: "needs nicer UI, remember this is client facing — calendars,
+colours, folders, correspondence, anything else that makes a good client
+portal. Allow them to request tasks."
+
+**CP2a — Portal experience (visual/UX overhaul):**
+- Redesigned client-facing shell: ECR branding, professional trust-building
+  design, mobile-first, colour-coded status language used consistently.
+- Portfolio landing dashboard: headline cards (properties, compliance state
+  across the portfolio, active works, items due soon), property cards with
+  at-a-glance compliance rings/lights.
+- **Calendar**: combined month + list view per client — compliance review-due
+  dates (amber/red) and works dates (blue) across all their properties.
+- **Document library with folders**: per property, auto-organised (Compliance
+  / Certificates / Works records / Reports), file-type icons, search/filter,
+  year grouping.
+- Works detail: stage/% progress from programme, milestone line, curated
+  photo gallery, works history timeline.
+
+**CP2b — Interactions:**
+- **Correspondence**: message thread per property (client ↔ office) with
+  office-side inbox + unread badges + dashboard needs-attention; doubles as
+  the correspondence log (shared machinery with the future RFI register).
+- **Task/work requests**: client raises a request against a property (title,
+  description, urgency, optional photos via guarded upload) → office register
+  with needs-attention → convert-to-quote action; client sees status
+  (submitted → reviewed → quoted → scheduled → completed).
 - **Variation and quote acceptance** with on-screen signature (name +
   signature + timestamp + IP → audit_log; flips variation/quote status).
-- **Work requests**: client raises a request against a property → appears in
-  Entice as a lead with notification; office converts to quote.
-- Comment thread per property (shared machinery with the future RFI register
-  — build once).
+- Claim/invoice history per property (issued documents only).
+- PDF watermarking ("Issued to {client} {date}") if cheap; else CP3.
 
 ### CP3 — Compliance calendar + notifications + handover (size M)
 - Email notifications: compliance item due in 30 days / overdue; new document
