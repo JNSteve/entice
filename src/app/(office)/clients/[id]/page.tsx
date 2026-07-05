@@ -66,7 +66,7 @@ export default async function ClientDetailPage({
     supabase.from('jobs').select('id, number, title, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('projects').select('id, number, name, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('invoices').select('id, number, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
-    supabase.from('client_links').select('id, token, label, created_at, expires_at, revoked_at').eq('client_id', id).order('created_at', { ascending: false }),
+    supabase.from('client_links').select('id, token, label, created_at, expires_at, revoked_at, show_financials').eq('client_id', id).order('created_at', { ascending: false }),
   ])
 
   if (!client) notFound()
@@ -110,6 +110,17 @@ export default async function ClientDetailPage({
     (portalLinks ?? []).map((l) => [l.id as string, (l.label as string | null) ?? '—'])
   )
   const siteNameById = new Map((sites ?? []).map((s) => [s.id as string, s.name as string]))
+
+  // Unread portal messages across this client's properties (admin/office —
+  // portal_messages RLS excludes supervisors).
+  const { count: unreadMessages } = canEdit
+    ? await supabase
+        .from('portal_messages')
+        .select('id', { count: 'exact', head: true })
+        .eq('client_id', id)
+        .eq('sender', 'client')
+        .eq('read_by_office', false)
+    : { count: 0 }
 
   return (
     <div className="flex flex-col gap-8">
@@ -281,6 +292,7 @@ export default async function ClientDetailPage({
         clientName={client.name}
         links={(portalLinks ?? []) as ClientLinkRow[]}
         canManage={canEdit}
+        unreadMessages={unreadMessages ?? 0}
       />
       {canEdit && (
         <section>

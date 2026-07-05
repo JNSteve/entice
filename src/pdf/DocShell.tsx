@@ -21,6 +21,12 @@ export type DocShellProps = {
   company: DocCompany
   /** Optional footer copy (terms line, payment details, …). */
   footerText?: string | null
+  /**
+   * Optional issue watermark (client portal: "Issued to {client} — {date}").
+   * Renders as a light diagonal banner behind the content on every page plus
+   * a line in the footer.
+   */
+  watermark?: string | null
   children: ReactNode
 }
 
@@ -59,6 +65,21 @@ const styles = StyleSheet.create({
     color: palette.slate500,
     flexShrink: 0,
   },
+  watermark: {
+    position: 'absolute',
+    top: 400,
+    left: -60,
+    right: -60,
+    textAlign: 'center',
+    fontSize: 22,
+    fontFamily: font.bold,
+    color: '#e8edf3',
+    transform: 'rotate(-24deg)',
+  },
+  watermarkFooterLine: {
+    fontSize: fontSize.xs,
+    color: palette.slate500,
+  },
 })
 
 /**
@@ -71,6 +92,7 @@ export function DocShell({
   docDate,
   company,
   footerText,
+  watermark,
   children,
 }: DocShellProps) {
   const companyLines = [
@@ -82,6 +104,11 @@ export function DocShell({
   return (
     <Document title={`${title} ${docNumber}`} author={company.name}>
       <Page size="A4" style={styles.page}>
+        {watermark ? (
+          <Text style={styles.watermark} fixed>
+            {watermark}
+          </Text>
+        ) : null}
         <View style={headerStyles.bar}>
           <View style={headerStyles.companyBlock}>
             {company.logoUrl ? (
@@ -105,7 +132,12 @@ export function DocShell({
         {children}
 
         <View style={styles.footer} fixed>
-          {footerText ? <Text style={styles.footerText}>{footerText}</Text> : <View style={{ flex: 1 }} />}
+          <View style={{ flex: 1, gap: 2 }}>
+            {footerText ? <Text style={styles.footerText}>{footerText}</Text> : null}
+            {watermark ? (
+              <Text style={styles.watermarkFooterLine}>{watermark}</Text>
+            ) : null}
+          </View>
           <Text
             style={styles.pageNumber}
             render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}

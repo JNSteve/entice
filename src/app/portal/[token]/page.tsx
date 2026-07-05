@@ -5,12 +5,15 @@ import {
   ChevronRightIcon,
   CircleCheckIcon,
   ClockIcon,
+  FileSignatureIcon,
   MapPinIcon,
+  PlusIcon,
   TriangleAlertIcon,
   WrenchIcon,
 } from 'lucide-react'
 import { createPublicClient } from '@/lib/supabase/public'
 import { todayAU } from '@/lib/tz'
+import { fmtDate } from '@/lib/format'
 import { derivePropertyStatus } from '@/lib/portal'
 import {
   propertyStatusPhrase,
@@ -21,8 +24,11 @@ import {
   PortalCard,
   PortalLight,
   PortalShell,
+  RequestStatusChip,
   StatusRing,
+  type PortalApprovalsPayload,
   type PortalBranding,
+  type PortalRequestRow,
 } from './portal-ui'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
@@ -60,15 +66,26 @@ export default async function PortalHomePage({
   const branding = (resolved ?? null) as PortalBranding | null
   if (!branding) return <LinkInactivePage />
 
-  const [{ data: sitesData }] = await Promise.all([
-    supabase.rpc('portal_sites', { p_token: token }),
-    supabase.rpc('portal_log_view', {
-      p_token: token,
-      p_site: null,
-      p_path: '/portal',
-    }),
-  ])
+  const [{ data: sitesData }, { data: approvalsData }, { data: requestsData }] =
+    await Promise.all([
+      supabase.rpc('portal_sites', { p_token: token }),
+      supabase.rpc('portal_approvals', { p_token: token }),
+      supabase.rpc('portal_my_requests', { p_token: token }),
+      supabase.rpc('portal_log_view', {
+        p_token: token,
+        p_site: null,
+        p_path: '/portal',
+      }),
+    ])
   const sites = ((sitesData ?? []) as PortalSiteRow[]) ?? []
+  const approvals = ((approvalsData ?? null) as PortalApprovalsPayload | null) ?? {
+    pending: [],
+    decided: [],
+  }
+  const requests = ((requestsData ?? []) as PortalRequestRow[]) ?? []
+  const openRequests = requests.filter(
+    (r) => r.status !== 'completed' && r.status !== 'declined'
+  )
   const today = todayAU()
   const summary = summarisePortfolio(sites, today)
 
@@ -83,6 +100,29 @@ export default async function PortalHomePage({
           all in one place.
         </p>
       </div>
+
+      {/* Awaiting approvals */}
+      {approvals.pending.length > 0 && (
+        <Link
+          href={`/portal/${token}/approvals`}
+          className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm transition-colors hover:bg-amber-100/70"
+        >
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-full bg-white text-amber-600 ring-2 ring-amber-500/40">
+            <FileSignatureIcon className="size-5" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block text-sm font-semibold text-amber-900">
+              {approvals.pending.length === 1
+                ? '1 item awaiting your approval'
+                : `${approvals.pending.length} items awaiting your approval`}
+            </span>
+            <span className="block text-xs text-amber-700">
+              Review and sign online — it takes less than a minute.
+            </span>
+          </span>
+          <ChevronRightIcon className="size-5 shrink-0 text-amber-400" />
+        </Link>
+      )}
 
       {/* Headline summary */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -139,9 +179,18 @@ export default async function PortalHomePage({
 
       {/* Properties */}
       <div className="flex flex-col gap-3">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
-          Your properties
-        </h2>
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Your properties
+          </h2>
+          <Link
+            href={`/portal/${token}/request`}
+            className="flex min-h-11 items-center gap-1.5 rounded-xl bg-[#1e3a5f] px-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          >
+            <PlusIcon className="size-4" />
+            Request work
+          </Link>
+        </div>
 
         {sites.length === 0 ? (
           <p className="rounded-2xl border border-dashed bg-white px-4 py-10 text-center text-sm text-slate-500">
@@ -198,6 +247,40 @@ export default async function PortalHomePage({
           </ul>
         )}
       </div>
+
+      {/* Your requests */}
+      {openRequests.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Your requests
+          </h2>
+          <PortalCard className="divide-y">
+            {openRequests.slice(0, 5).map((r) => (
+              <Link
+                key={r.id}
+                href={`/portal/${token}/sites/${r.site_id}?tab=requests`}
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    {r.number} — {r.title}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">
+                    {r.site_name} · {fmtDate(r.created_at)}
+                  </p>
+                </div>
+                <RequestStatusChip status={r.status} />
+                <ChevronRightIcon className="size-4 shrink-0 text-slate-300" />
+              </Link>
+            ))}
+            {openRequests.length > 5 && (
+              <p className="px-4 py-2.5 text-xs text-slate-400">
+                +{openRequests.length - 5} more on their property pages
+              </p>
+            )}
+          </PortalCard>
+        </div>
+      )}
     </PortalShell>
   )
 }

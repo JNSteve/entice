@@ -1077,3 +1077,152 @@ export function SystemHealthCard({ data }: { data: SystemHealthData | null }) {
     </DashboardCard>
   )
 }
+
+// ─── 15. Client portal activity (CP2b — messages / requests / decisions) ─────
+
+export type PortalUnreadThreadRow = {
+  clientId: string
+  siteId: string
+  clientName: string
+  siteName: string
+  count: number
+}
+
+export type PortalNewRequestRow = {
+  id: string
+  number: string
+  title: string
+  urgency: string
+  clientName: string
+  createdAt: string
+}
+
+export type PortalDecisionRow = {
+  id: string
+  kind: 'quote' | 'variation'
+  action: 'accepted' | 'declined'
+  label: string
+  href: string
+  signerName: string
+  reason: string | null
+  signedAt: string
+}
+
+export type PortalActivityData = {
+  unreadThreads: PortalUnreadThreadRow[]
+  newRequests: PortalNewRequestRow[]
+  decisions: PortalDecisionRow[]
+}
+
+export function PortalActivityCard({ data }: { data: PortalActivityData | null }) {
+  const empty =
+    data !== null &&
+    data.unreadThreads.length === 0 &&
+    data.newRequests.length === 0 &&
+    data.decisions.length === 0
+
+  return (
+    <DashboardCard title="Client portal" href="/clients/requests">
+      {data === null ? (
+        <LoadError />
+      ) : empty ? (
+        <Muted>No portal activity needing attention.</Muted>
+      ) : (
+        <>
+          {data.unreadThreads.length > 0 && (
+            <>
+              <p className="text-xs font-medium text-muted-foreground">
+                Unread client messages (
+                {data.unreadThreads.reduce((s, t) => s + t.count, 0)})
+              </p>
+              {data.unreadThreads.slice(0, MAX_ROWS).map((t) => (
+                <div
+                  key={`${t.clientId}-${t.siteId}`}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <Link
+                    href={`/clients/${t.clientId}/sites/${t.siteId}`}
+                    className="min-w-0 truncate hover:underline"
+                  >
+                    {t.clientName} — {t.siteName}
+                  </Link>
+                  <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-blue-700 tabular-nums dark:bg-blue-950 dark:text-blue-300">
+                    {t.count}
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.unreadThreads.length} />
+            </>
+          )}
+
+          {data.newRequests.length > 0 && (
+            <>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                New work requests
+              </p>
+              {data.newRequests.slice(0, MAX_ROWS).map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <Link
+                    href="/clients/requests"
+                    className="min-w-0 truncate hover:underline"
+                  >
+                    {r.number} — {r.title}
+                  </Link>
+                  <span
+                    className={cn(
+                      'shrink-0 text-xs tabular-nums',
+                      r.urgency === 'urgent' || r.urgency === 'high'
+                        ? 'font-semibold text-red-600 dark:text-red-400'
+                        : 'text-muted-foreground'
+                    )}
+                  >
+                    {r.urgency === 'urgent' || r.urgency === 'high'
+                      ? r.urgency
+                      : fmtDate(r.createdAt)}
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.newRequests.length} />
+            </>
+          )}
+
+          {data.decisions.length > 0 && (
+            <>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                Signed via portal (last 14 days)
+              </p>
+              {data.decisions.slice(0, MAX_ROWS).map((d) => (
+                <div key={d.id} className="flex flex-col gap-0.5 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <Link href={d.href} className="min-w-0 truncate hover:underline">
+                      {d.label}
+                    </Link>
+                    <span
+                      className={cn(
+                        'shrink-0 text-xs font-medium',
+                        d.action === 'accepted'
+                          ? 'text-green-700 dark:text-green-400'
+                          : 'text-red-600 dark:text-red-400'
+                      )}
+                    >
+                      {d.action === 'accepted' ? 'Accepted' : 'Declined'} ·{' '}
+                      {fmtDate(d.signedAt)}
+                    </span>
+                  </div>
+                  <span className="truncate text-xs text-muted-foreground">
+                    {d.signerName}
+                    {d.reason ? ` — “${d.reason}”` : ''}
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.decisions.length} />
+            </>
+          )}
+        </>
+      )}
+    </DashboardCard>
+  )
+}

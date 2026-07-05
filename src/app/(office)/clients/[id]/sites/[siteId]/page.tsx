@@ -18,6 +18,7 @@ import {
   type DocumentOption,
   type PropertyItemRow,
 } from './compliance-items'
+import { OfficeThread, type OfficeMessageRow } from './office-thread'
 
 /**
  * Office view of one property (site): its compliance register (the portal's
@@ -78,6 +79,45 @@ export default async function SiteDetailPage({
   if (!client || !site) notFound()
 
   const canEdit = profile.role === 'admin' || profile.role === 'office'
+
+  // Portal correspondence thread (admin/office only — supervisors have no
+  // portal_messages SELECT, so skip the query rather than render an empty
+  // state that reads as "no messages").
+  let threadMessages: OfficeMessageRow[] = []
+  let unreadCount = 0
+  if (canEdit) {
+    const { data: messages } = await supabase
+      .from('portal_messages')
+      .select(
+        'id, sender, sender_name, body, created_at, read_by_office, profiles(full_name)'
+      )
+      .eq('client_id', clientId)
+      .eq('site_id', siteId)
+      .order('created_at', { ascending: true })
+    threadMessages = (messages ?? []).map((m) => {
+      const office = m.profiles as unknown as { full_name: string } | null
+      const unread = m.sender === 'client' && !m.read_by_office
+      return {
+        id: m.id as string,
+        sender: m.sender as 'client' | 'office',
+        sender_name:
+          m.sender === 'office'
+            ? (office?.full_name ?? 'Office')
+            : ((m.sender_name as string | null) ?? 'Client'),
+        body: m.body as string,
+        created_display: new Date(m.created_at as string).toLocaleString('en-AU', {
+          timeZone: 'Australia/Brisbane',
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        }),
+        unread,
+      }
+    })
+    unreadCount = threadMessages.filter((m) => m.unread).length
+  }
 
   // Batch-sign evidence paths (office-side 1h links; the portal uses its own
   // logged short-lived route instead).
@@ -144,6 +184,18 @@ export default async function SiteDetailPage({
         canEdit={canEdit}
         canDelete={profile.role === 'admin'}
       />
+
+      {/* Portal correspondence — the client side lives on their Messages tab */}
+      {canEdit && (
+        <OfficeThread
+          clientId={clientId}
+          siteId={siteId}
+          clientName={client.name}
+          messages={threadMessages}
+          unreadCount={unreadCount}
+          canReply={canEdit}
+        />
+      )}
 
       {/* Works on this property — what the portal's Works tab draws from */}
       <section>

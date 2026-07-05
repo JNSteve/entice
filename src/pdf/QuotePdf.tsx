@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from '@react-pdf/renderer'
+import { View, Text, Image, StyleSheet } from '@react-pdf/renderer'
 import { aud, pct } from '@/lib/format'
 import { lineTotal } from '@/lib/money'
 import { DocShell, type DocCompany } from './DocShell'
@@ -14,6 +14,15 @@ export type QuotePdfLine = {
 export type QuotePdfSection = {
   title: string
   lines: QuotePdfLine[]
+}
+
+/** Sign-on-the-glass evidence rendered when the quote was accepted online. */
+export type QuotePdfAcceptance = {
+  signerName: string
+  /** Pre-formatted display datetime (Brisbane). */
+  signedAtDisplay: string
+  /** PNG data URL from the portal signature pad. */
+  signatureUrl: string | null
 }
 
 export type QuotePdfProps = {
@@ -33,6 +42,9 @@ export type QuotePdfProps = {
   validDays: number
   description?: string | null
   footerText?: string | null
+  acceptance?: QuotePdfAcceptance | null
+  /** "Issued to {client} — {date}" banner for portal-issued copies. */
+  watermark?: string | null
 }
 
 const styles = StyleSheet.create({
@@ -74,6 +86,33 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: palette.slate500,
     marginTop: 16,
+  },
+  acceptanceBlock: {
+    marginTop: 18,
+    borderWidth: 0.75,
+    borderColor: palette.slate300,
+    borderRadius: 4,
+    padding: 12,
+    gap: 4,
+  },
+  acceptanceTitle: {
+    fontFamily: font.bold,
+    fontSize: fontSize.sm,
+    color: palette.navy,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  acceptanceLine: {
+    fontSize: fontSize.base,
+    color: palette.slate700,
+  },
+  acceptanceSignature: {
+    width: 180,
+    height: 60,
+    objectFit: 'contain',
+    marginTop: 4,
+    borderWidth: 0.5,
+    borderColor: palette.slate300,
   },
 })
 
@@ -140,6 +179,8 @@ export function QuotePdf({
   validDays,
   description,
   footerText,
+  acceptance,
+  watermark,
 }: QuotePdfProps) {
   return (
     <DocShell
@@ -148,6 +189,7 @@ export function QuotePdf({
       docDate={quote.date}
       company={company}
       footerText={footerText}
+      watermark={watermark}
     >
       <View style={styles.toBlock}>
         <Text style={styles.toLabel}>To</Text>
@@ -185,6 +227,20 @@ export function QuotePdf({
       <Text style={styles.validity}>
         This quotation is valid for {validDays} days from the date above.
       </Text>
+
+      {acceptance ? (
+        <View style={styles.acceptanceBlock} wrap={false}>
+          <Text style={styles.acceptanceTitle}>Accepted via client portal</Text>
+          <Text style={styles.acceptanceLine}>
+            Accepted by {acceptance.signerName} on behalf of {quote.clientName}
+          </Text>
+          <Text style={styles.acceptanceLine}>{acceptance.signedAtDisplay}</Text>
+          {acceptance.signatureUrl ? (
+            // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt prop
+            <Image src={acceptance.signatureUrl} style={styles.acceptanceSignature} />
+          ) : null}
+        </View>
+      ) : null}
     </DocShell>
   )
 }

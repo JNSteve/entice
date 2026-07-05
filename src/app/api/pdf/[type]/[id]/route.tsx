@@ -6,7 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { computeClaim, type ClaimLineInput } from '@/lib/claims'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
-import { QuotePdf, type QuotePdfSection } from '@/pdf/QuotePdf'
+import { buildQuotePdfResponse } from '@/pdf/build-quote-pdf'
 import { InvoicePdf } from '@/pdf/InvoicePdf'
 import { PoPdf } from '@/pdf/PoPdf'
 import { ClaimPdf, type ClaimPdfLine } from '@/pdf/ClaimPdf'
@@ -307,103 +307,10 @@ async function invoicePdf(id: string): Promise<Response> {
 }
 
 async function quotePdf(id: string): Promise<Response> {
+  // Shared builder (also used by the token-gated portal proxy) — includes the
+  // portal-acceptance evidence block when the quote was signed on the glass.
   const supabase = await createClient()
-
-  const [{ data: quote }, { data: sections }, { data: lines }, { data: settings }] =
-    await Promise.all([
-      supabase
-        .from('quotes')
-        .select(
-          '*, clients(name), sites(name, address, suburb, state, postcode), contacts(name)'
-        )
-        .eq('id', id)
-        .single(),
-      supabase
-        .from('quote_sections')
-        .select('id, title, position')
-        .eq('quote_id', id)
-        .order('position')
-        .order('id'),
-      supabase
-        .from('quote_lines')
-        .select('section_id, position, description, qty, unit, unit_sell')
-        .eq('quote_id', id)
-        .order('position')
-        .order('id'),
-      supabase
-        .from('settings')
-        .select('company_name, abn, address, phone, email, logo_path')
-        .eq('id', 1)
-        .single(),
-    ])
-
-  if (!quote) return new Response('Not found', { status: 404 })
-
-  const allLines = (lines ?? []).map((l) => ({
-    section_id: l.section_id as string | null,
-    description: l.description as string,
-    qty: Number(l.qty),
-    unit: l.unit as string,
-    unit_sell: Number(l.unit_sell),
-  }))
-
-  const pdfSections: QuotePdfSection[] = (sections ?? [])
-    .map((s) => ({
-      title: s.title as string,
-      lines: allLines.filter((l) => l.section_id === s.id),
-    }))
-    .filter((s) => s.lines.length > 0)
-
-  // Lines orphaned by a deleted section (FK is on delete set null).
-  const orphanLines = allLines.filter(
-    (l) => !l.section_id || !(sections ?? []).some((s) => s.id === l.section_id)
-  )
-  if (orphanLines.length > 0) {
-    pdfSections.push({ title: 'Items', lines: orphanLines })
-  }
-
-  const totals = docTotals(
-    allLines.map((l) => ({ qty: l.qty, unitSell: l.unit_sell })),
-    Number(quote.gst_rate)
-  )
-
-  const site = quote.sites as {
-    name: string
-    address: string | null
-    suburb: string | null
-    state: string | null
-    postcode: string | null
-  } | null
-  const siteAddress =
-    [site?.address, [site?.suburb, site?.state, site?.postcode].filter(Boolean).join(' ')]
-      .filter(Boolean)
-      .join(', ') || null
-
-  const buffer = await renderToBuffer(
-    <QuotePdf
-      quote={{
-        number: quote.number,
-        title: quote.title,
-        date: fmtDate(quote.sent_at ?? quote.created_at),
-        clientName: (quote.clients as { name: string } | null)?.name ?? '—',
-        contactName: (quote.contacts as { name: string } | null)?.name ?? null,
-        siteName: site?.name ?? null,
-        siteAddress,
-      }}
-      company={toCompany(settings)}
-      sections={pdfSections}
-      totals={{ ...totals, gstRate: Number(quote.gst_rate) }}
-      validDays={quote.valid_days}
-      description={quote.description}
-    />
-  )
-
-  return new Response(new Uint8Array(buffer), {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="${quote.number}.pdf"`,
-    },
-  })
+  return buildQuotePdfResponse(supabase, id)
 }
 
 async function claimPdf(id: string): Promise<Response> {

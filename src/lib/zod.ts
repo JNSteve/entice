@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { PROPERTY_COMPLIANCE_KINDS } from '@/lib/portal'
+import { REQUEST_STATUSES } from '@/lib/portal-interactions'
 
 export const CLIENT_TYPES = [
   'builder',
@@ -2622,3 +2623,21 @@ export const accessReviewSchema = z
   })
 
 export type AccessReviewInput = z.infer<typeof accessReviewSchema>
+
+// ─── Client portal CP2b: correspondence + work requests (office side) ────────
+// Portal-side (anon) validation happens inside the SECURITY DEFINER fns;
+// these schemas guard the OFFICE server actions.
+
+export const officePortalMessageSchema = z.object({
+  client_id: z.uuid(),
+  site_id: z.uuid(),
+  body: z.string().trim().min(1, 'Message is required').max(2000),
+})
+
+export type OfficePortalMessageInput = z.infer<typeof officePortalMessageSchema>
+
+export const portalRequestStatusSchema = z.object({
+  status: z.enum(REQUEST_STATUSES),
+})
+
+export type PortalRequestStatusInput = z.infer<typeof portalRequestStatusSchema>

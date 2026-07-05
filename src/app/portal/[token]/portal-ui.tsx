@@ -13,6 +13,12 @@ import {
 import { fmtDate } from '@/lib/format'
 import { todayAU } from '@/lib/tz'
 import { complianceTitle, type ComplianceStatus } from '@/lib/compliance'
+import {
+  REQUEST_STATUS_LABELS,
+  REQUEST_TIMELINE,
+  requestTimelineIndex,
+  type RequestStatus,
+} from '@/lib/portal-interactions'
 
 /**
  * Shared building blocks for the anonymous client portal (/portal/[token]).
@@ -32,6 +38,63 @@ export interface PortalBranding {
   company_email: string | null
   company_address: string | null
   company_abn: string | null
+  /** Billing tab gate (client_links.show_financials, default off). */
+  show_financials: boolean
+}
+
+// ─── CP2b payload shapes (portal RPCs) ───────────────────────────────────────
+
+export interface PortalMessageRow {
+  id: string
+  sender: 'client' | 'office'
+  sender_name: string
+  body: string
+  created_at: string
+}
+
+export interface PortalRequestRow {
+  id: string
+  number: string
+  site_id: string
+  site_name: string
+  title: string
+  description: string
+  urgency: string
+  status: string
+  photo_count: number
+  created_at: string
+}
+
+export interface PortalApprovalItem {
+  kind: 'quote' | 'variation'
+  id: string
+  number: string
+  title: string
+  context: string | null
+  site_id: string | null
+  amount: number | null
+  gst_inclusive: boolean
+  date: string | null
+}
+
+export interface PortalDecidedItem extends PortalApprovalItem {
+  action: 'accepted' | 'declined'
+  signer_name: string
+  signed_on: string | null
+}
+
+export interface PortalApprovalsPayload {
+  pending: PortalApprovalItem[]
+  decided: PortalDecidedItem[]
+}
+
+export interface PortalBillingRow {
+  kind: 'invoice' | 'claim'
+  number: string
+  context: string | null
+  date: string
+  amount: number | null
+  status: string
 }
 
 // Brand navy — matches the app's themeColor (#1e3a5f).
@@ -332,5 +395,104 @@ export function EmptyState({ children }: { children: React.ReactNode }) {
     <p className="rounded-2xl border border-dashed bg-white px-4 py-10 text-center text-sm text-slate-500">
       {children}
     </p>
+  )
+}
+
+// ─── Work request status language ────────────────────────────────────────────
+
+/** Portal colour discipline: in-motion blue, waiting slate, ready amber,
+ *  done green, declined red. */
+const REQUEST_STATUS_CHIP: Record<string, string> = {
+  submitted: 'bg-slate-100 text-slate-600 border-slate-200',
+  reviewed: 'bg-blue-50 text-blue-700 border-blue-200',
+  quoted: 'bg-amber-50 text-amber-700 border-amber-200',
+  scheduled: 'bg-blue-50 text-blue-700 border-blue-200',
+  completed: 'bg-green-50 text-green-700 border-green-200',
+  declined: 'bg-red-50 text-red-700 border-red-200',
+}
+
+export function RequestStatusChip({ status }: { status: string }) {
+  const className =
+    REQUEST_STATUS_CHIP[status] ?? 'bg-slate-100 text-slate-600 border-slate-200'
+  const label = REQUEST_STATUS_LABELS[status as RequestStatus] ?? status
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${className}`}
+    >
+      {label}
+    </span>
+  )
+}
+
+/**
+ * The request's progress along submitted → reviewed → quoted → scheduled →
+ * completed. Declined requests render a red branch note instead of the steps.
+ */
+export function RequestTimeline({ status }: { status: string }) {
+  if (status === 'declined') {
+    return (
+      <p className="text-xs font-medium text-red-600">
+        This request was declined — contact us if you would like to discuss it.
+      </p>
+    )
+  }
+  const index = requestTimelineIndex(status)
+  return (
+    <ol className="flex items-center" aria-label="Request progress">
+      {REQUEST_TIMELINE.map((step, i) => {
+        const reached = i <= index
+        const isCurrent = i === index
+        return (
+          <li key={step} className="flex min-w-0 flex-1 items-center last:flex-none">
+            <span className="flex flex-col items-center gap-1">
+              <span
+                className={`flex size-4 items-center justify-center rounded-full ring-2 ${
+                  reached
+                    ? 'bg-blue-600 ring-blue-600'
+                    : 'bg-white ring-slate-300'
+                }`}
+              >
+                {reached && <CheckIcon className="size-2.5 text-white" strokeWidth={3.5} />}
+              </span>
+              <span
+                className={`whitespace-nowrap text-[10px] leading-none ${
+                  isCurrent ? 'font-semibold text-blue-700' : 'text-slate-400'
+                }`}
+              >
+                {REQUEST_STATUS_LABELS[step]}
+              </span>
+            </span>
+            <span
+              className={`mx-1 mb-4 h-0.5 flex-1 rounded ${
+                i < index ? 'bg-blue-600' : 'bg-slate-200'
+              } ${i === REQUEST_TIMELINE.length - 1 ? 'hidden' : ''}`}
+            />
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
+// ─── Billing status chip (portal-safe vocabulary) ────────────────────────────
+
+const BILLING_STATUS: Record<string, { label: string; className: string }> = {
+  sent: { label: 'Issued', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  submitted: { label: 'Submitted', className: 'bg-blue-50 text-blue-700 border-blue-200' },
+  certified: { label: 'Certified', className: 'bg-green-50 text-green-700 border-green-200' },
+  paid: { label: 'Paid', className: 'bg-green-50 text-green-700 border-green-200' },
+}
+
+export function BillingStatusChip({ status }: { status: string }) {
+  const meta = BILLING_STATUS[status] ?? {
+    label: status,
+    className: 'bg-slate-100 text-slate-600 border-slate-200',
+  }
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-2.5 py-0.5 text-xs font-medium ${meta.className}`}
+    >
+      {meta.label}
+    </span>
   )
 }

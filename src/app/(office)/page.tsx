@@ -28,6 +28,7 @@ import {
   DiariesMissingCard,
   HoldPointsCard,
   NcrCard,
+  PortalActivityCard,
   PropertyComplianceCard,
   QuotesAwaitingCard,
   RetentionDueCard,
@@ -44,6 +45,8 @@ import {
   type HoldPointDueRow,
   type NcrData,
   type NcrOverdueCapaRow,
+  type PortalActivityData,
+  type PortalDecisionRow,
   type PropertyComplianceDueRow,
   type QuoteAwaitingRow,
   type RetentionDueRow,
@@ -750,6 +753,133 @@ async function loadDiariesMissing(
     }))
 }
 
+// ─── 15. Client portal activity (unread messages / new requests / decisions) ─
+
+async function loadPortalActivity(
+  supabase: Db,
+  today: Date
+): Promise<PortalActivityData> {
+  const since = subDays(today, 14).toISOString()
+
+  const [messagesRes, requestsRes, decisionsRes] = await Promise.all([
+    supabase
+      .from('portal_messages')
+      .select('client_id, site_id, clients(name), sites(name)')
+      .eq('sender', 'client')
+      .eq('read_by_office', false),
+    supabase
+      .from('portal_requests')
+      .select('id, number, title, urgency, created_at, clients(name)')
+      .eq('status', 'submitted')
+      .order('created_at', { ascending: true }),
+    supabase
+      .from('portal_acceptances')
+      .select('id, kind, target_id, action, signer_name, reason, signed_at')
+      .gte('signed_at', since)
+      .order('signed_at', { ascending: false }),
+  ])
+  if (messagesRes.error) throw messagesRes.error
+  if (requestsRes.error) throw requestsRes.error
+  if (decisionsRes.error) throw decisionsRes.error
+
+  // Group unread messages into one row per thread (client × property).
+  const threads = new Map<
+    string,
+    { clientId: string; siteId: string; clientName: string; siteName: string; count: number }
+  >()
+  for (const m of messagesRes.data ?? []) {
+    const key = `${m.client_id}:${m.site_id}`
+    const existing = threads.get(key)
+    if (existing) existing.count++
+    else {
+      threads.set(key, {
+        clientId: m.client_id as string,
+        siteId: m.site_id as string,
+        clientName:
+          (m.clients as unknown as { name: string } | null)?.name ?? '—',
+        siteName: (m.sites as unknown as { name: string } | null)?.name ?? '—',
+        count: 1,
+      })
+    }
+  }
+
+  // Resolve decision targets (quote number/title; variation VO-n + project).
+  const decisionRows = decisionsRes.data ?? []
+  const quoteIds = decisionRows
+    .filter((d) => d.kind === 'quote')
+    .map((d) => d.target_id as string)
+  const variationIds = decisionRows
+    .filter((d) => d.kind === 'variation')
+    .map((d) => d.target_id as string)
+
+  const [quotesRes, variationsRes] = await Promise.all([
+    quoteIds.length > 0
+      ? supabase.from('quotes').select('id, number, title').in('id', quoteIds)
+      : Promise.resolve({ data: [], error: null }),
+    variationIds.length > 0
+      ? supabase
+          .from('variations')
+          .select('id, number, title, project_id')
+          .in('id', variationIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+  if (quotesRes.error) throw quotesRes.error
+  if (variationsRes.error) throw variationsRes.error
+
+  const quoteById = new Map(
+    (quotesRes.data ?? []).map((q) => [q.id as string, q])
+  )
+  const variationById = new Map(
+    (variationsRes.data ?? []).map((v) => [v.id as string, v])
+  )
+
+  const decisions: PortalDecisionRow[] = decisionRows.flatMap((d): PortalDecisionRow[] => {
+    if (d.kind === 'quote') {
+      const quote = quoteById.get(d.target_id as string)
+      if (!quote) return []
+      return [
+        {
+          id: d.id as string,
+          kind: 'quote' as const,
+          action: d.action as 'accepted' | 'declined',
+          label: `${quote.number} — ${quote.title}`,
+          href: `/quotes/${quote.id}`,
+          signerName: d.signer_name as string,
+          reason: (d.reason as string | null) ?? null,
+          signedAt: d.signed_at as string,
+        },
+      ]
+    }
+    const variation = variationById.get(d.target_id as string)
+    if (!variation) return []
+    return [
+      {
+        id: d.id as string,
+        kind: 'variation' as const,
+        action: d.action as 'accepted' | 'declined',
+        label: `VO-${variation.number} — ${variation.title}`,
+        href: `/projects/${variation.project_id}/variations`,
+        signerName: d.signer_name as string,
+        reason: (d.reason as string | null) ?? null,
+        signedAt: d.signed_at as string,
+      },
+    ]
+  })
+
+  return {
+    unreadThreads: [...threads.values()].sort((a, b) => b.count - a.count),
+    newRequests: (requestsRes.data ?? []).map((r) => ({
+      id: r.id as string,
+      number: r.number as string,
+      title: r.title as string,
+      urgency: r.urgency as string,
+      clientName: (r.clients as unknown as { name: string } | null)?.name ?? '—',
+      createdAt: r.created_at as string,
+    })),
+    decisions,
+  }
+}
+
 // ─── 14. System health (backup staleness / app errors / access reviews) ──────
 
 async function loadSystemHealth(
@@ -829,6 +959,7 @@ export default async function DashboardPage() {
     safety,
     ncr,
     systemHealth,
+    portalActivity,
   ] = await Promise.all([
     showMoney ? settle(() => loadClaimsDue(supabase, today)) : none,
     showMoney ? settle(() => loadQuotesAwaiting(supabase, today)) : none,
@@ -849,6 +980,7 @@ export default async function DashboardPage() {
           loadSystemHealth(supabase, profile.role === 'admin', todayAU())
         )
       : none,
+    showMoney ? settle(() => loadPortalActivity(supabase, today)) : none,
   ])
 
   return (
@@ -864,6 +996,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {showMoney && (
           <>
+            <PortalActivityCard data={portalActivity ?? null} />
             <ClaimsDueCard data={claimsDue ?? null} />
             <QuotesAwaitingCard data={quotesAwaiting ?? null} />
             <UnpaidInvoicesCard data={unpaidInvoices ?? null} />

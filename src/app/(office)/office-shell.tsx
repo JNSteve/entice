@@ -13,6 +13,7 @@ import {
   FolderClosedIcon,
   FolderKanbanIcon,
   HardHatIcon,
+  InboxIcon,
   LayoutDashboardIcon,
   LogOutIcon,
   MenuIcon,
@@ -53,6 +54,7 @@ type NavItem = {
 const NAV_ITEMS: NavItem[] = [
   { label: 'Dashboard', href: '/', icon: LayoutDashboardIcon },
   { label: 'Clients', href: '/clients', icon: UsersIcon },
+  { label: 'Requests', href: '/clients/requests', icon: InboxIcon, roles: ['admin', 'office', 'supervisor'] },
   { label: 'Quotes', href: '/quotes', icon: FileTextIcon, roles: ['admin', 'office'] },
   { label: 'Jobs', href: '/jobs', icon: BriefcaseIcon },
   { label: 'Projects', href: '/projects', icon: FolderKanbanIcon },
@@ -77,13 +79,21 @@ function NavLinks({
     (item) => !item.roles || item.roles.includes(role)
   )
 
+  // Longest matching href wins so nested items (/clients/requests) don't also
+  // light up their parent (/clients).
+  const activeHref = items.reduce<string | null>((best, item) => {
+    const matches =
+      item.href === '/'
+        ? pathname === '/'
+        : pathname === item.href || pathname.startsWith(`${item.href}/`)
+    if (!matches) return best
+    return best === null || item.href.length > best.length ? item.href : best
+  }, null)
+
   return (
     <nav className="flex flex-col gap-1 px-2">
       {items.map((item) => {
-        const active =
-          item.href === '/'
-            ? pathname === '/'
-            : pathname === item.href || pathname.startsWith(`${item.href}/`)
+        const active = item.href === activeHref
         const Icon = item.icon
         return (
           <Link

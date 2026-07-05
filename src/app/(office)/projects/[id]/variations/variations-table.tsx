@@ -17,6 +17,17 @@ import { cn } from '@/lib/utils'
 import { VariationDetailDialog } from './variation-dialog'
 import type { AttachmentItem } from '@/components/AttachmentList'
 
+/** Sign-on-the-glass evidence recorded by the client portal. */
+export interface VariationPortalAcceptance {
+  action: 'accepted' | 'declined'
+  signer_name: string
+  /** Pre-formatted Brisbane datetime. */
+  signed_display: string
+  /** PNG data URL (accepted only). */
+  signature_data: string | null
+  reason: string | null
+}
+
 export interface VariationRow {
   id: string
   number: number
@@ -30,6 +41,8 @@ export interface VariationRow {
   submitted_at: string | null
   decided_at: string | null
   notes: string | null
+  portal_published: boolean
+  portal_acceptance: VariationPortalAcceptance | null
 }
 
 interface VariationsTableProps {

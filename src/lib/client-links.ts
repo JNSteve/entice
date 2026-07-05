@@ -88,3 +88,27 @@ export async function revokeClientLink(
   revalidatePath(`/clients/${clientId}`)
   return {}
 }
+
+/**
+ * Billing tab gate (CP2b): when ON, this link's portal shows the property's
+ * issued invoices and payment claims. Default OFF — money never leaks into
+ * the portal unless office deliberately opens it per link.
+ */
+export async function setClientLinkFinancials(
+  id: string,
+  clientId: string,
+  show: boolean
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('client_links')
+    .update({ show_financials: show })
+    .eq('id', id)
+    .eq('client_id', clientId)
+  if (error) return { error: error.message }
+
+  revalidatePath(`/clients/${clientId}`)
+  return {}
+}

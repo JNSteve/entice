@@ -21,6 +21,7 @@ import {
   convertQuoteToProject,
   deleteSection,
   moveSection,
+  setQuotePortalPublished,
   setQuoteStatus,
   updateQuoteHeader,
   updateSection,
@@ -42,12 +43,25 @@ import {
   ExternalLinkIcon,
   FileDownIcon,
   FolderOpenIcon,
+  GlobeIcon,
   LayersIcon,
   PlusIcon,
   SendIcon,
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
+
+/** Sign-on-the-glass evidence recorded by the client portal. */
+export interface QuotePortalAcceptance {
+  action: 'accepted' | 'declined'
+  signer_name: string
+  /** Pre-formatted Brisbane datetime. */
+  signed_display: string
+  /** PNG data URL (accepted only). */
+  signature_data: string | null
+  reason: string | null
+  ip: string | null
+}
 
 export interface QuoteData {
   id: string
@@ -66,6 +80,8 @@ export interface QuoteData {
   converted_to: 'job' | 'project' | null
   converted_id: string | null
   converted_number: string | null
+  portal_published: boolean
+  portal_acceptance: QuotePortalAcceptance | null
 }
 
 export interface SectionData {
@@ -196,6 +212,22 @@ function HeaderCard({ quote, editable }: { quote: QuoteData; editable: boolean }
     const reason = prompt('Why was this quote lost? (optional)')
     if (reason === null) return // cancelled
     changeStatus('lost', reason)
+  }
+
+  function handlePortalPublish(published: boolean) {
+    startTransition(async () => {
+      const result = await setQuotePortalPublished(quote.id, published)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        published
+          ? 'Published — the client can now view and sign this quote in their portal'
+          : 'Removed from the client portal'
+      )
+      router.refresh()
+    })
   }
 
   function handleConvertToJob() {
@@ -364,6 +396,73 @@ function HeaderCard({ quote, editable }: { quote: QuoteData; editable: boolean }
           <p className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
             Lost: {quote.lost_reason}
           </p>
+        )}
+
+        {/* Client portal: publish-for-signing toggle + acceptance evidence */}
+        {quote.status === 'sent' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+            <div className="flex items-center gap-2 text-sm">
+              <GlobeIcon className="size-4 text-muted-foreground" />
+              {quote.portal_published ? (
+                <span>
+                  <span className="font-medium">Published to the client portal</span>
+                  {' — '}
+                  <span className="text-muted-foreground">
+                    {quote.client_name} can view the PDF and sign on the glass.
+                  </span>
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  Not on the client portal — publish to let {quote.client_name}{' '}
+                  view and sign this quote online.
+                </span>
+              )}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={pending}
+              onClick={() => handlePortalPublish(!quote.portal_published)}
+            >
+              {quote.portal_published ? 'Unpublish' : 'Publish to portal'}
+            </Button>
+          </div>
+        )}
+
+        {quote.portal_acceptance?.action === 'accepted' && (
+          <div className="flex flex-col gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 dark:border-green-800 dark:bg-green-950">
+            <p className="text-sm font-medium text-green-800 dark:text-green-300">
+              Accepted via client portal
+            </p>
+            <p className="text-sm text-green-700 dark:text-green-300/80">
+              Signed by {quote.portal_acceptance.signer_name} on{' '}
+              {quote.portal_acceptance.signed_display}
+              {quote.portal_acceptance.ip ? ` · ${quote.portal_acceptance.ip}` : ''}
+            </p>
+            {quote.portal_acceptance.signature_data && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={quote.portal_acceptance.signature_data}
+                alt={`Signature of ${quote.portal_acceptance.signer_name}`}
+                className="h-16 w-fit max-w-56 rounded border bg-white object-contain"
+              />
+            )}
+          </div>
+        )}
+
+        {quote.portal_acceptance?.action === 'declined' && quote.status === 'sent' && (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm dark:border-red-900 dark:bg-red-950">
+            <p className="font-medium text-red-700 dark:text-red-300">
+              Declined via client portal
+            </p>
+            <p className="text-red-600 dark:text-red-300/80">
+              {quote.portal_acceptance.signer_name} on{' '}
+              {quote.portal_acceptance.signed_display}
+              {quote.portal_acceptance.reason
+                ? ` — “${quote.portal_acceptance.reason}”`
+                : ''}
+            </p>
+          </div>
         )}
 
         <div className="flex flex-col gap-1.5">

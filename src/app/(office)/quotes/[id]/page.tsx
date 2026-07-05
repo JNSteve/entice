@@ -59,6 +59,18 @@ export default async function QuoteBuilderPage({
     convertedNumber = (converted as { number: string } | null)?.number ?? null
   }
 
+  // Sign-on-the-glass evidence (an accept wins over an earlier decline).
+  const { data: acceptances } = await supabase
+    .from('portal_acceptances')
+    .select('action, signer_name, signature_data, reason, ip, signed_at')
+    .eq('kind', 'quote')
+    .eq('target_id', id)
+    .order('signed_at', { ascending: false })
+  const acceptanceRow =
+    (acceptances ?? []).find((a) => a.action === 'accepted') ??
+    (acceptances ?? [])[0] ??
+    null
+
   const quoteData: QuoteData = {
     id: quote.id,
     number: quote.number,
@@ -76,6 +88,23 @@ export default async function QuoteBuilderPage({
     converted_to: quote.converted_to ?? null,
     converted_id: quote.converted_id ?? null,
     converted_number: convertedNumber,
+    portal_published: Boolean(quote.portal_published),
+    portal_acceptance: acceptanceRow
+      ? {
+          action: acceptanceRow.action as 'accepted' | 'declined',
+          signer_name: acceptanceRow.signer_name as string,
+          signed_display: new Date(
+            acceptanceRow.signed_at as string
+          ).toLocaleString('en-AU', {
+            timeZone: 'Australia/Brisbane',
+            dateStyle: 'medium',
+            timeStyle: 'short',
+          }),
+          signature_data: (acceptanceRow.signature_data as string | null) ?? null,
+          reason: (acceptanceRow.reason as string | null) ?? null,
+          ip: (acceptanceRow.ip as string | null) ?? null,
+        }
+      : null,
   }
 
   const sectionData: SectionData[] = (sections ?? []).map((s) => ({

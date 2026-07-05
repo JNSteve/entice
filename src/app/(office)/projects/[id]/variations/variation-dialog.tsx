@@ -17,8 +17,13 @@ import { MoneyInput } from '@/components/MoneyInput'
 import { AttachmentList, type AttachmentItem } from '@/components/AttachmentList'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { StatusBadge } from '@/components/StatusBadge'
-import { PlusIcon } from 'lucide-react'
-import { createVariation, updateVariation, setVariationStatus } from './actions'
+import { GlobeIcon, PlusIcon } from 'lucide-react'
+import {
+  createVariation,
+  updateVariation,
+  setVariationPortalPublished,
+  setVariationStatus,
+} from './actions'
 import type { VariationRow } from './variations-table'
 
 // ─── New variation dialog ─────────────────────────────────────────────────────
@@ -270,6 +275,25 @@ export function VariationDetailDialog({
     })
   }
 
+  function handlePortalPublish(published: boolean) {
+    startStatusTransition(async () => {
+      const result = await setVariationPortalPublished(
+        variation.id,
+        projectId,
+        published
+      )
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        published
+          ? 'Published — the client can now approve this variation in their portal'
+          : 'Removed from the client portal'
+      )
+    })
+  }
+
   const singleTransition = STATUS_TRANSITIONS[variation.status]
 
   return (
@@ -281,6 +305,69 @@ export function VariationDetailDialog({
             <StatusBadge status={variation.status} />
           </div>
         </DialogHeader>
+
+        {/* Client portal: publish-for-approval toggle + signed evidence */}
+        {variation.status === 'submitted' && (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
+            <p className="flex items-center gap-2 text-sm">
+              <GlobeIcon className="size-4 shrink-0 text-muted-foreground" />
+              {variation.portal_published ? (
+                <span className="font-medium">
+                  Published — the client can approve this variation in their portal.
+                </span>
+              ) : (
+                <span className="text-muted-foreground">
+                  Publish to let the client approve this variation online.
+                </span>
+              )}
+            </p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={statusPending}
+              onClick={() => handlePortalPublish(!variation.portal_published)}
+            >
+              {variation.portal_published ? 'Unpublish' : 'Publish to portal'}
+            </Button>
+          </div>
+        )}
+
+        {variation.portal_acceptance?.action === 'accepted' && (
+          <div className="flex flex-col gap-2 rounded-lg border border-green-200 bg-green-50 px-3 py-2.5 dark:border-green-800 dark:bg-green-950">
+            <p className="text-sm font-medium text-green-800 dark:text-green-300">
+              Approved via client portal
+            </p>
+            <p className="text-sm text-green-700 dark:text-green-300/80">
+              Signed by {variation.portal_acceptance.signer_name} on{' '}
+              {variation.portal_acceptance.signed_display}
+            </p>
+            {variation.portal_acceptance.signature_data && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={variation.portal_acceptance.signature_data}
+                alt={`Signature of ${variation.portal_acceptance.signer_name}`}
+                className="h-16 w-fit max-w-56 rounded border bg-white object-contain"
+              />
+            )}
+          </div>
+        )}
+
+        {variation.portal_acceptance?.action === 'declined' &&
+          variation.status === 'submitted' && (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-sm dark:border-red-900 dark:bg-red-950">
+              <p className="font-medium text-red-700 dark:text-red-300">
+                Declined via client portal
+              </p>
+              <p className="text-red-600 dark:text-red-300/80">
+                {variation.portal_acceptance.signer_name} on{' '}
+                {variation.portal_acceptance.signed_display}
+                {variation.portal_acceptance.reason
+                  ? ` — “${variation.portal_acceptance.reason}”`
+                  : ''}
+              </p>
+            </div>
+          )}
 
         <form onSubmit={handleSave} className="flex flex-col gap-4">
           {/* Title */}

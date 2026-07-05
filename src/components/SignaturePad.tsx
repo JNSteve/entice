@@ -45,7 +45,11 @@ export function SignaturePad({ onChange }: SignaturePadProps) {
   function handlePointerDown(e: React.PointerEvent<HTMLCanvasElement>) {
     const ctx = getCtx()
     if (!ctx) return
-    e.currentTarget.setPointerCapture(e.pointerId)
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId)
+    } catch {
+      // Some pointer implementations can't capture — drawing still works.
+    }
     if (!hasInk) ensureBackground(ctx)
     drawingRef.current = true
     const { x, y } = toCanvasPoint(e)
@@ -73,7 +77,11 @@ export function SignaturePad({ onChange }: SignaturePadProps) {
   function handlePointerUp(e: React.PointerEvent<HTMLCanvasElement>) {
     if (!drawingRef.current) return
     drawingRef.current = false
-    e.currentTarget.releasePointerCapture(e.pointerId)
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId)
+    } catch {
+      // Capture may never have been taken — see handlePointerDown.
+    }
     const canvas = canvasRef.current
     if (canvas) onChange(canvas.toDataURL('image/png'))
   }

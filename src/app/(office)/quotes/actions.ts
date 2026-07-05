@@ -6,6 +6,7 @@ import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { lineSell } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
+import { canPublishQuote } from '@/lib/portal-interactions'
 import { jobPayloadFromQuote, projectPayloadFromQuote } from '@/lib/convert'
 import {
   quoteCreateSchema,
@@ -161,6 +162,39 @@ export async function setQuoteStatus(
   }
 
   const { error } = await supabase.from('quotes').update(update).eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidateQuote(id)
+  return {}
+}
+
+/**
+ * Portal publishing (CP2b sign-on-the-glass): only a SENT quote can be
+ * published — the portal offers accept/decline while it stays sent, and the
+ * definer fn re-checks both flags. Unpublishing is allowed anytime.
+ */
+export async function setQuotePortalPublished(
+  id: string,
+  published: boolean
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { data: quote, error: fetchError } = await supabase
+    .from('quotes')
+    .select('id, status')
+    .eq('id', id)
+    .single()
+  if (fetchError || !quote) return { error: 'Quote not found' }
+
+  if (published && !canPublishQuote(quote.status)) {
+    return { error: 'Only a sent quote can be published to the portal' }
+  }
+
+  const { error } = await supabase
+    .from('quotes')
+    .update({ portal_published: published })
+    .eq('id', id)
   if (error) return { error: error.message }
 
   revalidateQuote(id)

@@ -28,6 +28,7 @@ const STATUS_META: Record<string, StatusMeta> = {
   notified:            { label: 'Notified',            className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
   priced:              { label: 'Priced',              className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
   quotes_in:           { label: 'Quotes In',           className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
+  reviewed:            { label: 'Reviewed',            className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
   recommended:         { label: 'Recommended',         className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
   quoted:              { label: 'Quoted',              className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },
   quote:               { label: 'Quote',               className: 'bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-300' },

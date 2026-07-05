@@ -3,14 +3,17 @@ import { notFound } from 'next/navigation'
 import {
   ArrowLeftIcon,
   CalendarIcon,
+  ChevronRightIcon,
   CircleCheckIcon,
   DownloadIcon,
+  FileSignatureIcon,
   FileTextIcon,
   MapPinIcon,
+  PlusIcon,
 } from 'lucide-react'
 import { createPublicClient } from '@/lib/supabase/public'
 import { todayAU } from '@/lib/tz'
-import { fmtDate } from '@/lib/format'
+import { aud, fmtDate } from '@/lib/format'
 import {
   derivePropertyItemStatus,
   derivePropertyStatus,
@@ -26,17 +29,25 @@ import {
   type PortalDocEntry,
 } from '@/lib/portal-experience'
 import {
+  BillingStatusChip,
   EmptyState,
   LinkInactivePage,
   PortalCard,
   PortalLight,
   PortalShell,
   ProgressBar,
+  RequestStatusChip,
+  RequestTimeline,
   StatusRing,
   WorkStatusBadge,
+  type PortalApprovalsPayload,
+  type PortalBillingRow,
   type PortalBranding,
+  type PortalMessageRow,
+  type PortalRequestRow,
 } from '../../portal-ui'
 import { DocumentBrowser } from './document-browser'
+import { MessageThread, type PortalMessageDisplay } from './message-thread'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
 export const dynamic = 'force-dynamic'
@@ -191,6 +202,29 @@ const isPhoto = (a: PortalAttachment) => a.content_type?.startsWith('image/')
  *                photos) and a completed-works timeline. NO money, ever.
  * Tabs are links, not JS — every switch is a logged page view.
  */
+const SITE_TABS = [
+  'compliance',
+  'documents',
+  'works',
+  'messages',
+  'requests',
+  'billing',
+] as const
+
+type SiteTab = (typeof SITE_TABS)[number]
+
+/** Brisbane display datetime for message bubbles (rendered server-side). */
+function fmtMessageTime(iso: string): string {
+  return new Date(iso).toLocaleString('en-AU', {
+    timeZone: 'Australia/Brisbane',
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 export default async function PortalSitePage({
   params,
   searchParams,
@@ -200,8 +234,6 @@ export default async function PortalSitePage({
 }) {
   const { token, siteId } = await params
   const { tab } = await searchParams
-  const activeTab =
-    tab === 'works' ? 'works' : tab === 'documents' ? 'documents' : 'compliance'
 
   // Reject junk before it reaches the RPC (uuid cast errors → 500s otherwise).
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(siteId)) {
@@ -216,8 +248,16 @@ export default async function PortalSitePage({
   const branding = (resolved ?? null) as PortalBranding | null
   if (!branding) return <LinkInactivePage />
 
-  const [{ data: detailData }] = await Promise.all([
+  let activeTab: SiteTab = SITE_TABS.includes(tab as SiteTab)
+    ? (tab as SiteTab)
+    : 'compliance'
+  if (activeTab === 'billing' && !branding.show_financials) {
+    activeTab = 'compliance'
+  }
+
+  const [{ data: detailData }, { data: approvalsData }] = await Promise.all([
     supabase.rpc('portal_site_detail', { p_token: token, p_site: siteId }),
+    supabase.rpc('portal_approvals', { p_token: token, p_site: siteId }),
     supabase.rpc('portal_log_view', {
       p_token: token,
       p_site: siteId,
@@ -226,6 +266,42 @@ export default async function PortalSitePage({
   ])
   const detail = (detailData ?? null) as PortalSiteDetail | null
   if (!detail) notFound()
+
+  const approvals = ((approvalsData ?? null) as PortalApprovalsPayload | null) ?? {
+    pending: [],
+    decided: [],
+  }
+
+  // Tab-specific data (the thread RPC also marks office replies read).
+  let messages: PortalMessageDisplay[] = []
+  if (activeTab === 'messages') {
+    const { data } = await supabase.rpc('portal_thread', {
+      p_token: token,
+      p_site: siteId,
+    })
+    messages = (((data ?? []) as PortalMessageRow[]) ?? []).map((m) => ({
+      ...m,
+      created_display: fmtMessageTime(m.created_at),
+    }))
+  }
+
+  let requests: PortalRequestRow[] = []
+  if (activeTab === 'requests') {
+    const { data } = await supabase.rpc('portal_my_requests', {
+      p_token: token,
+      p_site: siteId,
+    })
+    requests = ((data ?? []) as PortalRequestRow[]) ?? []
+  }
+
+  let billing: PortalBillingRow[] = []
+  if (activeTab === 'billing') {
+    const { data } = await supabase.rpc('portal_billing', {
+      p_token: token,
+      p_site: siteId,
+    })
+    billing = ((data ?? []) as PortalBillingRow[]) ?? []
+  }
 
   const today = todayAU()
   const address = [
@@ -302,11 +378,22 @@ export default async function PortalSitePage({
   ]
 
   const tabClass = (active: boolean) =>
-    `flex min-h-11 flex-1 items-center justify-center rounded-lg px-3 py-2 text-center text-sm font-medium transition-colors ${
+    `flex min-h-11 flex-1 items-center justify-center whitespace-nowrap rounded-lg px-3 py-2 text-center text-sm font-medium transition-colors ${
       active
         ? 'bg-white text-slate-900 shadow-sm'
         : 'text-slate-500 hover:text-slate-800'
     }`
+
+  const tabs: { key: SiteTab; label: string; href: string }[] = [
+    { key: 'compliance', label: 'Compliance', href: `/portal/${token}/sites/${siteId}` },
+    { key: 'documents', label: 'Documents', href: `/portal/${token}/sites/${siteId}?tab=documents` },
+    { key: 'works', label: 'Works', href: `/portal/${token}/sites/${siteId}?tab=works` },
+    { key: 'messages', label: 'Messages', href: `/portal/${token}/sites/${siteId}?tab=messages` },
+    { key: 'requests', label: 'Requests', href: `/portal/${token}/sites/${siteId}?tab=requests` },
+    ...(branding.show_financials
+      ? [{ key: 'billing' as SiteTab, label: 'Billing', href: `/portal/${token}/sites/${siteId}?tab=billing` }]
+      : []),
+  ]
 
   return (
     <PortalShell branding={branding} token={token} active="properties">
@@ -338,26 +425,31 @@ export default async function PortalSitePage({
         </div>
       </div>
 
+      {/* Awaiting approvals banner */}
+      {approvals.pending.length > 0 && (
+        <Link
+          href={`/portal/${token}/approvals`}
+          className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm transition-colors hover:bg-amber-100/70"
+        >
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-white text-amber-600 ring-2 ring-amber-500/40">
+            <FileSignatureIcon className="size-5" />
+          </span>
+          <span className="min-w-0 flex-1 text-sm font-semibold text-amber-900">
+            {approvals.pending.length === 1
+              ? '1 item awaiting your approval'
+              : `${approvals.pending.length} items awaiting your approval`}
+          </span>
+          <ChevronRightIcon className="size-5 shrink-0 text-amber-400" />
+        </Link>
+      )}
+
       {/* Tabs (links, not JS — every switch is a logged page view) */}
-      <div className="flex gap-1 rounded-xl bg-slate-200/70 p-1">
-        <Link
-          href={`/portal/${token}/sites/${siteId}`}
-          className={tabClass(activeTab === 'compliance')}
-        >
-          Compliance
-        </Link>
-        <Link
-          href={`/portal/${token}/sites/${siteId}?tab=documents`}
-          className={tabClass(activeTab === 'documents')}
-        >
-          Documents
-        </Link>
-        <Link
-          href={`/portal/${token}/sites/${siteId}?tab=works`}
-          className={tabClass(activeTab === 'works')}
-        >
-          Works
-        </Link>
+      <div className="flex gap-1 overflow-x-auto rounded-xl bg-slate-200/70 p-1">
+        {tabs.map((t) => (
+          <Link key={t.key} href={t.href} className={tabClass(activeTab === t.key)}>
+            {t.label}
+          </Link>
+        ))}
       </div>
 
       {/* ── Compliance ─────────────────────────────────────────────────────── */}
@@ -528,6 +620,96 @@ export default async function PortalSitePage({
                 </ol>
               </PortalCard>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Messages ───────────────────────────────────────────────────────── */}
+      {activeTab === 'messages' && (
+        <MessageThread
+          token={token}
+          siteId={siteId}
+          companyName={branding.company_name}
+          messages={messages}
+        />
+      )}
+
+      {/* ── Requests ───────────────────────────────────────────────────────── */}
+      {activeTab === 'requests' && (
+        <div className="flex flex-col gap-4">
+          <Link
+            href={`/portal/${token}/request?site=${siteId}`}
+            className="flex min-h-12 w-fit items-center gap-2 rounded-xl bg-[#1e3a5f] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+          >
+            <PlusIcon className="size-4" />
+            Request work
+          </Link>
+
+          {requests.length === 0 ? (
+            <EmptyState>
+              No requests for this property yet. Need something done? Use the
+              button above and we&apos;ll take it from there.
+            </EmptyState>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {requests.map((r) => (
+                <li key={r.id}>
+                  <PortalCard className="flex flex-col gap-3 p-4">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 flex-col gap-0.5">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                          {r.number} · {fmtDate(r.created_at)}
+                        </p>
+                        <p className="text-[15px] font-semibold text-slate-900">
+                          {r.title}
+                        </p>
+                      </div>
+                      <RequestStatusChip status={r.status} />
+                    </div>
+                    <p className="line-clamp-3 whitespace-pre-wrap text-sm text-slate-600">
+                      {r.description}
+                    </p>
+                    <RequestTimeline status={r.status} />
+                  </PortalCard>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {/* ── Billing (only when the office enabled financials for this link) ── */}
+      {activeTab === 'billing' && (
+        <div className="flex flex-col gap-3">
+          {billing.length === 0 ? (
+            <EmptyState>
+              No invoices or payment claims issued for this property yet.
+            </EmptyState>
+          ) : (
+            <PortalCard className="divide-y">
+              {billing.map((b, i) => (
+                <div key={`${b.kind}-${b.number}-${i}`} className="flex items-center gap-3 px-4 py-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-900">
+                      {b.number}
+                    </p>
+                    <p className="truncate text-xs text-slate-500">
+                      {b.kind === 'invoice' ? 'Invoice' : 'Payment claim'}
+                      {b.context ? ` — ${b.context}` : ''}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-sm font-bold tabular-nums text-slate-900">
+                      {b.amount != null ? aud(b.amount) : '—'}
+                    </span>
+                    <span className="flex items-center gap-2 text-xs text-slate-400">
+                      {fmtDate(b.date)}
+                      <BillingStatusChip status={b.status} />
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </PortalCard>
           )}
         </div>
       )}

@@ -21,7 +21,7 @@ export default async function ProjectVariationsPage({
     supabase
       .from('variations')
       .select(
-        'id, number, title, description, status, cost_estimate, sell_amount, client_ref, time_bar_date, submitted_at, decided_at, notes'
+        'id, number, title, description, status, cost_estimate, sell_amount, client_ref, time_bar_date, submitted_at, decided_at, notes, portal_published'
       )
       .eq('project_id', id)
       .order('number', { ascending: true }),
@@ -29,20 +29,60 @@ export default async function ProjectVariationsPage({
 
   if (!project) notFound()
 
-  const rows: VariationRow[] = (variations ?? []).map((v) => ({
-    id: v.id,
-    number: v.number,
-    title: v.title,
-    description: v.description ?? null,
-    status: v.status,
-    cost_estimate: v.cost_estimate != null ? Number(v.cost_estimate) : null,
-    sell_amount: v.sell_amount != null ? Number(v.sell_amount) : null,
-    client_ref: v.client_ref ?? null,
-    time_bar_date: v.time_bar_date ?? null,
-    submitted_at: v.submitted_at ?? null,
-    decided_at: v.decided_at ?? null,
-    notes: v.notes ?? null,
-  }))
+  // Sign-on-the-glass evidence for this project's variations (accept wins).
+  const variationIds = (variations ?? []).map((v) => v.id as string)
+  const { data: acceptances } =
+    variationIds.length > 0
+      ? await supabase
+          .from('portal_acceptances')
+          .select('target_id, action, signer_name, signature_data, reason, signed_at')
+          .eq('kind', 'variation')
+          .in('target_id', variationIds)
+          .order('signed_at', { ascending: false })
+      : { data: [] }
+  const acceptanceByVariation = new Map<string, NonNullable<typeof acceptances>[number]>()
+  for (const a of acceptances ?? []) {
+    const key = a.target_id as string
+    const existing = acceptanceByVariation.get(key)
+    if (!existing || (existing.action !== 'accepted' && a.action === 'accepted')) {
+      acceptanceByVariation.set(key, a)
+    }
+  }
+
+  const rows: VariationRow[] = (variations ?? []).map((v) => {
+    const acceptance = acceptanceByVariation.get(v.id as string) ?? null
+    return {
+      id: v.id,
+      number: v.number,
+      title: v.title,
+      description: v.description ?? null,
+      status: v.status,
+      cost_estimate: v.cost_estimate != null ? Number(v.cost_estimate) : null,
+      sell_amount: v.sell_amount != null ? Number(v.sell_amount) : null,
+      client_ref: v.client_ref ?? null,
+      time_bar_date: v.time_bar_date ?? null,
+      submitted_at: v.submitted_at ?? null,
+      decided_at: v.decided_at ?? null,
+      notes: v.notes ?? null,
+      portal_published: Boolean(v.portal_published),
+      portal_acceptance: acceptance
+        ? {
+            action: acceptance.action as 'accepted' | 'declined',
+            signer_name: acceptance.signer_name as string,
+            signed_display: new Date(acceptance.signed_at as string).toLocaleString(
+              'en-AU',
+              {
+                timeZone: 'Australia/Brisbane',
+                dateStyle: 'medium',
+                timeStyle: 'short',
+              }
+            ),
+            signature_data: (acceptance.signature_data as string | null) ?? null,
+            reason: (acceptance.reason as string | null) ?? null,
+          }
+        : null,
+    }
+  })
 
   // Fetch attachments for all variations (one select + one signed-URL batch)
   const attachmentsByVariation: Record<string, AttachmentItem[]> =

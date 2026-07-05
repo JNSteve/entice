@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { canPublishVariation } from '@/lib/portal-interactions'
 import {
   variationCreateSchema,
   variationUpdateSchema,
@@ -208,6 +209,44 @@ export async function setVariationStatus(
     .update(update)
     .eq('id', variationId)
 
+  if (error) return { error: error.message }
+
+  revalidateVariation(projectId)
+  return {}
+}
+
+// ─── Portal publishing (CP2b sign-on-the-glass) ───────────────────────────────
+
+/**
+ * Only a SUBMITTED variation can be published — that is the one status the
+ * portal may approve from (mirrors setVariationStatus submitted→approved).
+ * Unpublishing is allowed anytime.
+ */
+export async function setVariationPortalPublished(
+  variationId: string,
+  projectId: string,
+  published: boolean
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+
+  const { data: variation } = await supabase
+    .from('variations')
+    .select('id, status')
+    .eq('id', variationId)
+    .eq('project_id', projectId)
+    .single()
+  if (!variation) return { error: 'Variation not found' }
+
+  if (published && !canPublishVariation(variation.status)) {
+    return { error: 'Only a submitted variation can be published to the portal' }
+  }
+
+  const { error } = await supabase
+    .from('variations')
+    .update({ portal_published: published })
+    .eq('id', variationId)
   if (error) return { error: error.message }
 
   revalidateVariation(projectId)

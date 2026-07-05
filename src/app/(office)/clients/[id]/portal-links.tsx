@@ -22,9 +22,14 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
+import { Checkbox } from '@/components/ui/checkbox'
 import { fmtDate } from '@/lib/format'
 import { clientLinkState, type ClientLinkState } from '@/lib/portal'
-import { createClientLink, revokeClientLink } from '@/lib/client-links'
+import {
+  createClientLink,
+  revokeClientLink,
+  setClientLinkFinancials,
+} from '@/lib/client-links'
 
 export interface ClientLinkRow {
   id: string
@@ -33,6 +38,7 @@ export interface ClientLinkRow {
   created_at: string
   expires_at: string | null
   revoked_at: string | null
+  show_financials: boolean
 }
 
 function portalUrl(token: string): string {
@@ -183,11 +189,14 @@ export function PortalLinks({
   clientName,
   links,
   canManage,
+  unreadMessages = 0,
 }: {
   clientId: string
   clientName: string
   links: ClientLinkRow[]
   canManage: boolean
+  /** Unread client portal messages across this client's properties. */
+  unreadMessages?: number
 }) {
   const [pending, startTransition] = useTransition()
   const [revokingId, setRevokingId] = useState<string | null>(null)
@@ -208,12 +217,31 @@ export function PortalLinks({
     })
   }
 
+  function handleFinancialsToggle(link: ClientLinkRow, show: boolean) {
+    startTransition(async () => {
+      const result = await setClientLinkFinancials(link.id, clientId, show)
+      if (result.error) toast.error(result.error)
+      else {
+        toast.success(
+          show
+            ? 'Billing history is now visible on this link'
+            : 'Billing history hidden on this link'
+        )
+      }
+    })
+  }
+
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
         <h2 className="flex items-center gap-2 text-base font-semibold">
           <LinkIcon className="size-4 text-muted-foreground" />
           Client portal
+          {unreadMessages > 0 && (
+            <Badge className="border-blue-200 bg-blue-50 text-blue-700" variant="outline">
+              {unreadMessages} unread message{unreadMessages === 1 ? '' : 's'}
+            </Badge>
+          )}
         </h2>
         {canManage && <IssueLinkDialog clientId={clientId} defaultLabel={clientName} />}
       </div>
@@ -233,6 +261,7 @@ export function PortalLinks({
                 <TableHead>Status</TableHead>
                 <TableHead>Issued</TableHead>
                 <TableHead>Expires</TableHead>
+                <TableHead>Billing</TableHead>
                 <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
@@ -253,6 +282,20 @@ export function PortalLinks({
                     </TableCell>
                     <TableCell className="text-muted-foreground tabular-nums">
                       {link.expires_at ? fmtDate(link.expires_at) : 'Never'}
+                    </TableCell>
+                    <TableCell>
+                      {/* Billing tab gate — issued invoices/claims per property */}
+                      <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                        <Checkbox
+                          checked={link.show_financials}
+                          disabled={!canManage || pending || state !== 'active'}
+                          onCheckedChange={(checked) =>
+                            handleFinancialsToggle(link, checked === true)
+                          }
+                          aria-label={`Show billing history on ${link.label ?? 'this link'}`}
+                        />
+                        {link.show_financials ? 'Visible' : 'Hidden'}
+                      </label>
                     </TableCell>
                     <TableCell>
                       {state === 'active' && (
