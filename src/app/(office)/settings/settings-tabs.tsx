@@ -18,7 +18,13 @@ import {
   type CompetencyTypeRow,
   type RoleRequirementRow,
 } from './competency-section'
-import { BackupSection } from './backup-section'
+import { BackupSection, type BackupRunRow } from './backup-section'
+import { ErrorsSection, type AppErrorRow } from './errors-section'
+import {
+  SecuritySection,
+  type AccessReviewRow,
+  type ReviewerOption,
+} from './security-section'
 
 export type SettingsTab =
   | 'company'
@@ -31,6 +37,8 @@ export type SettingsTab =
   | 'whs-forms'
   | 'competencies'
   | 'backup'
+  | 'errors'
+  | 'security'
 
 const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'company', label: 'Company' },
@@ -42,7 +50,9 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'swms', label: 'SWMS' },
   { value: 'whs-forms', label: 'WHS Forms' },
   { value: 'competencies', label: 'Competencies' },
-  { value: 'backup', label: 'Data & Backup' },
+  { value: 'backup', label: 'Backups' },
+  { value: 'errors', label: 'Errors' },
+  { value: 'security', label: 'Security' },
 ]
 
 interface SettingsTabsProps {
@@ -58,6 +68,10 @@ interface SettingsTabsProps {
   formTemplates: FormTemplateRow[]
   competencyTypes: CompetencyTypeRow[]
   roleRequirements: RoleRequirementRow[]
+  backupRuns: BackupRunRow[]
+  appErrors: AppErrorRow[]
+  accessReviews: AccessReviewRow[]
+  reviewers: ReviewerOption[]
 }
 
 export function SettingsTabs({
@@ -73,6 +87,10 @@ export function SettingsTabs({
   formTemplates,
   competencyTypes,
   roleRequirements,
+  backupRuns,
+  appErrors,
+  accessReviews,
+  reviewers,
 }: SettingsTabsProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab)
 
@@ -120,7 +138,13 @@ export function SettingsTabs({
         <CompetencySection types={competencyTypes} requirements={roleRequirements} />
       </TabsContent>
       <TabsContent value="backup" className="pt-4">
-        <BackupSection />
+        <BackupSection runs={backupRuns} />
+      </TabsContent>
+      <TabsContent value="errors" className="pt-4">
+        <ErrorsSection errors={appErrors} />
+      </TabsContent>
+      <TabsContent value="security" className="pt-4">
+        <SecuritySection reviews={accessReviews} reviewers={reviewers} />
       </TabsContent>
     </Tabs>
   )

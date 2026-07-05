@@ -13,7 +13,8 @@ import {
 } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { nowAU } from '@/lib/tz'
+import { nowAU, todayAU } from '@/lib/tz'
+import { isBackupStale } from '@/lib/backup'
 import {
   PROPERTY_COMPLIANCE_KIND_LABELS,
   type PropertyComplianceKind,
@@ -32,6 +33,7 @@ import {
   RetentionDueCard,
   SafetyCard,
   SwmsOutstandingCard,
+  SystemHealthCard,
   TimeBarCard,
   TodayOnSiteCard,
   UnpaidInvoicesCard,
@@ -48,6 +50,7 @@ import {
   type SafetyData,
   type SafetyOverdueRow,
   type SwmsOutstandingRow,
+  type SystemHealthData,
   type TimeBarRow,
   type TodayOnSiteGroup,
   type UnpaidInvoicesData,
@@ -747,6 +750,56 @@ async function loadDiariesMissing(
     }))
 }
 
+// ─── 14. System health (backup staleness / app errors / access reviews) ──────
+
+async function loadSystemHealth(
+  supabase: Db,
+  isAdmin: boolean,
+  todayStr: string
+): Promise<SystemHealthData> {
+  const [backupRes, reviewRes, errorsRes] = await Promise.all([
+    supabase
+      .from('backup_runs')
+      .select('started_at')
+      .eq('status', 'success')
+      .order('started_at', { ascending: false })
+      .limit(1),
+    supabase
+      .from('access_reviews')
+      .select('number, next_review_due')
+      .order('reviewed_on', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1),
+    // app_errors is admin-only by RLS — don't even issue the query for office.
+    isAdmin
+      ? supabase
+          .from('app_errors')
+          .select('id', { count: 'exact', head: true })
+          .eq('resolved', false)
+          .gte('at', subDays(new Date(), 7).toISOString())
+      : Promise.resolve({ count: null, error: null }),
+  ])
+  if (backupRes.error) throw backupRes.error
+  if (reviewRes.error) throw reviewRes.error
+  if (errorsRes.error) throw errorsRes.error
+
+  const lastBackupAt =
+    (backupRes.data?.[0]?.started_at as string | undefined) ?? null
+  const latestReview = reviewRes.data?.[0] as
+    | { number: string; next_review_due: string }
+    | undefined
+
+  return {
+    backupStale: isBackupStale(lastBackupAt),
+    lastBackupAt,
+    unresolvedErrors: isAdmin ? (errorsRes.count ?? 0) : null,
+    accessReviewOverdue:
+      latestReview && latestReview.next_review_due < todayStr
+        ? { number: latestReview.number, due: latestReview.next_review_due }
+        : null,
+  }
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
@@ -775,6 +828,7 @@ export default async function DashboardPage() {
     diariesMissing,
     safety,
     ncr,
+    systemHealth,
   ] = await Promise.all([
     showMoney ? settle(() => loadClaimsDue(supabase, today)) : none,
     showMoney ? settle(() => loadQuotesAwaiting(supabase, today)) : none,
@@ -790,6 +844,11 @@ export default async function DashboardPage() {
     settle(() => loadDiariesMissing(supabase, today)),
     settle(() => loadSafety(supabase, today)),
     settle(() => loadNcr(supabase, today)),
+    showMoney
+      ? settle(() =>
+          loadSystemHealth(supabase, profile.role === 'admin', todayAU())
+        )
+      : none,
   ])
 
   return (
@@ -813,6 +872,7 @@ export default async function DashboardPage() {
             <PropertyComplianceCard data={propertyCompliance ?? null} />
             <RetentionDueCard data={retentionDue ?? null} />
             <ActiveWorkCard data={activeWork ?? null} />
+            <SystemHealthCard data={systemHealth ?? null} />
           </>
         )}
         <TodayOnSiteCard data={todayOnSite ?? null} />

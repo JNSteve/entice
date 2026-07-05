@@ -3,7 +3,9 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
+import { nextNumber } from '@/lib/numbering'
 import {
+  accessReviewSchema,
   settingsSchema,
   userCreateSchema,
   profileUpdateSchema,
@@ -499,5 +501,50 @@ export async function deleteRoleRequirement(id: string): Promise<{ error?: strin
   if (error) return { error: error.message }
 
   revalidateCompetencyConfig()
+  return {}
+}
+
+// ─── Go-live hardening: error register + access reviews ──────────────────────
+
+/** Admin marks a captured app error as dealt with (Settings → Errors). */
+export async function resolveAppError(id: string): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const supabase = await createSupabaseClient()
+  // RLS allows admin UPDATE; a DB guard trigger freezes every column except
+  // `resolved`, so the captured evidence itself cannot be edited.
+  const { error } = await supabase
+    .from('app_errors')
+    .update({ resolved: true })
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+/** Record a periodic access review (ACR-xxxx, Settings → Security). */
+export async function createAccessReview(
+  data: unknown
+): Promise<{ error?: string }> {
+  const caller = await requireRole('admin')
+
+  const parsed = accessReviewSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const number = await nextNumber(supabase, 'access_review')
+  const { error } = await supabase.from('access_reviews').insert({
+    number,
+    ...parsed.data,
+    created_by: caller.id,
+  })
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
   return {}
 }

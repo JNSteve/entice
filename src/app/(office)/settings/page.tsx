@@ -14,6 +14,8 @@ const VALID_TABS: SettingsTab[] = [
   'whs-forms',
   'competencies',
   'backup',
+  'errors',
+  'security',
 ]
 
 export default async function SettingsPage({
@@ -43,6 +45,9 @@ export default async function SettingsPage({
     { data: submissionCounts },
     { data: competencyTypes },
     { data: roleRequirements },
+    { data: backupRuns },
+    { data: appErrors },
+    { data: accessReviews },
   ] = await Promise.all([
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
@@ -84,6 +89,25 @@ export default async function SettingsPage({
     supabase
       .from('role_competency_requirements')
       .select('id, role, competency_type_id, is_mandatory'),
+    supabase
+      .from('backup_runs')
+      .select(
+        'id, started_at, finished_at, status, tables_count, rows_total, storage_objects_count, storage_bytes_mirrored, export_bytes, path, error, trigger'
+      )
+      .order('started_at', { ascending: false })
+      .limit(30),
+    supabase
+      .from('app_errors')
+      .select('id, at, source, path, message, stack, user_role, resolved')
+      .order('at', { ascending: false })
+      .limit(100),
+    supabase
+      .from('access_reviews')
+      .select(
+        'id, number, reviewed_on, findings, actions, next_review_due, reviewer:profiles!access_reviews_reviewer_id_fkey(full_name)'
+      )
+      .order('reviewed_on', { ascending: false })
+      .order('created_at', { ascending: false }),
   ])
 
   // Build per-template submission counts
@@ -97,6 +121,21 @@ export default async function SettingsPage({
     ...t,
     submission_count: countMap.get(t.id) ?? 0,
   }))
+
+  const accessReviewRows = (accessReviews ?? []).map((r) => ({
+    id: r.id as string,
+    number: r.number as string,
+    reviewed_on: r.reviewed_on as string,
+    reviewer_name:
+      (r.reviewer as unknown as { full_name: string } | null)?.full_name ?? null,
+    findings: r.findings as string,
+    actions: (r.actions as string | null) ?? null,
+    next_review_due: r.next_review_due as string,
+  }))
+
+  const reviewers = (profiles ?? [])
+    .filter((p) => p.active)
+    .map((p) => ({ id: p.id, full_name: p.full_name }))
 
   return (
     <div className="flex flex-col gap-2">
@@ -117,6 +156,10 @@ export default async function SettingsPage({
         formTemplates={formTemplates}
         competencyTypes={competencyTypes ?? []}
         roleRequirements={roleRequirements ?? []}
+        backupRuns={backupRuns ?? []}
+        appErrors={appErrors ?? []}
+        accessReviews={accessReviewRows}
+        reviewers={reviewers}
       />
     </div>
   )

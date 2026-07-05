@@ -173,20 +173,77 @@ The WHS module lives at `/whs` (office hub: Overview / Forms / Incidents / Subbi
 
 No Supabase auth redirect URL allowlist configuration is needed — the app uses password-only authentication with no OAuth redirects.
 
-### Backups & retention
+## Going to production
 
-Going live means the database becomes the system of record, so backups are part
-of go-live, not an afterthought:
+Going live means the database becomes the system of record. The go-live
+hardening batch (migration `0027_go_live_hardening.sql`) adds three layers on
+top of Supabase's own backups; the pieces and the env they need:
 
-- Supabase Pro provides daily automated backups with 7-day point-in-time
-  recovery — confirm these stay enabled on the project.
-- **Settings → Data & Backup** (admin only) exports every business table to a
-  single `entice-backup-YYYYMMDD.json` — run it monthly and store the file
-  off-platform.
-- Retention periods, the export procedure and responsibilities are set out in
-  the [Records Retention & Backup Policy](docs/iso/records-retention-backup-policy.md)
-  (registered in the app as controlled document `INT-POL-001` — review and
-  adopt it via the Documents register).
+### Backup architecture
+
+Three independent layers, in restore-preference order:
+
+1. **Supabase Pro daily backups** — 7-day restore window, managed in the
+   Supabase dashboard (Database → Backups). This is the FIRST restore path;
+   it was proven in a real restore. Confirm it stays enabled on plan changes.
+2. **Nightly app-level export (automatic)** — a Vercel cron
+   (`vercel.json` → `GET /api/cron/backup`, `0 17 * * *` UTC = 3 am Brisbane)
+   exports **every** public table (discovered at runtime — new tables are
+   never missed) as one gzipped JSON into the private `backups` storage
+   bucket (`db/YYYY-MM-DD-HHmm.json.gz`), embeds a manifest of all uploaded
+   files, mirrors new/changed storage blobs into `backups/storage/…`
+   (500 MB/run cap), prunes exports older than **35 days**, and records the
+   run in `backup_runs`. Watch it under **Settings → Backups** ("Run backup
+   now" for an on-demand run); the dashboard raises a "Needs attention" row
+   when no successful backup ran in the last 26 hours.
+3. **Monthly off-platform export (manual)** — **Settings → Backups → Export
+   all data** downloads `entice-backup-YYYYMMDD.json`; store it outside
+   Supabase entirely (company drive / encrypted external drive).
+
+Environment the cron needs (Vercel project → Settings → Environment
+Variables, Production):
+
+| Variable | Purpose |
+|---|---|
+| `CRON_SECRET` | Vercel sends it as `Authorization: Bearer …` on cron invocations; the route rejects anything else. Generate a long random value. |
+| `SUPABASE_SERVICE_ROLE_KEY` | The backup job reads all tables and writes the private bucket with the service role (server-only — never exposed to the browser). Without it the route answers 503 and no backups run. |
+
+### Restore path
+
+- **Within 7 days:** restore via the Supabase dashboard (Database → Backups /
+  PITR) — fastest and complete.
+- **Beyond 7 days / provider failure:** download the newest
+  `backups/db/*.json.gz` (Settings → Backups lists the runs; the bucket is
+  admin-readable), gunzip it, and replay tables parent-before-child; mirrored
+  files live under `backups/storage/<bucket>/<path>`. Reconcile the tail
+  against the latest monthly off-platform export and issued PDFs/emails.
+- Any restore event is recorded as an incident/NCR with a CAPA reviewing
+  whether backup frequency or retention needs tightening.
+
+### Owner dashboard actions (cannot be automated)
+
+Two settings live in the Supabase dashboard and must be done by the owner:
+
+1. **Enable leaked-password protection** — Supabase dashboard →
+   Authentication → Passwords → "Prevent use of leaked passwords". Record it
+   in the next access review (Settings → Security).
+2. **Rotate the demo passwords** — every `*@entice.local` account shipped
+   with a demo password; change them in Settings → Users (and update the
+   README table) before real use.
+
+### Error monitoring & access reviews
+
+- Server errors (instrumentation hook) and client errors (branded error
+  pages) land in **Settings → Errors** (admin-only, mark-resolved);
+  unresolved errors from the last 7 days show on the dashboard.
+- Periodic access reviews (accounts current? roles right? passwords rotated?
+  leaked-password protection on?) are recorded as `ACR-xxxx` under
+  **Settings → Security**; an overdue next-review date shows on the dashboard.
+
+Retention periods, procedures and responsibilities are set out in the
+[Records Retention & Backup Policy](docs/iso/records-retention-backup-policy.md)
+(registered in the app as controlled document `INT-POL-001` — review and
+adopt it via the Documents register).
 
 ---
 

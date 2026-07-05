@@ -998,3 +998,82 @@ export function DiariesMissingCard({
     </DashboardCard>
   )
 }
+
+// ─── 14. System health (go-live hardening needs-attention rows) ───────────────
+
+export type SystemHealthData = {
+  /** 26-hour staleness rule (src/lib/backup.ts isBackupStale). */
+  backupStale: boolean
+  /** started_at of the latest successful backup run, if any. */
+  lastBackupAt: string | null
+  /** Unresolved app_errors in the last 7 days — null when not queried (office). */
+  unresolvedErrors: number | null
+  /** The latest access review, when its next_review_due has passed. */
+  accessReviewOverdue: { number: string; due: string } | null
+}
+
+export function SystemHealthCard({ data }: { data: SystemHealthData | null }) {
+  const allClear =
+    data !== null &&
+    !data.backupStale &&
+    (data.unresolvedErrors ?? 0) === 0 &&
+    data.accessReviewOverdue === null
+
+  return (
+    <DashboardCard title="System health" href="/settings?tab=backup">
+      {data === null ? (
+        <LoadError />
+      ) : allClear ? (
+        <Muted>Backups, error capture and access reviews are in order.</Muted>
+      ) : (
+        <>
+          {data.backupStale && (
+            <div className="flex items-start justify-between gap-2 text-sm">
+              <div className="flex min-w-0 flex-col">
+                <Link href="/settings?tab=backup" className="truncate hover:underline">
+                  Daily backup stale
+                </Link>
+                <span className="text-xs text-muted-foreground">
+                  No successful backup in the last 26 hours
+                </span>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                {data.lastBackupAt ? fmtDate(data.lastBackupAt) : 'Never run'}
+              </span>
+            </div>
+          )}
+          {(data.unresolvedErrors ?? 0) > 0 && (
+            <div className="flex items-start justify-between gap-2 text-sm">
+              <div className="flex min-w-0 flex-col">
+                <Link href="/settings?tab=errors" className="truncate hover:underline">
+                  Unresolved app errors
+                </Link>
+                <span className="text-xs text-muted-foreground">
+                  Captured in the last 7 days
+                </span>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                {data.unresolvedErrors}
+              </span>
+            </div>
+          )}
+          {data.accessReviewOverdue && (
+            <div className="flex items-start justify-between gap-2 text-sm">
+              <div className="flex min-w-0 flex-col">
+                <Link href="/settings?tab=security" className="truncate hover:underline">
+                  Access review overdue
+                </Link>
+                <span className="text-xs text-muted-foreground">
+                  {`${data.accessReviewOverdue.number} · next review was due`}
+                </span>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                {fmtDate(data.accessReviewOverdue.due)}
+              </span>
+            </div>
+          )}
+        </>
+      )}
+    </DashboardCard>
+  )
+}

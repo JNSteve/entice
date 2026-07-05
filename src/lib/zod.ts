@@ -2605,3 +2605,20 @@ export const clientLinkCreateSchema = z.object({
 })
 
 export type ClientLinkCreateInput = z.infer<typeof clientLinkCreateSchema>
+
+// ─── Access reviews (go-live hardening — ISO 27001-aligned access control) ──
+
+export const accessReviewSchema = z
+  .object({
+    reviewed_on: isoDate,
+    reviewer_id: z.uuid(),
+    findings: z.string().trim().min(1, 'Findings are required').max(4000),
+    actions: optionalText,
+    next_review_due: isoDate,
+  })
+  .refine((d) => d.next_review_due > d.reviewed_on, {
+    message: 'Next review must be after the review date',
+    path: ['next_review_due'],
+  })
+
+export type AccessReviewInput = z.infer<typeof accessReviewSchema>
