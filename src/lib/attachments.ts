@@ -21,6 +21,7 @@ const PARENT_TYPES = [
   'incident',
   'form_submission',
   'ncr',
+  'waste_load',
 ] as const
 
 const KINDS = ['photo', 'docket', 'document', 'pdf'] as const
@@ -43,6 +44,7 @@ const PARENT_TABLE: Record<(typeof PARENT_TYPES)[number], string> = {
   incident: 'incidents',
   form_submission: 'form_submissions',
   ncr: 'ncrs',
+  waste_load: 'waste_loads',
 }
 
 const attachmentInputSchema = z.object({
@@ -86,6 +88,9 @@ async function revalidateParent(
     revalidatePath(`/field/safety/incident/${parentId}`)
   } else if (parentType === 'ncr') {
     revalidatePath(`/whs/ncr/${parentId}`)
+  } else if (parentType === 'waste_load') {
+    revalidatePath(`/whs/env/loads/${parentId}`)
+    revalidatePath('/whs/env')
   } else if (parentType === 'variation') {
     // Variations live under their project, not at a top-level /variations
     const { data } = await supabase

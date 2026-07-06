@@ -1,6 +1,11 @@
 import Link from 'next/link'
 import { notFound, redirect } from 'next/navigation'
-import { ArrowLeftIcon, CheckCircle2Icon } from 'lucide-react'
+import {
+  AlertTriangleIcon,
+  ArrowLeftIcon,
+  CheckCircle2Icon,
+  ChevronRightIcon,
+} from 'lucide-react'
 import { format, isValid, parseISO } from 'date-fns'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
@@ -132,7 +137,16 @@ export default async function FormSubmissionPage({
       ? `J-${jobRel.number} — ${jobRel.title}`
       : '—'
 
-  const [attachments, signons] = await Promise.all([
+  // Environmental monitoring exceedance → SUGGEST raising an incident
+  // (prefilled link, never auto-created). Any ticked checkbox whose key
+  // mentions "exceed" counts — the seeded monitoring/ESCP templates both
+  // carry an "exceeded" checkbox.
+  const exceeded = effectiveSchema.some(
+    (f) =>
+      f.type === 'checkbox' && f.key.includes('exceed') && data[f.key] === true
+  )
+
+  const [attachments, signons, incidentTemplate] = await Promise.all([
     fetchAttachmentsWithUrls(supabase, 'form_submission', id),
     requiresSignon
       ? supabase
@@ -142,7 +156,27 @@ export default async function FormSubmissionPage({
           .order('signed_at')
           .then((r) => r.data ?? [])
       : Promise.resolve([]),
+    exceeded
+      ? supabase
+          .from('form_templates')
+          .select('id')
+          .eq('kind', 'incident')
+          .eq('active', true)
+          .limit(1)
+          .maybeSingle()
+          .then((r) => r.data)
+      : Promise.resolve(null),
   ])
+
+  const raiseIncidentHref = incidentTemplate
+    ? `/field/safety/new/${incidentTemplate.id}?type=environmental${
+        submission.project_id
+          ? `&project=${submission.project_id}`
+          : submission.job_id
+            ? `&job=${submission.job_id}`
+            : ''
+      }`
+    : null
 
   const mySignonExists = signons.some((s) => s.profile_id === profile.id)
   const canRecordOthers =
@@ -179,6 +213,26 @@ export default async function FormSubmissionPage({
           </span>
         </div>
       </div>
+
+      {/* Exceedance → suggest raising an environmental incident (never auto) */}
+      {exceeded && raiseIncidentHref && (
+        <Link
+          href={raiseIncidentHref}
+          className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 transition-colors hover:bg-amber-100 active:bg-amber-100 dark:border-amber-700 dark:bg-amber-950 dark:hover:bg-amber-900"
+        >
+          <AlertTriangleIcon className="size-6 shrink-0 text-amber-600 dark:text-amber-400" />
+          <div className="flex min-w-0 flex-col">
+            <span className="text-sm font-semibold text-amber-800 dark:text-amber-200">
+              A limit was exceeded — raise an environmental incident
+            </span>
+            <span className="text-xs text-amber-700 dark:text-amber-300">
+              Opens the incident report prefilled for this{' '}
+              {projectRel ? 'project' : 'job'}
+            </span>
+          </div>
+          <ChevronRightIcon className="ml-auto size-4 shrink-0 text-amber-600 dark:text-amber-400" />
+        </Link>
+      )}
 
       {/* Answers */}
       <section className="flex flex-col gap-2">

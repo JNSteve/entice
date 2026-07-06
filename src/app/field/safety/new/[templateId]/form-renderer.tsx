@@ -40,6 +40,8 @@ interface FormRendererProps {
   plantItems: TargetOption[]
   defaultProjectId: string | null
   defaultJobId: string | null
+  /** Prefill for incident-kind templates (e.g. environmental exceedance link). */
+  defaultIncidentType?: IncidentType | null
 }
 
 // ─── Shared bits ─────────────────────────────────────────────────────────────
@@ -376,6 +378,7 @@ export function FormRenderer({
   plantItems,
   defaultProjectId,
   defaultJobId,
+  defaultIncidentType,
 }: FormRendererProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -388,7 +391,9 @@ export function FormRenderer({
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Incident structured state
-  const [incidentType, setIncidentType] = useState<IncidentType | ''>('')
+  const [incidentType, setIncidentType] = useState<IncidentType | ''>(
+    defaultIncidentType ?? ''
+  )
   const [severity, setSeverity] = useState<number | null>(null)
   const [occurredAt, setOccurredAt] = useState(nowAUInput())
   const [location, setLocation] = useState('')

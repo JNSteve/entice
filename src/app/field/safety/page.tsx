@@ -10,6 +10,7 @@ import {
   FileTextIcon,
   HandIcon,
   ShieldCheckIcon,
+  TruckIcon,
   UsersIcon,
   WrenchIcon,
 } from 'lucide-react'
@@ -272,6 +273,21 @@ export default async function FieldSafetyPage() {
           <span className="text-sm font-semibold">Report a problem (NCR)</span>
           <span className="text-xs text-muted-foreground">
             Quality, environmental or other nonconformance
+          </span>
+        </div>
+        <ChevronRightIcon className="ml-auto size-4 shrink-0 text-muted-foreground" />
+      </Link>
+
+      {/* Log waste load — every load leaving site is an ISO 14001 record */}
+      <Link
+        href="/field/waste"
+        className="flex items-center gap-3 rounded-xl border p-4 transition-colors hover:bg-muted/50 active:bg-muted"
+      >
+        <TruckIcon className="size-6 shrink-0 text-muted-foreground" />
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm font-semibold">Log waste load</span>
+          <span className="text-xs text-muted-foreground">
+            Waste or spoil leaving site — photograph the docket
           </span>
         </div>
         <ChevronRightIcon className="ml-auto size-4 shrink-0 text-muted-foreground" />

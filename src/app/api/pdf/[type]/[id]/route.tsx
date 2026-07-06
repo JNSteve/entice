@@ -67,6 +67,12 @@ import {
   type LegalRegisterPdfGroup,
   type LegalRegisterPdfRow,
 } from '@/pdf/LegalRegisterPdf'
+import { WasteLoadsPdf, type WasteLoadsPdfRow } from '@/pdf/WasteLoadsPdf'
+import {
+  WasteReconciliationPdf,
+  type WasteReconciliationPdfRow,
+} from '@/pdf/WasteReconciliationPdf'
+import { permitUsage, type WasteUnit } from '@/lib/env'
 import { latestEvaluation } from '@/lib/legal'
 import {
   MGMT_REVIEW_INPUT_KEYS,
@@ -101,6 +107,9 @@ import {
   LEGAL_CATEGORY_LABELS,
   LEGAL_JURISDICTION_LABELS,
   COMPLIANCE_STATE_LABELS,
+  WASTE_CLASSIFICATIONS,
+  WASTE_CLASSIFICATION_LABELS,
+  WASTE_UNIT_LABELS,
   type DocCategory,
   type DocSystem,
   type CompetencyCategory,
@@ -113,6 +122,8 @@ import {
   type LegalCategory,
   type LegalJurisdiction,
   type ComplianceState,
+  type WasteClassification,
+  type WasteUnitKey,
 } from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
 import type { FormField, FormTemplateKind } from '@/lib/zod'
@@ -177,7 +188,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register' || type === 'waste-loads' || type === 'waste-reconciliation'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -237,6 +248,13 @@ export async function GET(
     case 'legal-register':
       // [id] is a placeholder (use 'list') — covers the whole register.
       return legalRegisterPdf()
+    case 'waste-loads':
+      // [id] is a placeholder (use 'list'); filters echo via query params
+      // (?project=&classification=&from=&to=).
+      return wasteLoadsPdf(request)
+    case 'waste-reconciliation':
+      // [id] = project id → permits, allowances, usage for that project.
+      return wasteReconciliationPdf(id)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -2254,6 +2272,229 @@ async function legalRegisterPdf(): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'inline; filename="legal-register.pdf"',
+    },
+  })
+}
+
+// ─── Environmental: waste loads register + reconciliation (ISO 14001) ────────
+
+type WasteLoadPdfQueryRow = {
+  number: string
+  date: string
+  classification: string
+  classification_detail: string | null
+  qty: number
+  unit: string
+  transporter: string | null
+  docket_ref: string | null
+  override_reason: string | null
+  projects: { number: string; name: string } | null
+  jobs: { number: string; title: string } | null
+  env_facilities: { name: string } | null
+  env_permits: { reference: string } | null
+}
+
+/** e.g. '142.5 t · 36 m³ across 18 loads' */
+function wasteTotalsLabel(rows: { qty: number; unit: string }[]): string {
+  const byUnit = new Map<string, number>()
+  for (const r of rows) {
+    byUnit.set(r.unit, (byUnit.get(r.unit) ?? 0) + r.qty)
+  }
+  const parts = [...byUnit.entries()].map(
+    ([unit, total]) =>
+      `${Math.round(total * 100) / 100} ${WASTE_UNIT_LABELS[unit as WasteUnitKey] ?? unit}`
+  )
+  return `${parts.length > 0 ? parts.join(' · ') : '0'} across ${rows.length} load${rows.length === 1 ? '' : 's'}`
+}
+
+async function wasteLoadsPdf(request: Request): Promise<Response> {
+  const supabase = await createClient()
+
+  const url = new URL(request.url)
+  const projectFilter = url.searchParams.get('project')
+  const classificationFilter = url.searchParams.get('classification')
+  const from = url.searchParams.get('from')
+  const to = url.searchParams.get('to')
+  const dateRe = /^\d{4}-\d{2}-\d{2}$/
+
+  let query = supabase
+    .from('waste_loads')
+    .select(
+      `number, date, classification, classification_detail, qty, unit,
+       transporter, docket_ref, override_reason,
+       projects(number, name), jobs(number, title),
+       env_facilities(name), env_permits(reference)`
+    )
+    .order('date', { ascending: false })
+    .order('number', { ascending: false })
+
+  const filterParts: string[] = []
+  if (projectFilter) {
+    query = query.eq('project_id', projectFilter)
+  }
+  if (
+    classificationFilter &&
+    (WASTE_CLASSIFICATIONS as readonly string[]).includes(classificationFilter)
+  ) {
+    query = query.eq('classification', classificationFilter)
+    filterParts.push(
+      WASTE_CLASSIFICATION_LABELS[classificationFilter as WasteClassification]
+    )
+  }
+  if (from && dateRe.test(from)) {
+    query = query.gte('date', from)
+    filterParts.push(`from ${fmtDate(from)}`)
+  }
+  if (to && dateRe.test(to)) {
+    query = query.lte('date', to)
+    filterParts.push(`to ${fmtDate(to)}`)
+  }
+
+  const [{ data: loads }, { data: settings }, projectRow] = await Promise.all([
+    query,
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+    projectFilter
+      ? supabase
+          .from('projects')
+          .select('number, name')
+          .eq('id', projectFilter)
+          .maybeSingle()
+      : Promise.resolve({ data: null }),
+  ])
+
+  if (projectRow.data) {
+    filterParts.unshift(`${projectRow.data.number} — ${projectRow.data.name}`)
+  }
+
+  const shaped = ((loads ?? []) as unknown as WasteLoadPdfQueryRow[]).map((l) => ({
+    ...l,
+    qty: Number(l.qty),
+  }))
+
+  const rows: WasteLoadsPdfRow[] = shaped.map((l) => ({
+    number: l.number,
+    date: fmtDate(l.date),
+    target: l.projects
+      ? `${l.projects.number} — ${l.projects.name}`
+      : l.jobs
+        ? `${l.jobs.number} — ${l.jobs.title}`
+        : '—',
+    classification:
+      WASTE_CLASSIFICATION_LABELS[l.classification as WasteClassification] ??
+      l.classification,
+    detail: l.classification_detail,
+    qty: `${l.qty} ${WASTE_UNIT_LABELS[l.unit as WasteUnitKey] ?? l.unit}`,
+    facility: l.env_facilities?.name ?? null,
+    transporter: l.transporter,
+    docket: l.docket_ref,
+    permit: l.env_permits?.reference ?? null,
+    override: l.override_reason != null,
+  }))
+
+  const buffer = await renderToBuffer(
+    <WasteLoadsPdf
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      filtersLabel={filterParts.length > 0 ? filterParts.join(' · ') : null}
+      rows={rows}
+      totalsLabel={wasteTotalsLabel(shaped)}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="waste-loads.pdf"',
+    },
+  })
+}
+
+async function wasteReconciliationPdf(projectId: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: project }, { data: permits }, { data: loads }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('projects')
+        .select('number, name')
+        .eq('id', projectId)
+        .single(),
+      supabase
+        .from('env_permits')
+        .select(
+          'id, reference, description, classification, allowance_qty, allowance_unit, expiry'
+        )
+        .eq('project_id', projectId)
+        .order('created_at'),
+      supabase
+        .from('waste_loads')
+        .select('permit_id, qty, unit')
+        .eq('project_id', projectId),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  if (!project) return new Response('Not found', { status: 404 })
+
+  const today = todayAU()
+  const allLoads = (loads ?? []).map((l) => ({
+    permit_id: (l.permit_id as string | null) ?? null,
+    qty: Number(l.qty),
+    unit: l.unit as WasteUnit,
+  }))
+
+  const rows: WasteReconciliationPdfRow[] = (permits ?? []).map((p) => {
+    const unit = p.allowance_unit as WasteUnitKey
+    const usage = permitUsage(
+      Number(p.allowance_qty),
+      unit as WasteUnit,
+      allLoads.filter((l) => l.permit_id === (p.id as string))
+    )
+    const expiry = (p.expiry as string | null) ?? null
+    return {
+      reference: p.reference as string,
+      description: (p.description as string | null) ?? null,
+      classification:
+        WASTE_CLASSIFICATION_LABELS[p.classification as WasteClassification] ??
+        (p.classification as string),
+      allowance: `${Number(p.allowance_qty)} ${WASTE_UNIT_LABELS[unit]}`,
+      used: `${usage.used} ${WASTE_UNIT_LABELS[unit]}`,
+      pctUsed: usage.pctUsed === null ? null : `${usage.pctUsed}%`,
+      level: usage.level,
+      expiry: expiry ? fmtDate(expiry) : null,
+      expired: expiry != null && expiry < today,
+      otherUnitCount: usage.otherUnitCount,
+    }
+  })
+
+  const unallocated = allLoads.filter((l) => l.permit_id === null).length
+  const loadsSummary = `${wasteTotalsLabel(allLoads)}${
+    unallocated > 0
+      ? ` (${unallocated} load${unallocated === 1 ? '' : 's'} not booked to a permit)`
+      : ''
+  }`
+
+  const buffer = await renderToBuffer(
+    <WasteReconciliationPdf
+      company={toCompany(settings)}
+      printedDate={fmtDate(new Date())}
+      project={{ number: project.number as string, name: project.name as string }}
+      rows={rows}
+      loadsSummary={loadsSummary}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="waste-reconciliation-${project.number as string}.pdf"`,
     },
   })
 }

@@ -23,6 +23,7 @@ const TABS: Tab[] = [
   { label: 'Diary', suffix: '/diary' },
   { label: 'WHS', suffix: '/whs' },
   { label: 'Risk', suffix: '/risk' },
+  { label: 'Environment', suffix: '/env' },
   { label: 'Documents', suffix: '/documents' },
 ]
 

@@ -23,6 +23,7 @@ const TABS: Tab[] = [
   { label: 'Objectives', href: '/whs/objectives' },
   { label: 'Reviews', href: '/whs/reviews' },
   { label: 'Legal', href: '/whs/legal' },
+  { label: 'Environment', href: '/whs/env' },
   { label: 'Subbie SWMS', href: '/whs/subbie-swms' },
   { label: 'Audit log', href: '/whs/audit' },
 ]

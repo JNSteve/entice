@@ -21,11 +21,13 @@ import {
 } from '@/lib/portal'
 import { PageHeader } from '@/components/PageHeader'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
+import { permitUsage, type WasteUnit } from '@/lib/env'
 import {
   ActiveWorkCard,
   ClaimsDueCard,
   ComplianceCard,
   DiariesMissingCard,
+  EnvironmentCard,
   HoldPointsCard,
   NcrCard,
   PortalActivityCard,
@@ -42,6 +44,9 @@ import {
   type ClaimsDueData,
   type ComplianceRow,
   type DiaryMissingRow,
+  type EnvExpiryRow,
+  type EnvPermitUsageRow,
+  type EnvironmentData,
   type HoldPointDueRow,
   type NcrData,
   type NcrOverdueCapaRow,
@@ -880,6 +885,89 @@ async function loadPortalActivity(
   }
 }
 
+// ─── 16. Environment (licences/permits expiring + permit allowances ≥80%) ────
+
+async function loadEnvironment(
+  supabase: Db,
+  today: Date
+): Promise<EnvironmentData> {
+  const todayStr = dateStr(today)
+  const horizon = dateStr(addDays(today, 30))
+
+  const [facilitiesRes, permitsRes, loadsRes] = await Promise.all([
+    supabase
+      .from('env_facilities')
+      .select('id, name, licence_no, licence_expiry')
+      .eq('active', true)
+      .not('licence_expiry', 'is', null)
+      .lte('licence_expiry', horizon)
+      .order('licence_expiry', { ascending: true }),
+    supabase
+      .from('env_permits')
+      .select(
+        'id, project_id, reference, allowance_qty, allowance_unit, expiry, projects(number, name)'
+      ),
+    supabase.from('waste_loads').select('permit_id, qty, unit'),
+  ])
+  if (facilitiesRes.error) throw facilitiesRes.error
+  if (permitsRes.error) throw permitsRes.error
+  if (loadsRes.error) throw loadsRes.error
+
+  const expiries: EnvExpiryRow[] = (facilitiesRes.data ?? []).map((f) => ({
+    id: f.id as string,
+    label: f.name as string,
+    detail: `Facility licence${f.licence_no ? ` ${f.licence_no}` : ''}`,
+    href: '/whs/env',
+    expiry: f.licence_expiry as string,
+    expired: (f.licence_expiry as string) < todayStr,
+  }))
+
+  const loads = (loadsRes.data ?? []).map((l) => ({
+    permit_id: (l.permit_id as string | null) ?? null,
+    qty: Number(l.qty),
+    unit: l.unit as WasteUnit,
+  }))
+
+  const usageRows: EnvPermitUsageRow[] = []
+  for (const p of permitsRes.data ?? []) {
+    const project = p.projects as unknown as { number: string; name: string } | null
+    const projectLabel = project ? `${project.number} — ${project.name}` : '—'
+
+    const expiry = (p.expiry as string | null) ?? null
+    if (expiry && expiry <= horizon) {
+      expiries.push({
+        id: `permit-${p.id}`,
+        label: p.reference as string,
+        detail: `Permit · ${projectLabel}`,
+        href: `/projects/${p.project_id}/env`,
+        expiry,
+        expired: expiry < todayStr,
+      })
+    }
+
+    const usage = permitUsage(
+      Number(p.allowance_qty),
+      p.allowance_unit as WasteUnit,
+      loads.filter((l) => l.permit_id === (p.id as string))
+    )
+    if (usage.level !== 'ok' && usage.pctUsed !== null) {
+      usageRows.push({
+        id: p.id as string,
+        projectId: p.project_id as string,
+        reference: p.reference as string,
+        projectLabel,
+        pctUsed: usage.pctUsed,
+        level: usage.level,
+      })
+    }
+  }
+
+  expiries.sort((a, b) => a.expiry.localeCompare(b.expiry))
+  usageRows.sort((a, b) => b.pctUsed - a.pctUsed)
+
+  return { expiries, permitUsage: usageRows }
+}
+
 // ─── 14. System health (backup staleness / app errors / access reviews) ──────
 
 async function loadSystemHealth(
@@ -958,6 +1046,7 @@ export default async function DashboardPage() {
     diariesMissing,
     safety,
     ncr,
+    environment,
     systemHealth,
     portalActivity,
   ] = await Promise.all([
@@ -975,6 +1064,7 @@ export default async function DashboardPage() {
     settle(() => loadDiariesMissing(supabase, today)),
     settle(() => loadSafety(supabase, today)),
     settle(() => loadNcr(supabase, today)),
+    settle(() => loadEnvironment(supabase, today)),
     showMoney
       ? settle(() =>
           loadSystemHealth(supabase, profile.role === 'admin', todayAU())
@@ -1014,6 +1104,7 @@ export default async function DashboardPage() {
         <DiariesMissingCard data={diariesMissing ?? null} />
         <SafetyCard data={safety ?? null} />
         <NcrCard data={ncr ?? null} />
+        <EnvironmentCard data={environment ?? null} />
       </div>
     </div>
   )

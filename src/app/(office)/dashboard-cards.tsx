@@ -1226,3 +1226,116 @@ export function PortalActivityCard({ data }: { data: PortalActivityData | null }
     </DashboardCard>
   )
 }
+
+// ─── 16. Environment (facility/permit expiries + permit allowance usage) ─────
+
+export type EnvExpiryRow = {
+  id: string
+  label: string
+  detail: string
+  href: string
+  expiry: string
+  expired: boolean
+}
+
+export type EnvPermitUsageRow = {
+  id: string
+  projectId: string
+  reference: string
+  projectLabel: string
+  pctUsed: number
+  level: 'warn' | 'over'
+}
+
+export type EnvironmentData = {
+  expiries: EnvExpiryRow[]
+  permitUsage: EnvPermitUsageRow[]
+}
+
+export function EnvironmentCard({ data }: { data: EnvironmentData | null }) {
+  const empty =
+    data !== null && data.expiries.length === 0 && data.permitUsage.length === 0
+
+  return (
+    <DashboardCard title="Environment" href="/whs/env">
+      {data === null ? (
+        <LoadError />
+      ) : empty ? (
+        <Muted>No facility, permit or allowance warnings.</Muted>
+      ) : (
+        <>
+          {data.permitUsage.length > 0 && (
+            <>
+              <p className="text-xs font-medium text-muted-foreground">
+                Permit allowances
+              </p>
+              {data.permitUsage.slice(0, MAX_ROWS).map((p) => (
+                <div
+                  key={p.id}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <Link
+                      href={`/projects/${p.projectId}/env`}
+                      className="truncate hover:underline"
+                    >
+                      {p.reference}
+                    </Link>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {p.projectLabel}
+                    </span>
+                  </div>
+                  <span
+                    className={cn(
+                      'shrink-0 text-xs font-medium tabular-nums',
+                      p.level === 'over'
+                        ? 'text-red-600 dark:text-red-400'
+                        : 'text-amber-600 dark:text-amber-400'
+                    )}
+                  >
+                    {p.pctUsed}% used
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.permitUsage.length} />
+            </>
+          )}
+
+          {data.expiries.length > 0 && (
+            <>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                Licences / permits expiring
+              </p>
+              {data.expiries.slice(0, MAX_ROWS).map((e) => (
+                <div
+                  key={e.id}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <Link href={e.href} className="truncate hover:underline">
+                      {e.label}
+                    </Link>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {e.detail}
+                    </span>
+                  </div>
+                  <span
+                    className={cn(
+                      'shrink-0 text-xs tabular-nums',
+                      e.expired
+                        ? 'font-medium text-red-600 dark:text-red-400'
+                        : 'font-medium text-amber-600 dark:text-amber-400'
+                    )}
+                  >
+                    {fmtDate(e.expiry)}
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.expiries.length} />
+            </>
+          )}
+        </>
+      )}
+    </DashboardCard>
+  )
+}

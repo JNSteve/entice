@@ -3,7 +3,12 @@ import { notFound, redirect } from 'next/navigation'
 import { ArrowLeftIcon } from 'lucide-react'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import type { FormField, FormTemplateKind } from '@/lib/zod'
+import {
+  INCIDENT_TYPES,
+  type FormField,
+  type FormTemplateKind,
+  type IncidentType,
+} from '@/lib/zod'
 import { FormRenderer, type TargetOption } from './form-renderer'
 
 export default async function NewFormPage({
@@ -11,7 +16,7 @@ export default async function NewFormPage({
   searchParams,
 }: {
   params: Promise<{ templateId: string }>
-  searchParams: Promise<{ project?: string; job?: string }>
+  searchParams: Promise<{ project?: string; job?: string; type?: string }>
 }) {
   const profile = await getProfile()
   if (!profile) redirect('/login')
@@ -68,6 +73,14 @@ export default async function NewFormPage({
     !defaultProjectId && sp.job && jobs.some((j) => j.id === sp.job)
       ? sp.job
       : null
+  // Prefill the incident type from ?type= (e.g. the monitoring-exceedance
+  // "raise environmental incident" suggestion link).
+  const defaultIncidentType =
+    template.kind === 'incident' &&
+    sp.type &&
+    (INCIDENT_TYPES as readonly string[]).includes(sp.type)
+      ? (sp.type as IncidentType)
+      : null
 
   return (
     <div className="flex flex-col gap-5">
@@ -97,6 +110,7 @@ export default async function NewFormPage({
         plantItems={plantItems}
         defaultProjectId={defaultProjectId}
         defaultJobId={defaultJobId}
+        defaultIncidentType={defaultIncidentType}
       />
     </div>
   )

@@ -2616,3 +2616,152 @@ export const portalRequestStatusSchema = z.object({
 })
 
 export type PortalRequestStatusInput = z.infer<typeof portalRequestStatusSchema>
+
+// ─── Environmental module (ISO 14001 operational core — migration 0031) ──────
+// Significance maths + permit reconciliation live in src/lib/env.ts (mirroring
+// the DB generated columns) — NOT here.
+
+export const WASTE_CLASSIFICATIONS = [
+  'general',
+  'green',
+  'concrete_masonry',
+  'contaminated_soil',
+  'regulated',
+  'asbestos',
+  'other',
+] as const
+export type WasteClassification = (typeof WASTE_CLASSIFICATIONS)[number]
+
+export const WASTE_CLASSIFICATION_LABELS: Record<WasteClassification, string> = {
+  general: 'General / C&D',
+  green: 'Green waste',
+  concrete_masonry: 'Concrete / masonry',
+  contaminated_soil: 'Contaminated soil',
+  regulated: 'Regulated waste',
+  asbestos: 'Asbestos waste',
+  other: 'Other',
+}
+
+export const WASTE_UNITS = ['m3', 't'] as const
+export type WasteUnitKey = (typeof WASTE_UNITS)[number]
+
+export const WASTE_UNIT_LABELS: Record<WasteUnitKey, string> = {
+  m3: 'm³',
+  t: 't',
+}
+
+const wasteQty = z.coerce
+  .number()
+  .positive('Quantity must be greater than zero')
+  .max(999999, 'Quantity is too large')
+
+export const wasteLoadCreateSchema = z
+  .object({
+    project_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    job_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    date: isoDate,
+    classification: z.enum(WASTE_CLASSIFICATIONS),
+    classification_detail: optionalText,
+    qty: wasteQty,
+    unit: z.enum(WASTE_UNITS),
+    facility_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    permit_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    transporter: optionalText,
+    vendor_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    docket_ref: optionalText,
+    notes: optionalText,
+    override_reason: optionalText,
+  })
+  .refine((d) => d.project_id !== null || d.job_id !== null, {
+    message: 'Pick a project or job',
+    path: ['project_id'],
+  })
+
+export type WasteLoadCreateInput = z.infer<typeof wasteLoadCreateSchema>
+
+export const wasteLoadUpdateSchema = z.object({
+  date: isoDate.optional(),
+  classification: z.enum(WASTE_CLASSIFICATIONS).optional(),
+  classification_detail: optionalText.optional(),
+  qty: wasteQty.optional(),
+  unit: z.enum(WASTE_UNITS).optional(),
+  facility_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  permit_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  transporter: optionalText.optional(),
+  vendor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  docket_ref: optionalText.optional(),
+  notes: optionalText.optional(),
+  override_reason: optionalText.optional(),
+})
+
+export type WasteLoadUpdateInput = z.infer<typeof wasteLoadUpdateSchema>
+
+export const envFacilitySchema = z.object({
+  name: z.string().trim().min(1, 'Facility name is required'),
+  licence_no: optionalText,
+  licence_expiry: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+  waste_types: optionalText,
+  active: z.boolean().default(true),
+})
+
+export type EnvFacilityInput = z.infer<typeof envFacilitySchema>
+
+export const envPermitSchema = z.object({
+  project_id: z.uuid(),
+  reference: z.string().trim().min(1, 'Permit reference is required'),
+  description: optionalText,
+  classification: z.enum(WASTE_CLASSIFICATIONS),
+  allowance_qty: wasteQty,
+  allowance_unit: z.enum(WASTE_UNITS),
+  expiry: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null)),
+})
+
+export type EnvPermitInput = z.infer<typeof envPermitSchema>
+
+const envScore1to5 = z.coerce.number().int().min(1).max(5)
+
+export const envAspectSchema = z.object({
+  activity: z.string().trim().min(1, 'Activity is required'),
+  aspect: z.string().trim().min(1, 'Aspect is required'),
+  impact: z.string().trim().min(1, 'Impact is required'),
+  likelihood: envScore1to5,
+  severity: envScore1to5,
+  existing_controls: optionalText,
+  objective_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type EnvAspectInput = z.infer<typeof envAspectSchema>

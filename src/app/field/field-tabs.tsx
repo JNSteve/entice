@@ -29,9 +29,11 @@ export function FieldTabs() {
               ? pathname === '/field'
               : pathname === tab.href ||
                 pathname.startsWith(`${tab.href}/`) ||
-                // SWMS pages live under /field/swms but belong to Safety.
+                // SWMS pages live under /field/swms but belong to Safety;
+                // waste-load logging lives under /field/waste, same home.
                 (tab.href === '/field/safety' &&
-                  pathname.startsWith('/field/swms'))
+                  (pathname.startsWith('/field/swms') ||
+                    pathname.startsWith('/field/waste')))
           const Icon = tab.icon
           return (
             <Link
