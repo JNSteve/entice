@@ -1108,10 +1108,20 @@ export type PortalDecisionRow = {
   signedAt: string
 }
 
+export type PortalFeedbackLiteRow = {
+  id: string
+  rating: number
+  clientId: string
+  clientName: string
+  work: string
+  createdAt: string
+}
+
 export type PortalActivityData = {
   unreadThreads: PortalUnreadThreadRow[]
   newRequests: PortalNewRequestRow[]
   decisions: PortalDecisionRow[]
+  recentFeedback: PortalFeedbackLiteRow[]
 }
 
 export function PortalActivityCard({ data }: { data: PortalActivityData | null }) {
@@ -1119,7 +1129,8 @@ export function PortalActivityCard({ data }: { data: PortalActivityData | null }
     data !== null &&
     data.unreadThreads.length === 0 &&
     data.newRequests.length === 0 &&
-    data.decisions.length === 0
+    data.decisions.length === 0 &&
+    data.recentFeedback.length === 0
 
   return (
     <DashboardCard title="Client portal" href="/clients/requests">
@@ -1219,6 +1230,34 @@ export function PortalActivityCard({ data }: { data: PortalActivityData | null }
                 </div>
               ))}
               <MoreNote total={data.decisions.length} />
+            </>
+          )}
+
+          {data.recentFeedback.length > 0 && (
+            <>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                Client feedback (last 14 days)
+              </p>
+              {data.recentFeedback.slice(0, MAX_ROWS).map((f) => (
+                <div
+                  key={f.id}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <Link
+                    href={`/clients/${f.clientId}`}
+                    className="min-w-0 truncate hover:underline"
+                  >
+                    {f.clientName} — {f.work}
+                  </Link>
+                  <span className="shrink-0 text-xs tabular-nums">
+                    <span className="text-amber-500">{'★'.repeat(f.rating)}</span>
+                    <span className="text-muted-foreground/40">
+                      {'★'.repeat(5 - f.rating)}
+                    </span>
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.recentFeedback.length} />
             </>
           )}
         </>

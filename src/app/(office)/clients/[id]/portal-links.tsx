@@ -29,6 +29,7 @@ import {
   createClientLink,
   revokeClientLink,
   setClientLinkFinancials,
+  setClientLinkNotifications,
 } from '@/lib/client-links'
 
 export interface ClientLinkRow {
@@ -39,6 +40,7 @@ export interface ClientLinkRow {
   expires_at: string | null
   revoked_at: string | null
   show_financials: boolean
+  notifications_enabled: boolean
 }
 
 function portalUrl(token: string): string {
@@ -231,6 +233,20 @@ export function PortalLinks({
     })
   }
 
+  function handleNotificationsToggle(link: ClientLinkRow, enabled: boolean) {
+    startTransition(async () => {
+      const result = await setClientLinkNotifications(link.id, clientId, enabled)
+      if (result.error) toast.error(result.error)
+      else {
+        toast.success(
+          enabled
+            ? 'Daily compliance digest enabled on this link'
+            : 'Daily compliance digest turned off on this link'
+        )
+      }
+    })
+  }
+
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between">
@@ -262,6 +278,7 @@ export function PortalLinks({
                 <TableHead>Issued</TableHead>
                 <TableHead>Expires</TableHead>
                 <TableHead>Billing</TableHead>
+                <TableHead>Digest</TableHead>
                 <TableHead className="w-32" />
               </TableRow>
             </TableHeader>
@@ -295,6 +312,20 @@ export function PortalLinks({
                           aria-label={`Show billing history on ${link.label ?? 'this link'}`}
                         />
                         {link.show_financials ? 'Visible' : 'Hidden'}
+                      </label>
+                    </TableCell>
+                    <TableCell>
+                      {/* Daily compliance digest gate (CP3 notifications) */}
+                      <label className="flex w-fit cursor-pointer items-center gap-2 text-xs text-muted-foreground">
+                        <Checkbox
+                          checked={link.notifications_enabled}
+                          disabled={!canManage || pending || state !== 'active'}
+                          onCheckedChange={(checked) =>
+                            handleNotificationsToggle(link, checked === true)
+                          }
+                          aria-label={`Send the daily compliance digest on ${link.label ?? 'this link'}`}
+                        />
+                        {link.notifications_enabled ? 'On' : 'Off'}
                       </label>
                     </TableCell>
                     <TableCell>

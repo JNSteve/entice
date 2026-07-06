@@ -66,7 +66,7 @@ export default async function ClientDetailPage({
     supabase.from('jobs').select('id, number, title, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('projects').select('id, number, name, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('invoices').select('id, number, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
-    supabase.from('client_links').select('id, token, label, created_at, expires_at, revoked_at, show_financials').eq('client_id', id).order('created_at', { ascending: false }),
+    supabase.from('client_links').select('id, token, label, created_at, expires_at, revoked_at, show_financials, notifications_enabled').eq('client_id', id).order('created_at', { ascending: false }),
   ])
 
   if (!client) notFound()
@@ -121,6 +121,32 @@ export default async function ClientDetailPage({
         .eq('sender', 'client')
         .eq('read_by_office', false)
     : { count: 0 }
+
+  // Portal feedback register-lite (admin/office — portal_feedback RLS).
+  const { data: feedback } = canEdit
+    ? await supabase
+        .from('portal_feedback')
+        .select('id, rating, comment, created_at, site_id, jobs(number, title), projects(number, name)')
+        .eq('client_id', id)
+        .order('created_at', { ascending: false })
+        .limit(10)
+    : { data: [] }
+  const feedbackRows = (feedback ?? []).map((f) => {
+    const job = f.jobs as unknown as { number: string; title: string } | null
+    const project = f.projects as unknown as { number: string; name: string } | null
+    return {
+      id: f.id as string,
+      rating: Number(f.rating),
+      comment: (f.comment as string | null) ?? null,
+      created_at: f.created_at as string,
+      siteName: f.site_id ? (siteNameById.get(f.site_id as string) ?? '—') : '—',
+      work: job
+        ? `${job.number} — ${job.title}`
+        : project
+          ? `${project.number} — ${project.name}`
+          : '—',
+    }
+  })
 
   return (
     <div className="flex flex-col gap-8">
@@ -343,6 +369,57 @@ export default async function ClientDetailPage({
               </Table>
             </div>
           )}
+        </section>
+      )}
+
+      {/* Portal feedback (CP3 — satisfaction register-lite) */}
+      {canEdit && feedbackRows.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-base font-semibold">
+            Portal feedback
+            <span className="ml-2 text-sm font-normal text-muted-foreground">
+              avg{' '}
+              {(
+                feedbackRows.reduce((s, f) => s + f.rating, 0) / feedbackRows.length
+              ).toFixed(1)}
+              /5 across the latest {feedbackRows.length}
+            </span>
+          </h2>
+          <div className="rounded-xl border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>When</TableHead>
+                  <TableHead>Rating</TableHead>
+                  <TableHead>Work</TableHead>
+                  <TableHead>Property</TableHead>
+                  <TableHead>Comment</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {feedbackRows.map((f) => (
+                  <TableRow key={f.id}>
+                    <TableCell className="whitespace-nowrap text-muted-foreground tabular-nums">
+                      {fmtDate(f.created_at)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      <span className="text-amber-500">{'★'.repeat(f.rating)}</span>
+                      <span className="text-muted-foreground/40">
+                        {'★'.repeat(5 - f.rating)}
+                      </span>
+                    </TableCell>
+                    <TableCell className="max-w-56 truncate">{f.work}</TableCell>
+                    <TableCell className="max-w-40 truncate text-muted-foreground">
+                      {f.siteName}
+                    </TableCell>
+                    <TableCell className="max-w-80 truncate text-muted-foreground">
+                      {f.comment ?? '—'}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </section>
       )}
 

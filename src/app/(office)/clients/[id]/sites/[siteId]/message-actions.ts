@@ -1,8 +1,10 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { notifyClientMessageReply } from '@/lib/notify'
 import { officePortalMessageSchema } from '@/lib/zod'
 
 /**
@@ -41,6 +43,12 @@ export async function sendOfficeMessage(data: unknown): Promise<{ error?: string
     read_by_client: false,
   })
   if (error) return { error: error.message }
+
+  // Client email — fire-and-forget AFTER the response (never blocking).
+  const { client_id, site_id, body } = parsed.data
+  after(() =>
+    notifyClientMessageReply({ clientId: client_id, siteId: site_id, body })
+  )
 
   revalidatePath(`/clients/${parsed.data.client_id}/sites/${parsed.data.site_id}`)
   return {}

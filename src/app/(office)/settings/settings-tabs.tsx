@@ -30,6 +30,7 @@ import {
   type ItpTemplateRow,
   type ItpTemplateItemRow,
 } from './itp-section'
+import { EmailSection, type EmailLogRow } from './email-section'
 
 export type SettingsTab =
   | 'company'
@@ -45,6 +46,7 @@ export type SettingsTab =
   | 'errors'
   | 'security'
   | 'itp'
+  | 'email'
 
 const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'company', label: 'Company' },
@@ -58,6 +60,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'competencies', label: 'Competencies' },
   { value: 'itp', label: 'ITP templates' },
   { value: 'backup', label: 'Backups' },
+  { value: 'email', label: 'Email' },
   { value: 'errors', label: 'Errors' },
   { value: 'security', label: 'Security' },
 ]
@@ -81,6 +84,9 @@ interface SettingsTabsProps {
   reviewers: ReviewerOption[]
   itpTemplates: ItpTemplateRow[]
   itpTemplateItems: ItpTemplateItemRow[]
+  emailLog: EmailLogRow[]
+  emailKeyPresent: boolean
+  emailFromPresent: boolean
 }
 
 export function SettingsTabs({
@@ -102,6 +108,9 @@ export function SettingsTabs({
   reviewers,
   itpTemplates,
   itpTemplateItems,
+  emailLog,
+  emailKeyPresent,
+  emailFromPresent,
 }: SettingsTabsProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab)
 
@@ -159,6 +168,13 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="itp" className="pt-4">
         <ItpSection templates={itpTemplates} items={itpTemplateItems} />
+      </TabsContent>
+      <TabsContent value="email" className="pt-4">
+        <EmailSection
+          keyPresent={emailKeyPresent}
+          fromPresent={emailFromPresent}
+          rows={emailLog}
+        />
       </TabsContent>
     </Tabs>
   )

@@ -17,6 +17,7 @@ const VALID_TABS: SettingsTab[] = [
   'errors',
   'security',
   'itp',
+  'email',
 ]
 
 export default async function SettingsPage({
@@ -51,6 +52,7 @@ export default async function SettingsPage({
     { data: accessReviews },
     { data: itpTemplates },
     { data: itpTemplateItems },
+    { data: emailLog },
   ] = await Promise.all([
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
@@ -124,6 +126,11 @@ export default async function SettingsPage({
       )
       .order('template_id')
       .order('position'),
+    supabase
+      .from('email_log')
+      .select('id, to_address, subject, template, status, entity_kind, error, created_at')
+      .order('created_at', { ascending: false })
+      .limit(100),
   ])
 
   // Build per-template submission counts
@@ -178,6 +185,9 @@ export default async function SettingsPage({
         reviewers={reviewers}
         itpTemplates={itpTemplates ?? []}
         itpTemplateItems={itpTemplateItems ?? []}
+        emailLog={emailLog ?? []}
+        emailKeyPresent={Boolean(process.env.RESEND_API_KEY?.trim())}
+        emailFromPresent={Boolean(process.env.EMAIL_FROM?.trim())}
       />
     </div>
   )

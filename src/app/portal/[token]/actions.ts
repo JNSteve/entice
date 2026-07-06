@@ -1,11 +1,13 @@
 'use server'
 
 import { headers } from 'next/headers'
+import { after } from 'next/server'
 import { createPublicClient } from '@/lib/supabase/public'
 import {
   MAX_SIGNATURE_CHARS,
   SIGNATURE_DATA_URL_PREFIX,
 } from '@/lib/form-validate'
+import { notifyOfficeNewMessage, notifyOfficeNewRequest } from '@/lib/notify'
 import {
   MAX_REQUEST_PHOTOS,
   REQUEST_URGENCIES,
@@ -66,10 +68,24 @@ export async function postPortalMessage(input: {
     p_body: body,
   })
   if (error) return { error: GENERIC_FAILURE }
-  return mapRpcResult(
+  const result = mapRpcResult(
     data,
     'You have sent a lot of messages in the last hour — please wait a little and try again.'
   )
+
+  // Office alert — fire-and-forget AFTER the response; a notification
+  // failure can never block or fail the message itself.
+  if ('ok' in result) {
+    after(() =>
+      notifyOfficeNewMessage({
+        token: input.token,
+        siteId: input.siteId,
+        senderName: name,
+        body,
+      })
+    )
+  }
+  return result
 }
 
 // ─── Work requests ───────────────────────────────────────────────────────────
@@ -105,9 +121,67 @@ export async function submitPortalRequest(input: {
     p_photo_paths: photoPaths,
   })
   if (error) return { error: GENERIC_FAILURE }
-  return mapRpcResult(
+  const result = mapRpcResult(
     data,
     'You have reached the daily limit for new requests — please try again tomorrow or call us.'
+  )
+
+  // Office alert — fire-and-forget AFTER the response (never blocking).
+  const raw = (data ?? null) as { ok?: boolean; number?: string; id?: string } | null
+  if ('ok' in result && raw?.id && raw.number) {
+    const { id: requestId, number } = raw
+    after(() =>
+      notifyOfficeNewRequest({
+        token: input.token,
+        siteId: input.siteId,
+        requestId,
+        number,
+        title,
+        urgency: input.urgency,
+      })
+    )
+  }
+  return result
+}
+
+// ─── Feedback (how did we do?) ───────────────────────────────────────────────
+
+export async function submitPortalFeedback(input: {
+  token: string
+  kind: 'job' | 'project'
+  id: string
+  rating: number
+  comment: string
+}): Promise<PortalActionResult> {
+  const rating = Number(input.rating)
+  const comment = (input.comment ?? '').trim()
+  if (input.kind !== 'job' && input.kind !== 'project') {
+    return { error: GENERIC_FAILURE }
+  }
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return { error: 'Pick a star rating first' }
+  }
+  if (comment.length > 2000) {
+    return { error: 'Keep the comment under 2000 characters' }
+  }
+
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('portal_submit_feedback', {
+    p_token: input.token,
+    p_kind: input.kind,
+    p_id: input.id,
+    p_rating: rating,
+    p_comment: comment === '' ? null : comment,
+  })
+  if (error) return { error: GENERIC_FAILURE }
+
+  const raw = (data ?? null) as { ok?: boolean; error?: string } | null
+  if (raw?.error === 'already') {
+    return { error: 'Feedback for this work has already been submitted — thank you!' }
+  }
+  return mapRpcResult(
+    data,
+    'You have submitted a lot of feedback today — please try again tomorrow.'
   )
 }
 

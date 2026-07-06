@@ -7,6 +7,7 @@ import { computeClaim, type ClaimLineInput } from '@/lib/claims'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
 import { buildQuotePdfResponse } from '@/pdf/build-quote-pdf'
+import { buildHandoverPdfResponse } from '@/pdf/build-handover-pdf'
 import { InvoicePdf } from '@/pdf/InvoicePdf'
 import { PoPdf } from '@/pdf/PoPdf'
 import { ClaimPdf, type ClaimPdfLine } from '@/pdf/ClaimPdf'
@@ -268,6 +269,17 @@ export async function GET(
     case 'lot':
       // [id] = lots row id → Lot Conformance Report
       return lotPdf(id)
+    case 'handover': {
+      // [id] = job or project id; ?kind=job|project (CP3 closeout dossier).
+      // Money roles only (it lists issued invoices/claims) — the default.
+      const url = new URL(request.url)
+      const supabase = await createClient()
+      return buildHandoverPdfResponse(
+        supabase,
+        url.searchParams.get('kind') ?? 'job',
+        id
+      )
+    }
     default:
       return new Response('Not found', { status: 404 })
   }

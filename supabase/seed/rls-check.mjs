@@ -161,6 +161,69 @@ async function main() {
     )
   }
 
+  // ─── CP3: email_log is ADMIN-ONLY; portal_feedback is definer-fn only ───
+
+  console.log('\n── CP3 email/feedback ──')
+
+  const { data: fieldEmailRows, error: fieldEmailError } = await supabase
+    .from('email_log')
+    .select('id')
+    .limit(10)
+  if (fieldEmailError) {
+    check('email_log SELECT blocked for field', true, `error: ${fieldEmailError.message}`)
+  } else {
+    check(
+      'email_log SELECT blocked for field',
+      (fieldEmailRows ?? []).length === 0,
+      `field user can see ${(fieldEmailRows ?? []).length} email row(s)`
+    )
+  }
+
+  const { error: emailInsertError, data: emailInserted } = await supabase
+    .from('email_log')
+    .insert({
+      to_address: 'rls-probe@example.com',
+      subject: 'rls-check probe — must never be inserted',
+      template: 'test',
+      status: 'skipped',
+    })
+    .select()
+  if (emailInsertError) {
+    check('insert email_log rejected (field)', true, emailInsertError.message)
+  } else {
+    check('insert email_log rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(emailInserted)}`)
+  }
+
+  const { data: fieldFeedbackRows, error: fieldFeedbackError } = await supabase
+    .from('portal_feedback')
+    .select('id')
+    .limit(10)
+  if (fieldFeedbackError) {
+    check('portal_feedback SELECT blocked for field', true, `error: ${fieldFeedbackError.message}`)
+  } else {
+    check(
+      'portal_feedback SELECT blocked for field',
+      (fieldFeedbackRows ?? []).length === 0,
+      `field user can see ${(fieldFeedbackRows ?? []).length} feedback row(s)`
+    )
+  }
+
+  const { error: feedbackInsertError, data: feedbackInserted } = await supabase
+    .from('portal_feedback')
+    .insert({
+      client_link_id: '00000000-0000-4000-a000-000000000000',
+      client_id: '00000000-0000-4000-a000-000000000000',
+      site_id: '00000000-0000-4000-a000-000000000000',
+      job_id: '00000000-0000-4000-a000-000000000000',
+      rating: 5,
+    })
+    .select()
+  if (feedbackInsertError) {
+    check('insert portal_feedback rejected (field)', true, feedbackInsertError.message)
+  } else {
+    check('insert portal_feedback rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(feedbackInserted)}`)
+  }
+
   await supabase.auth.signOut()
 
   // ─── Audit log immutability checks ─────────────────────────────────────
@@ -185,6 +248,21 @@ async function main() {
     console.log(`SKIP  audit immutability — ${ADMIN_EMAIL} sign-in failed: ${adminAuthError.message}`)
     console.log('      (requires super@entice.local seeded user — run seed.sql first)')
   } else {
+    // email_log is ADMIN-only — a supervisor must see zero rows.
+    const { data: superEmailRows, error: superEmailError } = await adminClient
+      .from('email_log')
+      .select('id')
+      .limit(10)
+    if (superEmailError) {
+      check('email_log SELECT blocked for supervisor', true, `error: ${superEmailError.message}`)
+    } else {
+      check(
+        'email_log SELECT blocked for supervisor',
+        (superEmailRows ?? []).length === 0,
+        `supervisor can see ${(superEmailRows ?? []).length} email row(s)`
+      )
+    }
+
     // Pick any existing audit_log row.
     const { data: auditSample } = await adminClient
       .from('audit_log')

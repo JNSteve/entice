@@ -112,3 +112,29 @@ export async function setClientLinkFinancials(
   revalidatePath(`/clients/${clientId}`)
   return {}
 }
+
+/**
+ * Daily digest gate (CP3): while ON, this link entitles the client to the
+ * daily compliance digest email (items due within 30 days / overdue across
+ * their properties, 6 am Brisbane). Default ON; turning it off on every
+ * active link suppresses the client's digest entirely. Transactional emails
+ * (request updates, message replies) are not affected.
+ */
+export async function setClientLinkNotifications(
+  id: string,
+  clientId: string,
+  enabled: boolean
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('client_links')
+    .update({ notifications_enabled: enabled })
+    .eq('id', id)
+    .eq('client_id', clientId)
+  if (error) return { error: error.message }
+
+  revalidatePath(`/clients/${clientId}`)
+  return {}
+}

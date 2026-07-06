@@ -4,6 +4,8 @@ import { createClient } from '@/lib/supabase/server'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList } from '@/components/AttachmentList'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
+import { HandoverPackButton } from '@/components/HandoverPackButton'
+import { handoverEligible } from '@/lib/feedback'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 
 export default async function ProjectDocumentsPage({
@@ -17,7 +19,7 @@ export default async function ProjectDocumentsPage({
   const supabase = await createClient()
 
   const [{ data: project }, attachments, { data: costCodes }] = await Promise.all([
-    supabase.from('projects').select('id').eq('id', id).single(),
+    supabase.from('projects').select('id, status').eq('id', id).single(),
     fetchAttachmentsWithUrls(supabase, 'project', id),
     supabase.from('cost_codes').select('id, code, name').eq('active', true).order('code'),
   ])
@@ -78,8 +80,11 @@ export default async function ProjectDocumentsPage({
 
       {/* Documents */}
       <section className="flex flex-col gap-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-base font-semibold">Documents</h2>
+          {canUpload && handoverEligible('project', project.status) && (
+            <HandoverPackButton kind="project" id={project.id} />
+          )}
         </div>
         {canUpload && (
           <PhotoUpload

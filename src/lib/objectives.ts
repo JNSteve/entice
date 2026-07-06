@@ -21,6 +21,7 @@ export const AUTO_METRIC_KEYS = [
   'on_time_delivery_pct',
   'training_compliance_pct',
   'audit_on_time_close_pct',
+  'customer_satisfaction_avg',
 ] as const
 export type AutoMetricKey = (typeof AUTO_METRIC_KEYS)[number]
 
@@ -34,6 +35,7 @@ export const AUTO_METRIC_LABELS: Record<AutoMetricKey, string> = {
   on_time_delivery_pct: 'Projects delivered on programme (%)',
   training_compliance_pct: 'Training compliance (%)',
   audit_on_time_close_pct: 'Audits closed on time (%)',
+  customer_satisfaction_avg: 'Customer satisfaction (portal feedback avg /5)',
 }
 
 // ─── Period keys ──────────────────────────────────────────────────────────────
@@ -211,6 +213,18 @@ export function ltifr(
 export function pctOf(numerator: number, denominator: number): number | null {
   if (denominator <= 0) return null
   return Math.round((numerator / denominator) * 1000) / 10
+}
+
+/**
+ * Mean of 1–5 portal feedback ratings, rounded to 2 dp — the
+ * customer_satisfaction_avg metric. An empty period is null ("no data"),
+ * never a fake 0; non-finite junk is ignored.
+ */
+export function averageRating(ratings: number[]): number | null {
+  const valid = ratings.filter((r) => Number.isFinite(r))
+  if (valid.length === 0) return null
+  const sum = valid.reduce((s, r) => s + r, 0)
+  return Math.round((sum / valid.length) * 100) / 100
 }
 
 // ─── CAPA closure age (SMS-M-01 §6.3: corrective actions closed ≤ 28 days) ────

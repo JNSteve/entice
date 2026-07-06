@@ -46,7 +46,9 @@ import {
   type PortalMessageRow,
   type PortalRequestRow,
 } from '../../portal-ui'
+import { HANDOVER_PACK_CAPTION } from '@/lib/feedback'
 import { DocumentBrowser } from './document-browser'
+import { FeedbackCard } from './feedback-card'
 import { MessageThread, type PortalMessageDisplay } from './message-thread'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
@@ -115,6 +117,8 @@ interface PortalSiteDetail {
 /** One shape for job + project works, grouped live/history. */
 interface WorkEntry {
   key: string
+  kind: 'job' | 'project'
+  id: string
   number: string
   title: string
   status: string
@@ -124,6 +128,13 @@ interface WorkEntry {
   historyDate: string | null
   progressPct: number | null
   attachments: PortalAttachment[]
+}
+
+/** This link's prior feedback (portal_my_feedback payload). */
+interface PortalFeedbackRow {
+  job_id: string | null
+  project_id: string | null
+  rating: number
 }
 
 // ─── Building blocks ─────────────────────────────────────────────────────────
@@ -303,6 +314,21 @@ export default async function PortalSitePage({
     billing = ((data ?? []) as PortalBillingRow[]) ?? []
   }
 
+  // Feedback this link already gave (drives rate vs thank-you per work).
+  let myFeedback: PortalFeedbackRow[] = []
+  if (activeTab === 'works') {
+    const { data } = await supabase.rpc('portal_my_feedback', {
+      p_token: token,
+      p_site: siteId,
+    })
+    myFeedback = ((data ?? []) as PortalFeedbackRow[]) ?? []
+  }
+  const ratingByWork = new Map<string, number>()
+  for (const f of myFeedback) {
+    if (f.job_id) ratingByWork.set(`job-${f.job_id}`, f.rating)
+    if (f.project_id) ratingByWork.set(`project-${f.project_id}`, f.rating)
+  }
+
   const today = todayAU()
   const address = [
     detail.site.address,
@@ -321,6 +347,8 @@ export default async function PortalSitePage({
   const works: (WorkEntry & { group: 'live' | 'history' })[] = [
     ...detail.projects.map((p) => ({
       key: `project-${p.id}`,
+      kind: 'project' as const,
+      id: p.id,
       number: p.number,
       title: p.name,
       status: p.status,
@@ -333,6 +361,8 @@ export default async function PortalSitePage({
     })),
     ...detail.jobs.map((j) => ({
       key: `job-${j.id}`,
+      kind: 'job' as const,
+      id: j.id,
       number: j.number,
       title: j.title,
       status: j.status,
@@ -593,30 +623,66 @@ export default async function PortalSitePage({
               </h2>
               <PortalCard className="p-4 sm:p-5">
                 <ol className="relative ml-1.5 flex flex-col gap-6 border-l-2 border-slate-200 pl-5">
-                  {historyWorks.map((w) => (
-                    <li key={w.key} className="relative flex flex-col gap-2">
-                      <span className="absolute -left-[27px] top-1 size-3 rounded-full bg-green-500 ring-4 ring-white" />
-                      <div className="flex flex-col gap-0.5">
-                        {w.historyDate && (
-                          <p className="text-xs text-slate-400">
-                            {fmtDate(w.historyDate)}
-                          </p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <p className="text-sm font-semibold text-slate-900">
-                            {w.title}
-                          </p>
-                          <span className="text-xs text-slate-400">{w.number}</span>
-                          <WorkStatusBadge status={w.status} />
+                  {historyWorks.map((w) => {
+                    const handoverPack = w.attachments.find(
+                      (a) => a.caption === HANDOVER_PACK_CAPTION && !isPhoto(a)
+                    )
+                    const givenRating = ratingByWork.get(w.key)
+                    return (
+                      <li key={w.key} className="relative flex flex-col gap-2">
+                        <span className="absolute -left-[27px] top-1 size-3 rounded-full bg-green-500 ring-4 ring-white" />
+                        <div className="flex flex-col gap-0.5">
+                          {w.historyDate && (
+                            <p className="text-xs text-slate-400">
+                              {fmtDate(w.historyDate)}
+                            </p>
+                          )}
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <p className="text-sm font-semibold text-slate-900">
+                              {w.title}
+                            </p>
+                            <span className="text-xs text-slate-400">{w.number}</span>
+                            <WorkStatusBadge status={w.status} />
+                          </div>
                         </div>
-                      </div>
-                      <PhotoGallery token={token} photos={w.attachments.filter(isPhoto)} />
-                      <DocRows
-                        token={token}
-                        docs={w.attachments.filter((a) => !isPhoto(a))}
-                      />
-                    </li>
-                  ))}
+                        {handoverPack && (
+                          <a
+                            href={`/portal/${token}/file/attachment/${handoverPack.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex min-h-11 w-fit items-center gap-2 rounded-xl bg-[#1e3a5f] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                          >
+                            <FileTextIcon className="size-4" />
+                            Handover pack
+                            <DownloadIcon className="size-3.5 opacity-70" />
+                          </a>
+                        )}
+                        <PhotoGallery token={token} photos={w.attachments.filter(isPhoto)} />
+                        <DocRows
+                          token={token}
+                          docs={w.attachments.filter(
+                            (a) => !isPhoto(a) && a.id !== handoverPack?.id
+                          )}
+                        />
+                        {givenRating ? (
+                          <p className="text-xs font-medium text-slate-500">
+                            {'★'.repeat(givenRating)}
+                            <span className="text-slate-300">
+                              {'★'.repeat(5 - givenRating)}
+                            </span>{' '}
+                            Thanks for your feedback
+                          </p>
+                        ) : (
+                          <FeedbackCard
+                            token={token}
+                            kind={w.kind}
+                            id={w.id}
+                            companyName={branding.company_name}
+                          />
+                        )}
+                      </li>
+                    )
+                  })}
                 </ol>
               </PortalCard>
             </div>

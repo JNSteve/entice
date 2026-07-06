@@ -821,7 +821,7 @@ async function loadPortalActivity(
 ): Promise<PortalActivityData> {
   const since = subDays(today, 14).toISOString()
 
-  const [messagesRes, requestsRes, decisionsRes] = await Promise.all([
+  const [messagesRes, requestsRes, decisionsRes, feedbackRes] = await Promise.all([
     supabase
       .from('portal_messages')
       .select('client_id, site_id, clients(name), sites(name)')
@@ -837,10 +837,19 @@ async function loadPortalActivity(
       .select('id, kind, target_id, action, signer_name, reason, signed_at')
       .gte('signed_at', since)
       .order('signed_at', { ascending: false }),
+    supabase
+      .from('portal_feedback')
+      .select(
+        'id, rating, created_at, client_id, clients(name), jobs(number, title), projects(number, name)'
+      )
+      .gte('created_at', since)
+      .order('created_at', { ascending: false })
+      .limit(6),
   ])
   if (messagesRes.error) throw messagesRes.error
   if (requestsRes.error) throw requestsRes.error
   if (decisionsRes.error) throw decisionsRes.error
+  if (feedbackRes.error) throw feedbackRes.error
 
   // Group unread messages into one row per thread (client × property).
   const threads = new Map<
@@ -937,6 +946,25 @@ async function loadPortalActivity(
       createdAt: r.created_at as string,
     })),
     decisions,
+    recentFeedback: (feedbackRes.data ?? []).map((f) => {
+      const job = f.jobs as unknown as { number: string; title: string } | null
+      const project = f.projects as unknown as {
+        number: string
+        name: string
+      } | null
+      return {
+        id: f.id as string,
+        rating: Number(f.rating),
+        clientId: f.client_id as string,
+        clientName: (f.clients as unknown as { name: string } | null)?.name ?? '—',
+        work: job
+          ? `${job.number} — ${job.title}`
+          : project
+            ? `${project.number} — ${project.name}`
+            : '—',
+        createdAt: f.created_at as string,
+      }
+    }),
   }
 }
 

@@ -1,9 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
+import { notifyClientRequestStatus } from '@/lib/notify'
 import {
   canConvertRequest,
   canTransitionRequest,
@@ -50,6 +52,10 @@ export async function setRequestStatus(id: string, data: unknown): Promise<Resul
     .update({ status: parsed.data.status, handled_by: profile.id })
     .eq('id', id)
   if (error) return { error: error.message }
+
+  // Client email — fire-and-forget AFTER the response (never blocking).
+  const newStatus = parsed.data.status
+  after(() => notifyClientRequestStatus({ requestId: id, status: newStatus }))
 
   revalidateRequests(request.client_id, request.site_id)
   return {}
@@ -118,6 +124,9 @@ export async function convertRequestToQuote(
     .update({ quote_id: quote.id, status: 'quoted', handled_by: profile.id })
     .eq('id', id)
   if (linkError) return { error: linkError.message }
+
+  // Client email — fire-and-forget AFTER the response (never blocking).
+  after(() => notifyClientRequestStatus({ requestId: id, status: 'quoted' }))
 
   revalidateRequests(request.client_id, request.site_id)
   revalidatePath('/quotes')

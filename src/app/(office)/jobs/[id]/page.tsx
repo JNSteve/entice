@@ -14,6 +14,8 @@ import { InvoiceSection, type JobInvoiceRow } from './invoice-section'
 import { docTotals } from '@/lib/money'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList } from '@/components/AttachmentList'
+import { HandoverPackButton } from '@/components/HandoverPackButton'
+import { handoverEligible } from '@/lib/feedback'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 import { fetchSwmsInstances } from '@/lib/swms-queries'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
@@ -352,7 +354,12 @@ export default async function JobDetailPage({
       {/* Documents */}
       <div className="border-t" />
       <section className="flex flex-col gap-4">
-        <h2 className="text-base font-semibold">Documents</h2>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-semibold">Documents</h2>
+          {canSeeCosts && handoverEligible('job', job.status) && (
+            <HandoverPackButton kind="job" id={job.id} />
+          )}
+        </div>
         <PhotoUpload
           parentType="job"
           parentId={job.id}

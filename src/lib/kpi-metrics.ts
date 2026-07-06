@@ -28,6 +28,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { todayAU } from '@/lib/tz'
 import {
+  averageRating,
   closedWithinDaysPct,
   ltifr,
   monthsOf,
@@ -253,6 +254,23 @@ export const AUTO_METRICS: Record<AutoMetricKey, AutoMetric> = {
         }
       }
       return pctOf(compliant, pairs)
+    },
+  },
+
+  // Mean 1–5 rating of client portal feedback SUBMITTED in the period
+  // (CP3 "How did we do?" cards on completed works), rounded to 2 dp.
+  // No feedback in the period → null (never a fake 0).
+  customer_satisfaction_avg: {
+    label: AUTO_METRIC_LABELS.customer_satisfaction_avg,
+    compute: async (supabase, periodKey) => {
+      const { start, end } = periodInstants(periodKey)
+      const { data, error } = await supabase
+        .from('portal_feedback')
+        .select('rating')
+        .gte('created_at', start)
+        .lt('created_at', end)
+      if (error) throw new Error(`portal_feedback query failed: ${error.message}`)
+      return averageRating((data ?? []).map((r) => Number(r.rating)))
     },
   },
 
