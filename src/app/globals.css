@@ -69,7 +69,7 @@
   --secondary: oklch(0.9375 0.0058 84.57); /* warm secondary tint #eceae6 */
   --secondary-foreground: oklch(0.2532 0.0621 268.64); /* navy */
   --muted: oklch(0.9400 0.0042 91.45); /* muted tint #ecebe8 */
-  --muted-foreground: oklch(0.5510 0.0234 264.36); /* muted grey #6b7280 */
+  --muted-foreground: oklch(0.5180 0.0234 264.36); /* muted grey, darkened for AA (>=4.5:1) on off-white ground */
   --accent: oklch(0.9445 0.0213 85.94); /* soft gold tint #f3ecdd */
   --accent-foreground: oklch(0.2532 0.0621 268.64); /* navy on gold tint */
   --destructive: oklch(0.5433 0.1740 29.70); /* danger #c0392b */

@@ -29,7 +29,7 @@ export default function Error({
       <div className="flex w-full max-w-md flex-col items-center gap-4 rounded-xl border bg-card p-8 text-center shadow-sm">
         <div
           className="flex size-12 items-center justify-center rounded-full text-2xl font-semibold text-white"
-          style={{ backgroundColor: '#1e3a5f' }}
+          style={{ backgroundColor: '#162040' }}
           aria-hidden
         >
           !
@@ -49,7 +49,7 @@ export default function Error({
             type="button"
             onClick={() => unstable_retry()}
             className="inline-flex h-9 items-center justify-center rounded-md px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
-            style={{ backgroundColor: '#1e3a5f' }}
+            style={{ backgroundColor: '#162040' }}
           >
             Try again
           </button>

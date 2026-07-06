@@ -7,8 +7,8 @@ export default function manifest(): MetadataRoute.Manifest {
     description: 'Civil & remediation operations platform',
     start_url: '/field',
     display: 'standalone',
-    background_color: '#1e3a5f',
-    theme_color: '#1e3a5f',
+    background_color: '#162040',
+    theme_color: '#162040',
     icons: [
       {
         src: '/icon.svg',

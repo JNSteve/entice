@@ -3,7 +3,7 @@
 // Global error boundary — replaces the ROOT LAYOUT when it fails, so it must
 // render its own <html>/<body> and carry its own styling (inline: if the
 // layout is down, the app CSS may be too). Branded to match the app
-// (#1e3a5f) and reports into the admin-only app_errors register.
+// (#162040) and reports into the admin-only app_errors register.
 
 import { useEffect } from 'react'
 import { reportAppError } from '@/lib/error-log'
@@ -60,7 +60,7 @@ export default function GlobalError({
               height: 48,
               margin: '0 auto 16px',
               borderRadius: '50%',
-              backgroundColor: '#1e3a5f',
+              backgroundColor: '#162040',
               color: '#ffffff',
               fontSize: 24,
               fontWeight: 600,
@@ -103,7 +103,7 @@ export default function GlobalError({
                 padding: '0 16px',
                 borderRadius: 6,
                 border: 'none',
-                backgroundColor: '#1e3a5f',
+                backgroundColor: '#162040',
                 color: '#ffffff',
                 fontSize: 14,
                 fontWeight: 500,
