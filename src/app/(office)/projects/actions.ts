@@ -1,9 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
+import { syncRequestsForQuote } from '@/lib/notify'
 import { todayAU } from '@/lib/tz'
 import {
   PROJECT_STATUSES,
@@ -99,14 +101,16 @@ export async function updateProject(
 
   const supabase = await createClient()
   const update: Record<string, unknown> = { ...parsed.data }
+  let quoteIdForSync: string | null = null
 
   if (parsed.data.status !== undefined) {
     const { data: project, error: fetchError } = await supabase
       .from('projects')
-      .select('id, status, practical_completion_date')
+      .select('id, status, practical_completion_date, quote_id')
       .eq('id', projectId)
       .single()
     if (fetchError || !project) return { error: 'Project not found' }
+    quoteIdForSync = (project.quote_id as string | null) ?? null
 
     const fromIndex = PROJECT_STATUSES.indexOf(
       project.status as (typeof PROJECT_STATUSES)[number]
@@ -132,6 +136,14 @@ export async function updateProject(
     .eq('id', projectId)
 
   if (error) return { error: error.message }
+
+  // Project closed → linked portal request 'completed' (closed is the
+  // client-facing done state — matches workGroupForProject). Fire-and-forget
+  // after the response.
+  if (parsed.data.status === 'closed' && quoteIdForSync) {
+    const quoteId = quoteIdForSync
+    after(() => syncRequestsForQuote(quoteId, 'work_completed'))
+  }
 
   revalidateProject(projectId)
   return {}

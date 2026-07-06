@@ -1,9 +1,11 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
+import { syncRequestsForQuote } from '@/lib/notify'
 import {
   jobCreateSchema,
   jobUpdateSchema,
@@ -117,7 +119,7 @@ export async function setJobStatus(
 
   const { data: job, error: fetchError } = await supabase
     .from('jobs')
-    .select('id, status, scheduled_start')
+    .select('id, status, scheduled_start, quote_id')
     .eq('id', jobId)
     .single()
   if (fetchError || !job) return { error: 'Job not found' }
@@ -165,6 +167,14 @@ export async function setJobStatus(
 
   const { error } = await supabase.from('jobs').update(update).eq('id', jobId)
   if (error) return { error: error.message }
+
+  // Job done → linked portal request 'completed' (invoiced/paid come only
+  // after completed, so this hook covers the whole done group). Fire-and-
+  // forget after the response — never blocks the status change.
+  if (target === 'completed' && job.quote_id) {
+    const quoteId = job.quote_id as string
+    after(() => syncRequestsForQuote(quoteId, 'work_completed'))
+  }
 
   revalidateJob(jobId)
   return {}

@@ -4,7 +4,7 @@ import React, { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { FileTextIcon, InboxIcon } from 'lucide-react'
+import { CalendarIcon, FileTextIcon, InboxIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import {
@@ -14,6 +14,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -34,7 +37,11 @@ import {
   type RequestStatus,
   type RequestUrgency,
 } from '@/lib/portal-interactions'
-import { convertRequestToQuote, setRequestStatus } from './actions'
+import {
+  convertRequestToQuote,
+  setRequestSchedule,
+  setRequestStatus,
+} from './actions'
 
 export interface OfficeRequestRow {
   id: string
@@ -50,6 +57,8 @@ export interface OfficeRequestRow {
   site_name: string
   quote_id: string | null
   quote_number: string | null
+  scheduled_for: string | null
+  scheduled_note: string | null
   /** Signed photo URLs (admin/office only). */
   photos: string[]
 }
@@ -92,6 +101,11 @@ export function RequestsRegister({
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [pending, startTransition] = useTransition()
 
+  // "Mark scheduled" / "Edit schedule" dialog (planned date + note).
+  const [scheduleOpen, setScheduleOpen] = useState(false)
+  const [scheduleDate, setScheduleDate] = useState('')
+  const [scheduleNote, setScheduleNote] = useState('')
+
   const selected = requests.find((r) => r.id === selectedId) ?? null
   const filtered =
     filter === 'all' ? requests : requests.filter((r) => r.status === filter)
@@ -102,6 +116,11 @@ export function RequestsRegister({
   }, {})
 
   function handleTransition(request: OfficeRequestRow, status: RequestStatus) {
+    // Scheduling prompts for the planned date + note first.
+    if (status === 'scheduled') {
+      openScheduleDialog(request)
+      return
+    }
     if (
       status === 'declined' &&
       !confirm(`Decline ${request.number}? The client will see this on their portal.`)
@@ -115,6 +134,36 @@ export function RequestsRegister({
         return
       }
       toast.success(`${request.number} ${REQUEST_STATUS_LABELS[status].toLowerCase()}`)
+      router.refresh()
+    })
+  }
+
+  function openScheduleDialog(request: OfficeRequestRow) {
+    setScheduleDate(request.scheduled_for ?? '')
+    setScheduleNote(request.scheduled_note ?? '')
+    setScheduleOpen(true)
+  }
+
+  function handleScheduleSave(request: OfficeRequestRow) {
+    const payload = {
+      scheduled_for: scheduleDate || null,
+      scheduled_note: scheduleNote || null,
+    }
+    const alreadyScheduled = request.status === 'scheduled'
+    startTransition(async () => {
+      const result = alreadyScheduled
+        ? await setRequestSchedule(request.id, payload)
+        : await setRequestStatus(request.id, { status: 'scheduled', ...payload })
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        alreadyScheduled
+          ? `${request.number} schedule updated`
+          : `${request.number} scheduled`
+      )
+      setScheduleOpen(false)
       router.refresh()
     })
   }
@@ -176,6 +225,7 @@ export function RequestsRegister({
               <TableHead>Property</TableHead>
               <TableHead>Urgency</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Scheduled</TableHead>
               <TableHead>Quote</TableHead>
               <TableHead>Received</TableHead>
             </TableRow>
@@ -196,6 +246,9 @@ export function RequestsRegister({
                 </TableCell>
                 <TableCell>
                   <StatusBadge status={r.status} />
+                </TableCell>
+                <TableCell className="text-muted-foreground tabular-nums">
+                  {r.scheduled_for ? fmtDate(r.scheduled_for) : '—'}
                 </TableCell>
                 <TableCell>
                   {r.quote_id && r.quote_number ? (
@@ -297,6 +350,25 @@ export function RequestsRegister({
                     </Link>
                   </p>
                 )}
+
+                {(selected.scheduled_for || selected.scheduled_note) && (
+                  <div className="flex items-start gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
+                    <CalendarIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+                    <div className="min-w-0">
+                      <p className="font-medium">
+                        Scheduled
+                        {selected.scheduled_for
+                          ? ` — ${fmtDate(selected.scheduled_for)}`
+                          : ' — no date set'}
+                      </p>
+                      {selected.scheduled_note && (
+                        <p className="whitespace-pre-wrap text-muted-foreground">
+                          {selected.scheduled_note}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {canManage && (
@@ -309,6 +381,17 @@ export function RequestsRegister({
                     >
                       <FileTextIcon className="size-4" />
                       Convert to quote
+                    </Button>
+                  )}
+                  {selected.status === 'scheduled' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={pending}
+                      onClick={() => openScheduleDialog(selected)}
+                    >
+                      <CalendarIcon className="size-4" />
+                      Edit schedule
                     </Button>
                   )}
                   {MANUAL_TRANSITIONS.filter((s) =>
@@ -328,6 +411,73 @@ export function RequestsRegister({
                   ))}
                 </DialogFooter>
               )}
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {/* Schedule dialog — planned date + note ("Mark scheduled" / edit). */}
+      <Dialog open={scheduleOpen && selected !== null} onOpenChange={setScheduleOpen}>
+        <DialogContent className="sm:max-w-md">
+          {selected && (
+            <>
+              <DialogHeader>
+                <DialogTitle>
+                  {selected.status === 'scheduled'
+                    ? `Edit schedule — ${selected.number}`
+                    : `Schedule ${selected.number}`}
+                </DialogTitle>
+              </DialogHeader>
+
+              <form
+                className="flex flex-col gap-4"
+                onSubmit={(e) => {
+                  e.preventDefault()
+                  handleScheduleSave(selected)
+                }}
+              >
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="request-scheduled-for">
+                    Planned date (optional)
+                  </Label>
+                  <Input
+                    id="request-scheduled-for"
+                    type="date"
+                    value={scheduleDate}
+                    onChange={(e) => setScheduleDate(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shown to the client on their portal timeline — add it when
+                    you can.
+                  </p>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <Label htmlFor="request-scheduled-note">Note (optional)</Label>
+                  <Textarea
+                    id="request-scheduled-note"
+                    value={scheduleNote}
+                    onChange={(e) => setScheduleNote(e.target.value)}
+                    maxLength={500}
+                    rows={3}
+                    placeholder="e.g. Morning start, access via rear lane"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={pending}
+                    onClick={() => setScheduleOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={pending}>
+                    {selected.status === 'scheduled'
+                      ? 'Save schedule'
+                      : 'Mark scheduled'}
+                  </Button>
+                </DialogFooter>
+              </form>
             </>
           )}
         </DialogContent>

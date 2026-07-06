@@ -735,7 +735,11 @@ export default async function PortalSitePage({
                     <p className="line-clamp-3 whitespace-pre-wrap text-sm text-slate-600">
                       {r.description}
                     </p>
-                    <RequestTimeline status={r.status} />
+                    <RequestTimeline
+                      status={r.status}
+                      scheduledFor={r.scheduled_for}
+                      scheduledNote={r.scheduled_note}
+                    />
                   </PortalCard>
                 </li>
               ))}

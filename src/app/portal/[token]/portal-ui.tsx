@@ -61,6 +61,8 @@ export interface PortalRequestRow {
   description: string
   urgency: string
   status: string
+  scheduled_for: string | null
+  scheduled_note: string | null
   photo_count: number
   created_at: string
 }
@@ -427,8 +429,18 @@ export function RequestStatusChip({ status }: { status: string }) {
 /**
  * The request's progress along submitted → reviewed → quoted → scheduled →
  * completed. Declined requests render a red branch note instead of the steps.
+ * While the request sits at 'scheduled', the planned date + office note
+ * (when provided) render under the step.
  */
-export function RequestTimeline({ status }: { status: string }) {
+export function RequestTimeline({
+  status,
+  scheduledFor,
+  scheduledNote,
+}: {
+  status: string
+  scheduledFor?: string | null
+  scheduledNote?: string | null
+}) {
   if (status === 'declined') {
     return (
       <p className="text-xs font-medium text-red-600">
@@ -437,40 +449,60 @@ export function RequestTimeline({ status }: { status: string }) {
     )
   }
   const index = requestTimelineIndex(status)
+  const showSchedule =
+    status === 'scheduled' && Boolean(scheduledFor || scheduledNote)
   return (
-    <ol className="flex items-center" aria-label="Request progress">
-      {REQUEST_TIMELINE.map((step, i) => {
-        const reached = i <= index
-        const isCurrent = i === index
-        return (
-          <li key={step} className="flex min-w-0 flex-1 items-center last:flex-none">
-            <span className="flex flex-col items-center gap-1">
-              <span
-                className={`flex size-4 items-center justify-center rounded-full ring-2 ${
-                  reached
-                    ? 'bg-blue-600 ring-blue-600'
-                    : 'bg-white ring-slate-300'
-                }`}
-              >
-                {reached && <CheckIcon className="size-2.5 text-white" strokeWidth={3.5} />}
+    <div className="flex flex-col gap-2">
+      <ol className="flex items-center" aria-label="Request progress">
+        {REQUEST_TIMELINE.map((step, i) => {
+          const reached = i <= index
+          const isCurrent = i === index
+          return (
+            <li key={step} className="flex min-w-0 flex-1 items-center last:flex-none">
+              <span className="flex flex-col items-center gap-1">
+                <span
+                  className={`flex size-4 items-center justify-center rounded-full ring-2 ${
+                    reached
+                      ? 'bg-blue-600 ring-blue-600'
+                      : 'bg-white ring-slate-300'
+                  }`}
+                >
+                  {reached && <CheckIcon className="size-2.5 text-white" strokeWidth={3.5} />}
+                </span>
+                <span
+                  className={`whitespace-nowrap text-[10px] leading-none ${
+                    isCurrent ? 'font-semibold text-blue-700' : 'text-slate-400'
+                  }`}
+                >
+                  {REQUEST_STATUS_LABELS[step]}
+                </span>
               </span>
               <span
-                className={`whitespace-nowrap text-[10px] leading-none ${
-                  isCurrent ? 'font-semibold text-blue-700' : 'text-slate-400'
-                }`}
-              >
-                {REQUEST_STATUS_LABELS[step]}
+                className={`mx-1 mb-4 h-0.5 flex-1 rounded ${
+                  i < index ? 'bg-blue-600' : 'bg-slate-200'
+                } ${i === REQUEST_TIMELINE.length - 1 ? 'hidden' : ''}`}
+              />
+            </li>
+          )
+        })}
+      </ol>
+      {showSchedule && (
+        <div className="flex items-start gap-1.5 rounded-lg bg-blue-50 px-2.5 py-1.5">
+          <CalendarDaysIcon className="mt-px size-3.5 shrink-0 text-blue-600" />
+          <p className="min-w-0 text-xs text-blue-900">
+            {scheduledFor && (
+              <span className="font-semibold">
+                Scheduled — {fmtDate(scheduledFor)}
               </span>
-            </span>
-            <span
-              className={`mx-1 mb-4 h-0.5 flex-1 rounded ${
-                i < index ? 'bg-blue-600' : 'bg-slate-200'
-              } ${i === REQUEST_TIMELINE.length - 1 ? 'hidden' : ''}`}
-            />
-          </li>
-        )
-      })}
-    </ol>
+            )}
+            {scheduledFor && scheduledNote && <br />}
+            {scheduledNote && (
+              <span className="text-blue-800/80">{scheduledNote}</span>
+            )}
+          </p>
+        </div>
+      )}
+    </div>
   )
 }
 

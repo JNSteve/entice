@@ -2,10 +2,12 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { lineSell } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
+import { syncRequestsForQuote } from '@/lib/notify'
 import { canPublishQuote } from '@/lib/portal-interactions'
 import { jobPayloadFromQuote, projectPayloadFromQuote } from '@/lib/convert'
 import {
@@ -603,6 +605,10 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
 
   if (updateErr) return { error: updateErr.message }
 
+  // Linked portal request → 'scheduled' — fire-and-forget after the response
+  // (must be registered BEFORE redirect() throws).
+  after(() => syncRequestsForQuote(quoteId, 'work_scheduled'))
+
   revalidatePath('/quotes')
   revalidatePath(`/quotes/${quoteId}`)
   redirect(`/jobs/${job.id}`)
@@ -696,6 +702,10 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
     .eq('id', quoteId)
 
   if (updateErr) return { error: updateErr.message }
+
+  // Linked portal request → 'scheduled' — fire-and-forget after the response
+  // (must be registered BEFORE redirect() throws).
+  after(() => syncRequestsForQuote(quoteId, 'work_scheduled'))
 
   revalidatePath('/quotes')
   revalidatePath(`/quotes/${quoteId}`)

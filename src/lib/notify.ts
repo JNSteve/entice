@@ -36,6 +36,7 @@ import {
   PROPERTY_COMPLIANCE_KIND_LABELS,
   type PropertyComplianceKind,
 } from '@/lib/portal'
+import type { WorkSyncEvent } from '@/lib/request-sync'
 import { fmtDate } from '@/lib/format'
 import { dateAU, todayAU } from '@/lib/tz'
 
@@ -310,6 +311,44 @@ export async function notifyClientMessageReply(input: {
     })
   } catch (err) {
     console.error('[notify] client message-reply email failed:', err)
+  }
+}
+
+// ─── Auto-sync: downstream work drives linked requests ───────────────────────
+
+/**
+ * Advances portal requests linked to `quoteId` when downstream work moves
+ * (quote converted → 'scheduled'; job completed / project closed →
+ * 'completed'). The SQL definer fn owns the forward-only gating (mirrors
+ * REQUEST_TRANSITIONS — see src/lib/request-sync.ts); each request it
+ * actually moved gets the same CP3 status email a manual transition sends.
+ * Callers wire this via next/server after() so it never blocks or fails the
+ * parent action; the try/catch is belt and braces on top.
+ */
+export async function syncRequestsForQuote(
+  quoteId: string | null | undefined,
+  event: WorkSyncEvent
+): Promise<void> {
+  if (!quoteId) return
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase.rpc('sync_portal_requests_for_quote', {
+      p_quote: quoteId,
+      p_event: event,
+    })
+    if (error) {
+      console.error('[notify] request auto-sync failed:', error.message)
+      return
+    }
+    const moved = (data ?? []) as { id: string; number: string; status: string }[]
+    for (const request of moved) {
+      await notifyClientRequestStatus({
+        requestId: request.id,
+        status: request.status,
+      })
+    }
+  } catch (err) {
+    console.error('[notify] request auto-sync failed:', err)
   }
 }
 

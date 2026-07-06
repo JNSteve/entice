@@ -10,7 +10,10 @@ import {
   canConvertRequest,
   canTransitionRequest,
 } from '@/lib/portal-interactions'
-import { portalRequestStatusSchema } from '@/lib/zod'
+import {
+  portalRequestScheduleSchema,
+  portalRequestStatusSchema,
+} from '@/lib/zod'
 
 type Result = { error?: string }
 
@@ -47,15 +50,68 @@ export async function setRequestStatus(id: string, data: unknown): Promise<Resul
     }
   }
 
+  const update: Record<string, unknown> = {
+    status: parsed.data.status,
+    handled_by: profile.id,
+  }
+  // The scheduling dialog captures a planned date + note alongside the move.
+  if (parsed.data.status === 'scheduled') {
+    if (parsed.data.scheduled_for !== undefined) {
+      update.scheduled_for = parsed.data.scheduled_for
+    }
+    if (parsed.data.scheduled_note !== undefined) {
+      update.scheduled_note = parsed.data.scheduled_note
+    }
+  }
+
   const { error } = await supabase
     .from('portal_requests')
-    .update({ status: parsed.data.status, handled_by: profile.id })
+    .update(update)
     .eq('id', id)
   if (error) return { error: error.message }
 
   // Client email — fire-and-forget AFTER the response (never blocking).
   const newStatus = parsed.data.status
   after(() => notifyClientRequestStatus({ requestId: id, status: newStatus }))
+
+  revalidateRequests(request.client_id, request.site_id)
+  return {}
+}
+
+/**
+ * Edits the planned date/note on a request that is already 'scheduled' (the
+ * status itself doesn't move — this backs the "Edit schedule" button).
+ */
+export async function setRequestSchedule(
+  id: string,
+  data: unknown
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const parsed = portalRequestScheduleSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createClient()
+  const { data: request } = await supabase
+    .from('portal_requests')
+    .select('id, status, client_id, site_id')
+    .eq('id', id)
+    .single()
+  if (!request) return { error: 'Request not found' }
+  if (request.status !== 'scheduled') {
+    return { error: 'The schedule can only be edited while the request is scheduled' }
+  }
+
+  const { error } = await supabase
+    .from('portal_requests')
+    .update({
+      scheduled_for: parsed.data.scheduled_for,
+      scheduled_note: parsed.data.scheduled_note,
+    })
+    .eq('id', id)
+  if (error) return { error: error.message }
 
   revalidateRequests(request.client_id, request.site_id)
   return {}

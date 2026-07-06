@@ -2613,11 +2613,35 @@ export const officePortalMessageSchema = z.object({
 
 export type OfficePortalMessageInput = z.infer<typeof officePortalMessageSchema>
 
+/** Planned-date fields for the "Mark scheduled" dialog ('' → null). */
+const scheduledForField = isoDate
+  .nullish()
+  .or(z.literal(''))
+  .transform((v) => (v ? v : null))
+
+const scheduledNoteField = z
+  .string()
+  .max(500, 'Keep the note under 500 characters')
+  .nullish()
+  .transform((v) => (v?.trim() ? v.trim() : null))
+
 export const portalRequestStatusSchema = z.object({
   status: z.enum(REQUEST_STATUSES),
+  // Only meaningful when status = 'scheduled' (the office scheduling dialog);
+  // the action ignores them for every other target.
+  scheduled_for: scheduledForField.optional(),
+  scheduled_note: scheduledNoteField.optional(),
 })
 
 export type PortalRequestStatusInput = z.infer<typeof portalRequestStatusSchema>
+
+/** Edit the planned date/note while a request sits at 'scheduled'. */
+export const portalRequestScheduleSchema = z.object({
+  scheduled_for: scheduledForField,
+  scheduled_note: scheduledNoteField,
+})
+
+export type PortalRequestScheduleInput = z.infer<typeof portalRequestScheduleSchema>
 
 // ─── Environmental module (ISO 14001 operational core — migration 0031) ──────
 // Significance maths + permit reconciliation live in src/lib/env.ts (mirroring

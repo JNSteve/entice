@@ -20,7 +20,7 @@ export default async function RequestsPage() {
     .from('portal_requests')
     .select(
       `id, number, title, description, urgency, status, photo_paths, created_at,
-       client_id, site_id, quote_id,
+       client_id, site_id, quote_id, scheduled_for, scheduled_note,
        clients(name), sites(name), quotes(number)`
     )
     .order('created_at', { ascending: false })
@@ -55,6 +55,8 @@ export default async function RequestsPage() {
       site_name: site?.name ?? '—',
       quote_id: (r.quote_id as string | null) ?? null,
       quote_number: quote?.number ?? null,
+      scheduled_for: (r.scheduled_for as string | null) ?? null,
+      scheduled_note: (r.scheduled_note as string | null) ?? null,
       photos: (((r.photo_paths as string[]) ?? [])
         .map((p) => urlByPath.get(p))
         .filter(Boolean) ?? []) as string[],
