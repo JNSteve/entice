@@ -113,6 +113,94 @@ export async function adoptItp(
   return { id: instance.id }
 }
 
+// ─── Close / reopen an ITP instance ───────────────────────────────────────────
+
+/**
+ * Closes an adopted ITP once its scope is complete. Gated: every lot raised
+ * against the instance must be closed, and every checklist item must be in a
+ * terminal state (passed or N/A) — an ITP with pending or failed items is not
+ * finished, it's stalled. Closed instances reject new lots (createLot guard).
+ */
+export async function closeItpInstance(
+  projectId: string,
+  instanceId: string
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+
+  const { data: instance } = await supabase
+    .from('itp_instances')
+    .select('id, status')
+    .eq('id', instanceId)
+    .eq('project_id', projectId)
+    .single()
+  if (!instance) return { error: 'ITP instance not found on this project' }
+  if (instance.status === 'closed') {
+    return { error: 'This ITP is already closed' }
+  }
+
+  const [{ data: items }, { data: lots }] = await Promise.all([
+    supabase
+      .from('itp_instance_items')
+      .select('status')
+      .eq('instance_id', instanceId),
+    supabase
+      .from('lots')
+      .select('number, status')
+      .eq('itp_instance_id', instanceId),
+  ])
+
+  const openLots = (lots ?? []).filter((l) => l.status !== 'closed')
+  if (openLots.length > 0) {
+    return {
+      error: `Cannot close — ${openLots.length} lot${openLots.length === 1 ? '' : 's'} still open (${openLots
+        .map((l) => l.number)
+        .join(', ')})`,
+    }
+  }
+
+  const unfinished = (items ?? []).filter(
+    (i) => i.status !== 'passed' && i.status !== 'na'
+  ).length
+  if (unfinished > 0) {
+    return {
+      error: `Cannot close — ${unfinished} checklist item${unfinished === 1 ? '' : 's'} not yet passed or N/A`,
+    }
+  }
+
+  const { error } = await supabase
+    .from('itp_instances')
+    .update({ status: 'closed' })
+    .eq('id', instanceId)
+    .eq('status', 'active')
+  if (error) return { error: error.message }
+
+  revalidateQuality(projectId)
+  return {}
+}
+
+/** Reopening a closed ITP is admin-only — it re-enables lot creation. */
+export async function reopenItpInstance(
+  projectId: string,
+  instanceId: string
+): Promise<Result> {
+  await requireRole('admin')
+
+  const supabase = await createClient()
+
+  const { error } = await supabase
+    .from('itp_instances')
+    .update({ status: 'active' })
+    .eq('id', instanceId)
+    .eq('project_id', projectId)
+    .eq('status', 'closed')
+  if (error) return { error: error.message }
+
+  revalidateQuality(projectId)
+  return {}
+}
+
 // ─── Lots ─────────────────────────────────────────────────────────────────────
 
 /**

@@ -33,7 +33,12 @@ import { Textarea } from '@/components/ui/textarea'
 import { StatusBadge } from '@/components/StatusBadge'
 import { fmtDate } from '@/lib/format'
 import type { LotStatus } from '@/lib/zod'
-import { adoptItp, createLot } from './actions'
+import {
+  adoptItp,
+  createLot,
+  closeItpInstance,
+  reopenItpInstance,
+} from './actions'
 
 export type ItpTemplateOption = {
   id: string
@@ -71,6 +76,7 @@ export function QualityView({
   templates,
   instances,
   lots,
+  isAdmin,
 }: {
   projectId: string
   templates: ItpTemplateOption[]
@@ -115,7 +121,7 @@ export function QualityView({
                   <TableHead>Hold points</TableHead>
                   <TableHead>Adopted</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead className="text-right">PDF</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -142,16 +148,25 @@ export function QualityView({
                       <StatusBadge status={i.status} />
                     </TableCell>
                     <TableCell className="text-right">
-                      <a
-                        href={`/api/pdf/itp/${i.id}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        title="ITP PDF"
-                      >
-                        <Button type="button" variant="ghost" size="icon-sm">
-                          <FileTextIcon className="size-3.5" />
-                        </Button>
-                      </a>
+                      <div className="flex items-center justify-end gap-1">
+                        <ItpCloseButton
+                          projectId={projectId}
+                          instanceId={i.id}
+                          number={i.number}
+                          status={i.status}
+                          isAdmin={isAdmin}
+                        />
+                        <a
+                          href={`/api/pdf/itp/${i.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          title="ITP PDF"
+                        >
+                          <Button type="button" variant="ghost" size="icon-sm">
+                            <FileTextIcon className="size-3.5" />
+                          </Button>
+                        </a>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -251,6 +266,63 @@ export function QualityView({
         />
       )}
     </div>
+  )
+}
+
+// ─── Close / reopen an ITP ────────────────────────────────────────────────────
+
+function ItpCloseButton({
+  projectId,
+  instanceId,
+  number,
+  status,
+  isAdmin,
+}: {
+  projectId: string
+  instanceId: string
+  number: string
+  status: string
+  isAdmin: boolean
+}) {
+  const [pending, startTransition] = useTransition()
+
+  if (status === 'closed') {
+    if (!isAdmin) return null
+    return (
+      <Button
+        type="button"
+        variant="ghost"
+        size="sm"
+        disabled={pending}
+        onClick={() =>
+          startTransition(async () => {
+            const res = await reopenItpInstance(projectId, instanceId)
+            if (res.error) toast.error(res.error)
+            else toast.success(`${number} reopened`)
+          })
+        }
+      >
+        Reopen
+      </Button>
+    )
+  }
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          const res = await closeItpInstance(projectId, instanceId)
+          if (res.error) toast.error(res.error)
+          else toast.success(`${number} closed`)
+        })
+      }
+    >
+      Close
+    </Button>
   )
 }
 
