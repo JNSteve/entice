@@ -99,8 +99,10 @@ export interface PortalBillingRow {
   status: string
 }
 
-// Brand navy — matches the app's themeColor (#1e3a5f).
-const BRAND_BG = 'bg-[#1e3a5f]'
+// ECR brand navy (#162040) — matches the app-wide primary token.
+const BRAND_BG = 'bg-[#162040]'
+// Signature gold accent, used sparingly for the brand band underline/divider.
+const BRAND_GOLD = '#c9a868'
 
 export function PortalShell({
   branding,
@@ -115,8 +117,11 @@ export function PortalShell({
 }) {
   return (
     <div className="flex min-h-dvh w-full flex-1 flex-col bg-slate-100">
-      {/* Brand band */}
-      <div className={`${BRAND_BG} text-white`}>
+      {/* Brand band — navy with a signature gold hairline underneath */}
+      <div
+        className={`${BRAND_BG} text-white`}
+        style={{ borderBottom: `2px solid ${BRAND_GOLD}` }}
+      >
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 py-4">
           <div className="flex min-w-0 items-center gap-3">
             {branding.logo_path && (
@@ -131,7 +136,7 @@ export function PortalShell({
               <p className="truncate text-lg font-bold leading-tight tracking-tight">
                 {branding.company_name}
               </p>
-              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-blue-200">
+              <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-[#d9bf8e]">
                 Client portal
               </p>
             </div>
@@ -227,7 +232,7 @@ function PortalNavLink({
       aria-current={active ? 'page' : undefined}
       className={`flex min-h-11 items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
         active
-          ? 'border-[#1e3a5f] text-[#1e3a5f]'
+          ? 'border-[#c9a868] text-[#162040]'
           : 'border-transparent text-slate-500 hover:text-slate-800'
       }`}
     >

@@ -163,13 +163,13 @@ export default async function PortalCalendarPage({
                 <div
                   key={date}
                   className={`flex min-h-12 flex-col items-center gap-1 rounded-lg py-1.5 ${
-                    isToday ? 'bg-[#1e3a5f]/5 ring-1 ring-[#1e3a5f]/25' : ''
+                    isToday ? 'bg-[#162040]/5 ring-1 ring-[#162040]/25' : ''
                   }`}
                 >
                   <span
                     className={`text-xs tabular-nums ${
                       isToday
-                        ? 'flex size-5 items-center justify-center rounded-full bg-[#1e3a5f] font-semibold text-white'
+                        ? 'flex size-5 items-center justify-center rounded-full bg-[#162040] font-semibold text-white'
                         : 'text-slate-600'
                     }`}
                   >
@@ -235,7 +235,7 @@ export default async function PortalCalendarPage({
                   <p
                     className={`border-b px-4 py-2 text-xs font-semibold ${
                       date === today
-                        ? 'bg-[#1e3a5f]/5 text-[#1e3a5f]'
+                        ? 'bg-[#162040]/5 text-[#162040]'
                         : 'bg-slate-50 text-slate-500'
                     }`}
                   >

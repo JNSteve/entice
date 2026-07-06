@@ -105,7 +105,7 @@ export default async function PortalApprovalDetailPage({
             href={`/portal/${token}/approval-pdf/quote/${item.id}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex min-h-11 w-fit items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium text-[#1e3a5f] transition-colors hover:bg-slate-50"
+            className="flex min-h-11 w-fit items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium text-[#162040] transition-colors hover:bg-slate-50"
           >
             <FileTextIcon className="size-4" />
             View the full quotation (PDF)

@@ -159,7 +159,7 @@ export default async function PortalApprovalsPage({
                     href={`/portal/${token}/approval-pdf/quote/${item.id}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="shrink-0 text-xs font-medium text-[#1e3a5f] hover:underline"
+                    className="shrink-0 text-xs font-medium text-[#162040] hover:underline"
                   >
                     View PDF
                   </a>

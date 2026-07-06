@@ -102,7 +102,7 @@ export function ApprovalSign({
         </p>
         <Link
           href={`/portal/${token}/approvals`}
-          className="mt-1 flex min-h-11 items-center rounded-xl bg-[#1e3a5f] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
+          className="mt-1 flex min-h-11 items-center rounded-xl bg-[#162040] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
         >
           Back to approvals
         </Link>
@@ -158,7 +158,7 @@ export function ApprovalSign({
               placeholder="Full name"
               maxLength={120}
               required
-              className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#1e3a5f]"
+              className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040]"
             />
           </div>
 
@@ -198,7 +198,7 @@ export function ApprovalSign({
               placeholder="Full name"
               maxLength={120}
               required
-              className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#1e3a5f]"
+              className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040]"
             />
           </div>
 
@@ -214,7 +214,7 @@ export function ApprovalSign({
               maxLength={1000}
               rows={4}
               required
-              className="w-full resize-y rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#1e3a5f]"
+              className="w-full resize-y rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#162040]"
             />
           </div>
 

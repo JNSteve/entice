@@ -20,7 +20,7 @@ function PageShell({ children }: { children: React.ReactNode }) {
   return (
     <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-5 p-4 pb-10">
       <div className="border-b pb-3">
-        <p className="text-2xl font-bold tracking-tight text-[#1e3a5f] dark:text-blue-200">
+        <p className="text-2xl font-bold tracking-tight text-[#162040] dark:text-blue-200">
           Entice
         </p>
         <p className="text-xs text-muted-foreground">

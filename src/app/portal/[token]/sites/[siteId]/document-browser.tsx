@@ -69,7 +69,7 @@ export function DocumentBrowser({ entries }: { entries: PortalDocEntry[] }) {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Search documents…"
-          className="h-11 w-full rounded-xl border bg-white pl-10 pr-4 text-sm shadow-sm outline-none transition-colors placeholder:text-slate-400 focus:border-[#1e3a5f]/50 focus:ring-2 focus:ring-[#1e3a5f]/15"
+          className="h-11 w-full rounded-xl border bg-white pl-10 pr-4 text-sm shadow-sm outline-none transition-colors placeholder:text-slate-400 focus:border-[#162040]/50 focus:ring-2 focus:ring-[#162040]/15"
         />
       </label>
 

@@ -43,6 +43,12 @@ import { signOut } from '@/lib/auth-actions'
 import type { Profile, Role } from '@/lib/auth'
 import { cn } from '@/lib/utils'
 
+// ECR brand logo (navy PNG wordmark) served from the app's own Supabase
+// `branding` bucket — the same public asset the portal and PDFs already use.
+// Presentational only; placed on navy surfaces where it sits seamlessly.
+const LOGO_URL =
+  'https://zspauxavbhtutanhekuu.supabase.co/storage/v1/object/public/branding/logo.png'
+
 type NavItem = {
   label: string
   href: string
@@ -101,10 +107,10 @@ function NavLinks({
             href={item.href}
             onClick={onNavigate}
             className={cn(
-              'flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition-colors',
+              'relative flex items-center gap-2.5 rounded-lg py-2 pr-2.5 pl-3.5 text-sm font-medium transition-colors',
               active
-                ? 'bg-muted text-foreground'
-                : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground'
+                ? 'bg-sidebar-accent text-sidebar-foreground before:absolute before:top-1.5 before:bottom-1.5 before:left-0 before:w-1 before:rounded-full before:bg-sidebar-primary'
+                : 'text-sidebar-foreground/70 hover:bg-sidebar-accent/60 hover:text-sidebar-foreground'
             )}
           >
             <Icon className="size-4 shrink-0" />
@@ -118,8 +124,14 @@ function NavLinks({
 
 function SidebarHeader() {
   return (
-    <div className="flex h-14 items-center gap-2 border-b px-4">
-      <span className="text-lg font-bold tracking-tight">Entice</span>
+    <div className="flex h-14 items-center gap-2 border-b border-sidebar-border px-4">
+      {/* Logo has a navy background — sits seamlessly on the navy sidebar. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={LOGO_URL}
+        alt="Entice"
+        className="h-8 w-auto max-w-[168px] object-contain"
+      />
     </div>
   )
 }
@@ -173,7 +185,7 @@ export function OfficeShell({
   return (
     <div className="flex min-h-screen flex-1">
       {/* Desktop sidebar */}
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r bg-background md:flex">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-56 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
         <SidebarHeader />
         <div className="flex-1 overflow-y-auto py-3">
           <NavLinks role={profile.role} />
@@ -194,10 +206,18 @@ export function OfficeShell({
                 <MenuIcon />
                 <span className="sr-only">Open navigation</span>
               </SheetTrigger>
-              <SheetContent side="left" className="w-64 gap-0 p-0">
-                <SheetHeader className="h-14 justify-center border-b">
-                  <SheetTitle className="text-lg font-bold tracking-tight">
-                    Entice
+              <SheetContent
+                side="left"
+                className="w-64 gap-0 bg-sidebar p-0 text-sidebar-foreground"
+              >
+                <SheetHeader className="h-14 justify-center border-b border-sidebar-border px-4">
+                  <SheetTitle className="flex items-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={LOGO_URL}
+                      alt="Entice"
+                      className="h-8 w-auto max-w-[168px] object-contain"
+                    />
                   </SheetTitle>
                 </SheetHeader>
                 <div className="flex-1 overflow-y-auto py-3">
@@ -208,9 +228,13 @@ export function OfficeShell({
                 </div>
               </SheetContent>
             </Sheet>
-            <span className="text-lg font-bold tracking-tight md:hidden">
-              Entice
-            </span>
+            {/* Compact navy logo lozenge for the mobile top bar. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={LOGO_URL}
+              alt="Entice"
+              className="h-8 w-auto max-w-[150px] rounded object-contain md:hidden"
+            />
           </div>
           <UserMenu profile={profile} />
         </header>

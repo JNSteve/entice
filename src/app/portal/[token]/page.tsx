@@ -185,7 +185,7 @@ export default async function PortalHomePage({
           </h2>
           <Link
             href={`/portal/${token}/request`}
-            className="flex min-h-11 items-center gap-1.5 rounded-xl bg-[#1e3a5f] px-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            className="flex min-h-11 items-center gap-1.5 rounded-xl bg-[#162040] px-3.5 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             <PlusIcon className="size-4" />
             Request work

@@ -164,7 +164,7 @@ export function RequestForm({
         <div className="flex flex-wrap justify-center gap-2 pt-1">
           <Link
             href={`/portal/${token}/sites/${siteId}?tab=requests`}
-            className="flex min-h-11 items-center rounded-xl bg-[#1e3a5f] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
+            className="flex min-h-11 items-center rounded-xl bg-[#162040] px-4 text-sm font-medium text-white transition-opacity hover:opacity-90"
           >
             View your requests
           </Link>
@@ -201,7 +201,7 @@ export function RequestForm({
             value={siteId}
             onChange={(e) => setSiteId(e.target.value)}
             required
-            className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#1e3a5f]"
+            className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040]"
           >
             {sites.map((s) => (
               <option key={s.id} value={s.id}>
@@ -225,7 +225,7 @@ export function RequestForm({
           placeholder="e.g. Asbestos removal to storeroom ceiling"
           maxLength={200}
           required
-          className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#1e3a5f]"
+          className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040]"
         />
       </div>
 
@@ -242,7 +242,7 @@ export function RequestForm({
           maxLength={4000}
           rows={5}
           required
-          className="w-full resize-y rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#1e3a5f]"
+          className="w-full resize-y rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#162040]"
         />
       </div>
 
@@ -326,7 +326,7 @@ export function RequestForm({
       <button
         type="submit"
         disabled={busy || !title.trim() || !description.trim() || !siteId}
-        className="flex min-h-12 items-center justify-center rounded-xl bg-[#1e3a5f] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+        className="flex min-h-12 items-center justify-center rounded-xl bg-[#162040] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
       >
         {uploading ? 'Uploading photos…' : pending ? 'Sending…' : 'Send request'}
       </button>

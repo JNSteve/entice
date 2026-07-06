@@ -1,5 +1,25 @@
 import Link from 'next/link'
 import {
+  ActivityIcon,
+  BadgeCheckIcon,
+  CalendarClockIcon,
+  ClipboardCheckIcon,
+  DollarSignIcon,
+  FileClockIcon,
+  FileSignatureIcon,
+  FileWarningIcon,
+  HardHatIcon,
+  HeartHandshakeIcon,
+  LeafIcon,
+  MessagesSquareIcon,
+  NotebookPenIcon,
+  PiggyBankIcon,
+  ReceiptIcon,
+  ServerIcon,
+  ShieldAlertIcon,
+  TimerIcon,
+} from 'lucide-react'
+import {
   Card,
   CardContent,
   CardHeader,
@@ -27,6 +47,53 @@ import { StatusBadge } from '@/components/StatusBadge'
 
 const MAX_ROWS = 8
 
+/**
+ * Presentational icon-chip lookup, keyed off each card's existing `title` so no
+ * card has to change its data/props. Harmonised category colours:
+ *   money → emerald · safety → amber/red · quality → blue ·
+ *   compliance/legal/property → navy/gold · portal → navy · environment → green.
+ * `tint` = chip background, `fg` = icon colour. Additive only.
+ */
+const CARD_CHIP: Record<
+  string,
+  { icon: React.ComponentType<{ className?: string }>; tint: string; fg: string }
+> = {
+  'Claims due': { icon: DollarSignIcon, tint: 'bg-emerald-100 dark:bg-emerald-950', fg: 'text-emerald-700 dark:text-emerald-300' },
+  'Quotes awaiting': { icon: FileClockIcon, tint: 'bg-emerald-100 dark:bg-emerald-950', fg: 'text-emerald-700 dark:text-emerald-300' },
+  'Unpaid invoices': { icon: ReceiptIcon, tint: 'bg-emerald-100 dark:bg-emerald-950', fg: 'text-emerald-700 dark:text-emerald-300' },
+  'Time-bar warnings': { icon: TimerIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
+  'Compliance expiries': { icon: BadgeCheckIcon, tint: 'bg-[oklch(0.945_0.021_86)] dark:bg-amber-950/40', fg: 'text-[oklch(0.55_0.09_82)] dark:text-amber-200' },
+  'Property compliance due': { icon: ClipboardCheckIcon, tint: 'bg-primary/10', fg: 'text-primary' },
+  'Retention due': { icon: PiggyBankIcon, tint: 'bg-emerald-100 dark:bg-emerald-950', fg: 'text-emerald-700 dark:text-emerald-300' },
+  'Active work': { icon: ActivityIcon, tint: 'bg-primary/10', fg: 'text-primary' },
+  'Today on site': { icon: CalendarClockIcon, tint: 'bg-primary/10', fg: 'text-primary' },
+  'SWMS outstanding': { icon: FileSignatureIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
+  'Hold points': { icon: FileWarningIcon, tint: 'bg-blue-100 dark:bg-blue-950', fg: 'text-blue-700 dark:text-blue-300' },
+  'Diaries missing': { icon: NotebookPenIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
+  Safety: { icon: ShieldAlertIcon, tint: 'bg-red-100 dark:bg-red-950', fg: 'text-red-700 dark:text-red-300' },
+  NCRs: { icon: HardHatIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
+  Environment: { icon: LeafIcon, tint: 'bg-green-100 dark:bg-green-950', fg: 'text-green-700 dark:text-green-300' },
+  'System health': { icon: ServerIcon, tint: 'bg-primary/10', fg: 'text-primary' },
+  'Client portal': { icon: MessagesSquareIcon, tint: 'bg-primary/10', fg: 'text-primary' },
+  'Quality (ITP / lots)': { icon: ClipboardCheckIcon, tint: 'bg-blue-100 dark:bg-blue-950', fg: 'text-blue-700 dark:text-blue-300' },
+}
+
+function CardChip({ title }: { title: string }) {
+  const chip = CARD_CHIP[title] ?? { icon: HeartHandshakeIcon, tint: 'bg-muted', fg: 'text-muted-foreground' }
+  const Icon = chip.icon
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        'flex size-6 shrink-0 items-center justify-center rounded-md',
+        chip.tint
+      )}
+    >
+      <Icon className={cn('size-3.5', chip.fg)} />
+    </span>
+  )
+}
+
 function DashboardCard({
   title,
   href,
@@ -42,9 +109,12 @@ function DashboardCard({
     <Card size="sm" className={className}>
       <CardHeader>
         <CardTitle className="text-sm">
-          <Link href={href} className="hover:underline">
-            {title}
-          </Link>
+          <span className="flex items-center gap-2">
+            <CardChip title={title} />
+            <Link href={href} className="hover:underline">
+              {title}
+            </Link>
+          </span>
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-2">{children}</CardContent>

@@ -39,7 +39,7 @@ export function CalendarSubscribe({ token }: { token: string }) {
   return (
     <div className="rounded-2xl border bg-white p-4 shadow-sm">
       <div className="flex items-center gap-2">
-        <CalendarPlusIcon className="size-4 text-[#1e3a5f]" />
+        <CalendarPlusIcon className="size-4 text-[#162040]" />
         <p className="text-sm font-semibold text-slate-900">
           Subscribe in your calendar app
         </p>

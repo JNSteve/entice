@@ -97,7 +97,7 @@ export function MessageThread({
               <div
                 className={`max-w-[85%] rounded-2xl px-3.5 py-2.5 sm:max-w-[70%] ${
                   m.sender === 'client'
-                    ? 'rounded-br-md bg-[#1e3a5f] text-white'
+                    ? 'rounded-br-md bg-[#162040] text-white'
                     : 'rounded-bl-md border bg-white text-slate-900 shadow-sm'
                 }`}
               >
@@ -139,7 +139,7 @@ export function MessageThread({
           required
           aria-label="Your name"
           suppressHydrationWarning
-          className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#1e3a5f] sm:max-w-60"
+          className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040] sm:max-w-60"
         />
         <div className="flex items-end gap-2">
           <textarea
@@ -150,12 +150,12 @@ export function MessageThread({
             rows={2}
             required
             aria-label="Message"
-            className="min-h-11 flex-1 resize-y rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#1e3a5f]"
+            className="min-h-11 flex-1 resize-y rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#162040]"
           />
           <button
             type="submit"
             disabled={pending || !name.trim() || !body.trim()}
-            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#1e3a5f] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-[#162040] text-white transition-opacity hover:opacity-90 disabled:opacity-40"
             aria-label="Send message"
           >
             <SendIcon className="size-4" />

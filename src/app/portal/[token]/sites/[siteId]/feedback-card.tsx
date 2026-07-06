@@ -94,12 +94,12 @@ export function FeedbackCard({
             maxLength={FEEDBACK_MAX_COMMENT_CHARS}
             rows={2}
             aria-label="Feedback comment"
-            className="min-h-11 w-full resize-y rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#1e3a5f]"
+            className="min-h-11 w-full resize-y rounded-xl border bg-white px-3 py-2.5 text-sm outline-none transition-colors focus:border-[#162040]"
           />
           <button
             type="submit"
             disabled={pending}
-            className="flex min-h-11 w-fit items-center rounded-xl bg-[#1e3a5f] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="flex min-h-11 w-fit items-center rounded-xl bg-[#162040] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-40"
           >
             {pending ? 'Sending…' : 'Send feedback'}
           </button>

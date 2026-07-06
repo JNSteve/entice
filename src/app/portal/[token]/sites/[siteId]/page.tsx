@@ -545,7 +545,7 @@ export default async function PortalSitePage({
                         href={`/portal/${token}/file/item/${item.id}`}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex min-h-11 w-fit items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium text-[#1e3a5f] transition-colors hover:bg-slate-50"
+                        className="flex min-h-11 w-fit items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium text-[#162040] transition-colors hover:bg-slate-50"
                       >
                         <DownloadIcon className="size-4" />
                         <span className="max-w-60 truncate">
@@ -650,7 +650,7 @@ export default async function PortalSitePage({
                             href={`/portal/${token}/file/attachment/${handoverPack.id}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex min-h-11 w-fit items-center gap-2 rounded-xl bg-[#1e3a5f] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+                            className="flex min-h-11 w-fit items-center gap-2 rounded-xl bg-[#162040] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
                           >
                             <FileTextIcon className="size-4" />
                             Handover pack
@@ -705,7 +705,7 @@ export default async function PortalSitePage({
         <div className="flex flex-col gap-4">
           <Link
             href={`/portal/${token}/request?site=${siteId}`}
-            className="flex min-h-12 w-fit items-center gap-2 rounded-xl bg-[#1e3a5f] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
+            className="flex min-h-12 w-fit items-center gap-2 rounded-xl bg-[#162040] px-4 text-sm font-semibold text-white transition-opacity hover:opacity-90"
           >
             <PlusIcon className="size-4" />
             Request work

@@ -24,11 +24,15 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen flex-1 flex-col items-center justify-center bg-muted/40 p-4 gap-6">
-      <div className="w-full max-w-sm text-left">
-        <p className="text-3xl font-bold tracking-tight text-[#1e3a5f]">
-          Entice
-        </p>
-        <p className="text-sm text-muted-foreground mt-1">
+      {/* Branded navy panel with the ECR logo (navy background sits seamlessly). */}
+      <div className="flex w-full max-w-sm flex-col items-center gap-3 rounded-xl bg-primary px-6 py-7 text-center shadow-sm ring-1 ring-primary/20">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="https://zspauxavbhtutanhekuu.supabase.co/storage/v1/object/public/branding/logo.png"
+          alt="Entice"
+          className="h-14 w-auto max-w-[240px] object-contain"
+        />
+        <p className="text-sm text-primary-foreground/70">
           Civil &amp; remediation operations
         </p>
       </div>

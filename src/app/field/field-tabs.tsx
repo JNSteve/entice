@@ -40,9 +40,9 @@ export function FieldTabs() {
               key={tab.href}
               href={tab.href}
               className={cn(
-                'flex flex-col items-center gap-1 py-2.5 text-xs font-medium transition-colors',
+                'relative flex flex-col items-center gap-1 py-2.5 text-xs font-medium transition-colors',
                 active
-                  ? 'text-foreground'
+                  ? 'text-primary before:absolute before:inset-x-0 before:top-0 before:mx-auto before:h-0.5 before:w-8 before:rounded-full before:bg-primary'
                   : 'text-muted-foreground hover:text-foreground'
               )}
             >

@@ -782,7 +782,7 @@ export function ObjectiveDetailClient({
                     <Line
                       type="monotone"
                       dataKey="value"
-                      stroke="#1e3a5f"
+                      stroke="#162040"
                       strokeWidth={2}
                       dot={{ r: 3 }}
                       isAnimationActive={false}

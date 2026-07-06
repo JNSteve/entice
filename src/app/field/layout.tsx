@@ -14,13 +14,24 @@ export default async function FieldLayout({
 
   return (
     <div className="mx-auto flex min-h-screen w-full max-w-md flex-1 flex-col">
-      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b bg-background px-4">
-        <div className="flex flex-col leading-tight">
-          <span className="text-lg font-bold tracking-tight">Entice</span>
-          <span className="text-xs text-muted-foreground">{firstName}</span>
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-sidebar-border bg-sidebar px-4 text-sidebar-foreground">
+        <div className="flex items-center gap-3">
+          {/* Navy logo on the navy field header — sits seamlessly. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="https://zspauxavbhtutanhekuu.supabase.co/storage/v1/object/public/branding/logo.png"
+            alt="Entice"
+            className="h-7 w-auto max-w-[140px] object-contain"
+          />
+          <span className="text-xs text-sidebar-foreground/70">{firstName}</span>
         </div>
         <form action={signOut}>
-          <Button type="submit" variant="ghost" size="icon">
+          <Button
+            type="submit"
+            variant="ghost"
+            size="icon"
+            className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+          >
             <LogOutIcon />
             <span className="sr-only">Sign out</span>
           </Button>

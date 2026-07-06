@@ -7,8 +7,8 @@ import { StyleSheet } from '@react-pdf/renderer'
  */
 
 export const palette = {
-  navy: '#1e3a5f',
-  navyLight: '#2d5283',
+  navy: '#162040',
+  navyLight: '#223056',
   slate900: '#1c2434',
   slate700: '#3e4a5e',
   slate500: '#64748b',
