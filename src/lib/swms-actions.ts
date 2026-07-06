@@ -3,7 +3,11 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { swmsInstanceCreateSchema } from '@/lib/zod'
+import {
+  normalizeHrcwAnswers,
+  parseHrcwItems,
+  swmsInstanceCreateV2Schema,
+} from '@/lib/swms'
 
 type Result = { error?: string }
 
@@ -18,13 +22,16 @@ function revalidateSwms(projectId: string | null, jobId: string | null, instance
 // ─── Create instance from template ───────────────────────────────────────────
 
 /**
- * Issues a SWMS to a project or job by copying the template's current
- * title/body/hazards into a new active instance at version 1.
+ * Issues a SWMS to a project or job: snapshots the template's full structure
+ * (document control, HRCW items, requirements, steps, stop-work triggers,
+ * emergency scenarios, references — plus legacy body/hazards for back-compat)
+ * into a new active instance at version 1, and captures the project-specific
+ * details, confirmed HRCW answers and emergency contacts supplied at issue.
  */
 export async function createSwmsInstance(data: unknown): Promise<Result> {
   await requireRole('admin', 'office', 'supervisor')
 
-  const parsed = swmsInstanceCreateSchema.safeParse(data)
+  const parsed = swmsInstanceCreateV2Schema.safeParse(data)
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
   }
@@ -33,11 +40,19 @@ export async function createSwmsInstance(data: unknown): Promise<Result> {
 
   const { data: template } = await supabase
     .from('swms_templates')
-    .select('id, title, body, hazards, active')
+    .select(
+      'id, title, body, hazards, active, doc_control, hrcw_items, requirements, steps, stop_work_triggers, emergency_scenarios, references_list'
+    )
     .eq('id', parsed.data.template_id)
     .single()
   if (!template) return { error: 'SWMS template not found' }
   if (!template.active) return { error: 'That SWMS template is inactive' }
+
+  // One confirmed answer per template item (office answer, else suggestion).
+  const hrcwAnswers = normalizeHrcwAnswers(
+    parseHrcwItems(template.hrcw_items),
+    parsed.data.hrcw_answers
+  )
 
   const { error } = await supabase.from('swms_instances').insert({
     template_id: template.id,
@@ -46,6 +61,16 @@ export async function createSwmsInstance(data: unknown): Promise<Result> {
     title: template.title,
     body: template.body,
     hazards: template.hazards,
+    doc_control: template.doc_control,
+    hrcw_items: template.hrcw_items,
+    requirements: template.requirements,
+    steps: template.steps,
+    stop_work_triggers: template.stop_work_triggers,
+    emergency_scenarios: template.emergency_scenarios,
+    references_list: template.references_list,
+    project_details: parsed.data.project_details,
+    hrcw_answers: hrcwAnswers,
+    emergency_contacts: parsed.data.emergency_contacts,
     version: 1,
     status: 'active',
   })

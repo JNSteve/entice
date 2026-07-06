@@ -86,7 +86,7 @@ export default async function JobDetailPage({
     fetchSwmsInstances(supabase, 'job', id),
     supabase
       .from('swms_templates')
-      .select('id, title, version')
+      .select('id, title, version, hrcw_items')
       .eq('active', true)
       .order('title'),
   ])

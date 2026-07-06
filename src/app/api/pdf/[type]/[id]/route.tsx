@@ -11,7 +11,23 @@ import { InvoicePdf } from '@/pdf/InvoicePdf'
 import { PoPdf } from '@/pdf/PoPdf'
 import { ClaimPdf, type ClaimPdfLine } from '@/pdf/ClaimPdf'
 import { DiaryPdf, type DiaryPdfDay, type DiaryPdfPhoto } from '@/pdf/DiaryPdf'
-import { SwmsPdf, type SwmsPdfSignature } from '@/pdf/SwmsPdf'
+import {
+  SwmsPdf,
+  type SwmsPdfChange,
+  type SwmsPdfRow,
+  type SwmsPdfSignature,
+} from '@/pdf/SwmsPdf'
+import {
+  HRCW_ANSWER_LABELS,
+  SWMS_EMERGENCY_CONTACT_LABELS,
+  SWMS_PROJECT_DETAIL_LABELS,
+  SWMS_REQUIREMENT_LABELS,
+  SWMS_STRUCTURE_COLUMNS,
+  parseSwmsStructure,
+  type SwmsEmergencyContacts,
+  type SwmsProjectDetails,
+  type SwmsRequirements,
+} from '@/lib/swms'
 import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
 import { FormPdf, type FormPdfSignon } from '@/pdf/FormPdf'
 import { IncidentPdf, type IncidentPdfAction } from '@/pdf/IncidentPdf'
@@ -99,7 +115,7 @@ import {
   type ComplianceState,
 } from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
-import type { SwmsHazard, FormField, FormTemplateKind } from '@/lib/zod'
+import type { FormField, FormTemplateKind } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
 
 export const runtime = 'nodejs'
@@ -735,24 +751,42 @@ async function diaryPdf(id: string): Promise<Response> {
 
 // ─── SWMS ────────────────────────────────────────────────────────────────────
 
+/** Non-empty {label, value} rows from a label map + values record. */
+function labelValueRows(
+  labels: Record<string, string>,
+  values: Record<string, string>
+): SwmsPdfRow[] {
+  return Object.entries(labels)
+    .filter(([key]) => values[key]?.trim())
+    .map(([key, label]) => ({ label, value: values[key] }))
+}
+
 async function swmsPdf(id: string): Promise<Response> {
   const supabase = await createClient()
 
-  const [{ data: instance }, { data: signatures }, { data: settings }] =
+  const [{ data: instance }, { data: signatures }, { data: auditRows }, { data: settings }] =
     await Promise.all([
       supabase
         .from('swms_instances')
         .select(
-          `id, title, body, hazards, version, status, created_at,
+          `id, title, body, hazards, version, status, created_at, ${SWMS_STRUCTURE_COLUMNS},
            projects(number, name), jobs(number, title)`
         )
         .eq('id', id)
         .single(),
       supabase
         .from('swms_signatures')
-        .select('name, company, external, signature_path, signature_data, version, signed_at')
+        .select(
+          'name, company, external, signature_path, signature_data, version, signed_at, profiles(role)'
+        )
         .eq('swms_instance_id', id)
         .order('signed_at'),
+      supabase
+        .from('audit_log')
+        .select('at, actor_name, action, detail')
+        .eq('entity_type', 'swms_instances')
+        .eq('entity_id', id)
+        .order('at'),
       supabase
         .from('settings')
         .select('company_name, abn, address, phone, email, logo_path')
@@ -772,6 +806,8 @@ async function swmsPdf(id: string): Promise<Response> {
     : jobRel
       ? `${jobRel.number} — ${jobRel.title}`
       : '—'
+
+  const structure = parseSwmsStructure(instance)
 
   const currentVersion = Number(instance.version)
   const currentSigs = (signatures ?? []).filter(
@@ -796,10 +832,16 @@ async function swmsPdf(id: string): Promise<Response> {
   const pdfSignatures: SwmsPdfSignature[] = currentSigs.map((s) => {
     const company = s.company as string | null
     const external = Boolean(s.external)
+    const profileRel = s.profiles as unknown as { role: string } | null
+    const role = external
+      ? 'External'
+      : profileRel?.role
+        ? profileRel.role.charAt(0).toUpperCase() + profileRel.role.slice(1)
+        : '—'
     return {
-      name: external
-        ? `${s.name as string} (External${company ? ` — ${company}` : ''})`
-        : (s.name as string),
+      name: s.name as string,
+      role,
+      company: external ? (company ?? '—') : (settings?.company_name ?? '—'),
       date: fmtDate(s.signed_at),
       version: Number(s.version),
       imageUrl: s.signature_path
@@ -807,6 +849,42 @@ async function swmsPdf(id: string): Promise<Response> {
         : ((s.signature_data as string | null) ?? null),
     }
   })
+
+  // Review/change record: issue + version bumps + supersede from the audit log.
+  const changes: SwmsPdfChange[] = []
+  for (const row of auditRows ?? []) {
+    const detail = (row.detail ?? {}) as {
+      changed?: Record<string, { from?: unknown; to?: unknown }>
+    }
+    if (row.action === 'insert') {
+      changes.push({
+        date: fmtDate(row.at as string),
+        description: 'Issued (v1)',
+        by: (row.actor_name as string) ?? 'system',
+      })
+    } else if (row.action === 'update' && detail.changed?.version) {
+      changes.push({
+        date: fmtDate(row.at as string),
+        description: `Revised to v${detail.changed.version.to} — workers must re-sign`,
+        by: (row.actor_name as string) ?? 'system',
+      })
+    } else if (row.action === 'update' && detail.changed?.status) {
+      changes.push({
+        date: fmtDate(row.at as string),
+        description: `Status changed to ${String(detail.changed.status.to).replace(/"/g, '')}`,
+        by: (row.actor_name as string) ?? 'system',
+      })
+    }
+  }
+
+  const docControlRows: SwmsPdfRow[] = [
+    structure.docControl.prepared_by.trim()
+      ? { label: 'Prepared by', value: structure.docControl.prepared_by }
+      : null,
+    structure.docControl.approved_by.trim()
+      ? { label: 'Approved by', value: structure.docControl.approved_by }
+      : null,
+  ].filter((r): r is SwmsPdfRow => r !== null)
 
   const buffer = await renderToBuffer(
     <SwmsPdf
@@ -818,16 +896,33 @@ async function swmsPdf(id: string): Promise<Response> {
         date: fmtDate(instance.created_at),
       }}
       company={toCompany(settings)}
-      body={instance.body ?? null}
-      hazards={((instance.hazards as SwmsHazard[] | null) ?? []).map((h) => ({
-        task: h.task,
-        hazards: h.hazards,
-        risk: h.risk,
-        controls: h.controls,
-        residual_risk: h.residual_risk,
+      docControl={docControlRows}
+      scopeNote={structure.docControl.scope_note.trim()}
+      projectDetails={labelValueRows(
+        SWMS_PROJECT_DETAIL_LABELS,
+        structure.projectDetails as SwmsProjectDetails
+      )}
+      hrcw={structure.hrcwItems.map((item) => ({
+        label: item.label,
+        value: structure.hrcwAnswers[item.id]
+          ? HRCW_ANSWER_LABELS[structure.hrcwAnswers[item.id]]
+          : '—',
       }))}
+      requirements={labelValueRows(
+        SWMS_REQUIREMENT_LABELS,
+        structure.requirements as SwmsRequirements
+      )}
+      steps={structure.steps}
+      stopWorkTriggers={structure.stopWorkTriggers}
+      emergencyContacts={labelValueRows(
+        SWMS_EMERGENCY_CONTACT_LABELS,
+        structure.emergencyContacts as SwmsEmergencyContacts
+      )}
+      emergencyScenarios={structure.emergencyScenarios}
+      referencesList={structure.referencesList}
       signatures={pdfSignatures}
       earlierSignatureCount={earlierSignatureCount}
+      changes={changes}
     />
   )
 

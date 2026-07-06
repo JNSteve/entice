@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { SwmsHazard } from '@/lib/zod'
+import { parseSwmsStructure } from '@/lib/swms'
 import { todayAU, dateAU } from '@/lib/tz'
 
 // ─── Field worker SWMS list ──────────────────────────────────────────────────
@@ -128,7 +128,7 @@ export interface SwmsExternalSigner {
 export interface SwmsInstanceListRow {
   id: string
   title: string
-  hazardCount: number
+  stepCount: number
   version: number
   status: 'active' | 'superseded'
   created_at: string
@@ -154,7 +154,7 @@ export async function fetchSwmsInstances(
   const [{ data: instances }, { data: crew }] = await Promise.all([
     supabase
       .from('swms_instances')
-      .select('id, title, hazards, version, status, created_at')
+      .select('id, title, steps, hazards, version, status, created_at')
       .eq(column, parentId)
       .order('created_at', { ascending: false }),
     supabase
@@ -207,7 +207,7 @@ export async function fetchSwmsInstances(
     return {
       id: instance.id as string,
       title: instance.title as string,
-      hazardCount: ((instance.hazards as SwmsHazard[] | null) ?? []).length,
+      stepCount: parseSwmsStructure(instance).steps.length,
       version: Number(instance.version),
       status: instance.status as 'active' | 'superseded',
       created_at: instance.created_at as string,

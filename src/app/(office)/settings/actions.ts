@@ -13,11 +13,11 @@ import {
   costCodeSchema,
   plantSchema,
   checklistTemplateSchema,
-  swmsTemplateSchema,
   formTemplateSchema,
   competencyTypeSchema,
   roleRequirementSchema,
 } from '@/lib/zod'
+import { swmsTemplateV2Schema } from '@/lib/swms'
 
 // ─── Company settings ────────────────────────────────────────────────────────
 
@@ -280,12 +280,39 @@ export async function deleteChecklistTemplate(
 
 // ─── SWMS templates ──────────────────────────────────────────────────────────
 
+/** Columns compared for the content-change version bump. */
+const SWMS_CONTENT_KEYS = [
+  'title',
+  'doc_control',
+  'hrcw_items',
+  'requirements',
+  'steps',
+  'stop_work_triggers',
+  'emergency_scenarios',
+  'references_list',
+] as const
+
+/** JSON.stringify with sorted object keys — Postgres jsonb reorders keys, so a
+ * naive stringify comparison would flag every save as a content change. */
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(stableJson).join(',')}]`
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+      .map(([k, v]) => `${JSON.stringify(k)}:${stableJson(v)}`)
+    return `{${entries.join(',')}}`
+  }
+  return JSON.stringify(value) ?? 'null'
+}
+
 export async function upsertSwmsTemplate(
   data: unknown
 ): Promise<{ error?: string }> {
   await requireRole('admin')
 
-  const parsed = swmsTemplateSchema.safeParse(data)
+  const parsed = swmsTemplateV2Schema.safeParse(data)
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
   }
@@ -296,16 +323,17 @@ export async function upsertSwmsTemplate(
   if (id) {
     const { data: current } = await supabase
       .from('swms_templates')
-      .select('title, body, hazards, version')
+      .select(
+        'title, doc_control, hrcw_items, requirements, steps, stop_work_triggers, emergency_scenarios, references_list, version'
+      )
       .eq('id', id)
       .single()
     if (!current) return { error: 'SWMS template not found' }
 
     // Bump the version only when the content actually changed.
-    const changed =
-      current.title !== rest.title ||
-      (current.body ?? null) !== rest.body ||
-      JSON.stringify(current.hazards) !== JSON.stringify(rest.hazards)
+    const changed = SWMS_CONTENT_KEYS.some(
+      (key) => stableJson(current[key]) !== stableJson(rest[key])
+    )
 
     const { error } = await supabase
       .from('swms_templates')

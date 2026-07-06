@@ -905,6 +905,10 @@ export const RISK_LEVEL_LABELS: Record<RiskLevel, string> = {
   L: 'Low',
 }
 
+/** Legacy flat hazard row (pre-SWMS-2.0). Kept for reading old body/hazards
+ * columns — migration 0030 maps these into structured steps (src/lib/swms.ts,
+ * which also holds the template/instance schemas that replaced the old
+ * swmsTemplateSchema / swmsInstanceCreateSchema). */
 export const swmsHazardSchema = z.object({
   task: z.string().min(1, 'Task is required'),
   hazards: z.string().min(1, 'Hazards are required'),
@@ -914,35 +918,6 @@ export const swmsHazardSchema = z.object({
 })
 
 export type SwmsHazard = z.infer<typeof swmsHazardSchema>
-
-export const swmsTemplateSchema = z.object({
-  id: z.string().uuid().optional(),
-  title: z.string().min(1, 'Title is required'),
-  body: optionalText,
-  hazards: z.array(swmsHazardSchema).min(1, 'Add at least one hazard row'),
-  active: z.boolean().default(true),
-})
-
-export type SwmsTemplateInput = z.infer<typeof swmsTemplateSchema>
-
-export const swmsInstanceCreateSchema = z
-  .object({
-    template_id: z.uuid('Pick a template'),
-    project_id: z
-      .uuid()
-      .nullish()
-      .transform((v) => v ?? null),
-    job_id: z
-      .uuid()
-      .nullish()
-      .transform((v) => v ?? null),
-  })
-  .refine(
-    (d) => d.project_id !== null || d.job_id !== null,
-    'Attach the SWMS to a project or job'
-  )
-
-export type SwmsInstanceCreateInput = z.infer<typeof swmsInstanceCreateSchema>
 
 export const swmsSignSchema = z.object({
   instance_id: z.uuid(),

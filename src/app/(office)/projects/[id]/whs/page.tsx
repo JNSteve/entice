@@ -74,7 +74,7 @@ export default async function ProjectWhsPage({
     fetchSwmsInstances(supabase, 'project', id),
     supabase
       .from('swms_templates')
-      .select('id, title, version')
+      .select('id, title, version, hrcw_items')
       .eq('active', true)
       .order('title'),
     supabase

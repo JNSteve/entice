@@ -73,7 +73,9 @@ export default async function SettingsPage({
       .order('title'),
     supabase
       .from('swms_templates')
-      .select('id, title, body, hazards, version, active')
+      .select(
+        'id, title, body, hazards, version, active, doc_control, hrcw_items, requirements, steps, stop_work_triggers, emergency_scenarios, references_list'
+      )
       .order('title'),
     supabase
       .from('form_templates')

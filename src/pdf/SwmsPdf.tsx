@@ -1,22 +1,44 @@
-import { Document, Page, View, Text, Image, StyleSheet } from '@react-pdf/renderer'
-import type { DocCompany } from './DocShell'
-import { palette, fontSize, font, headerStyles, tableStyles } from './theme'
+import type { ReactNode } from 'react'
+import { View, Text, Image, StyleSheet } from '@react-pdf/renderer'
+import { DocShell, type DocCompany } from './DocShell'
+import { palette, fontSize, tableStyles } from './theme'
 
-export type SwmsPdfHazard = {
-  task: string
+// ─── Props ───────────────────────────────────────────────────────────────────
+
+export type SwmsPdfStep = {
+  step: string
   hazards: string
-  risk: string
+  initial_risk: string
   controls: string
   residual_risk: string
+  responsible: string
+}
+
+export type SwmsPdfRow = { label: string; value: string }
+
+export type SwmsPdfScenario = {
+  scenario: string
+  immediate_action: string
+  notification: string
 }
 
 export type SwmsPdfSignature = {
   name: string
+  /** Profile role for internal signers, "External" for share-link signers. */
+  role: string
+  company: string
   /** Pre-formatted date, e.g. "12/06/2026". */
   date: string
   version: number
-  /** Signed https URL of the PNG, or null when unavailable. */
+  /** Signed https URL or data URL of the PNG, or null when unavailable. */
   imageUrl: string | null
+}
+
+export type SwmsPdfChange = {
+  /** Pre-formatted date. */
+  date: string
+  description: string
+  by: string
 }
 
 export type SwmsPdfProps = {
@@ -30,88 +52,60 @@ export type SwmsPdfProps = {
     date: string
   }
   company: DocCompany
-  body: string | null
-  hazards: SwmsPdfHazard[]
+  /** Document control rows (prepared by, approved by, project, …). */
+  docControl: SwmsPdfRow[]
+  scopeNote: string
+  projectDetails: SwmsPdfRow[]
+  /** HRCW checklist items with their confirmed answers ("Yes"/"No"/"N/A"). */
+  hrcw: SwmsPdfRow[]
+  requirements: SwmsPdfRow[]
+  steps: SwmsPdfStep[]
+  stopWorkTriggers: string[]
+  emergencyContacts: SwmsPdfRow[]
+  emergencyScenarios: SwmsPdfScenario[]
+  referencesList: string[]
   /** Current-version signatures only. */
   signatures: SwmsPdfSignature[]
   /** Count of signatures pinned to earlier versions. */
   earlierSignatureCount: number
+  /** Review / change record (issue + revisions), oldest first. */
+  changes: SwmsPdfChange[]
 }
 
-const FOOTER_HEIGHT = 46
+// ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
-  page: {
-    fontFamily: font.regular,
-    fontSize: fontSize.base,
-    color: palette.slate900,
-    paddingTop: 36,
-    paddingHorizontal: 40,
-    paddingBottom: FOOTER_HEIGHT + 24,
-    backgroundColor: palette.white,
-  },
-  footer: {
-    position: 'absolute',
-    left: 40,
-    right: 40,
-    bottom: 22,
-    borderTopWidth: 0.5,
-    borderTopColor: palette.slate300,
-    paddingTop: 6,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    gap: 16,
-  },
-  footerText: {
-    flex: 1,
-    fontSize: fontSize.xs,
-    color: palette.slate500,
-  },
-  pageNumber: {
-    fontSize: fontSize.xs,
-    color: palette.slate500,
-    flexShrink: 0,
-  },
-  metaRow: {
-    flexDirection: 'row',
-    gap: 24,
-    marginBottom: 12,
-  },
-  metaBlock: {
-    flexDirection: 'column',
-    gap: 2,
-  },
-  metaLabel: {
-    fontSize: fontSize.xs,
-    fontFamily: font.bold,
-    color: palette.slate500,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  metaValue: {
-    fontSize: fontSize.md,
-    color: palette.slate900,
-  },
-  section: {
-    marginBottom: 12,
-  },
-  sectionLabel: {
-    fontFamily: font.bold,
-    fontSize: fontSize.sm,
-    color: palette.slate500,
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginBottom: 3,
-  },
-  bodyText: {
+  scopeText: {
     fontSize: fontSize.base,
     color: palette.slate900,
     lineHeight: 1.5,
+    marginBottom: 2,
+  },
+  noteText: {
+    fontSize: fontSize.sm,
+    color: palette.slate500,
+    lineHeight: 1.5,
+    marginBottom: 6,
+  },
+  bulletRow: {
+    flexDirection: 'row',
+    gap: 5,
+    paddingVertical: 2,
+    paddingHorizontal: 8,
+  },
+  bulletMark: {
+    fontSize: fontSize.base,
+    color: palette.slate700,
+  },
+  bulletText: {
+    flex: 1,
+    fontSize: fontSize.base,
+    color: palette.slate900,
+    lineHeight: 1.4,
   },
   signatureImage: {
     width: 90,
-    height: 30,
+    height: 26,
     objectFit: 'contain',
     objectPositionX: 0,
   },
@@ -124,52 +118,194 @@ const styles = StyleSheet.create({
     color: palette.slate500,
     marginTop: 4,
   },
+  matrixCell: {
+    fontSize: fontSize.sm,
+    color: palette.slate700,
+    textAlign: 'center',
+  },
+  matrixLead: {
+    fontSize: fontSize.sm,
+    color: palette.slate700,
+  },
 })
 
-// Hazards columns — Task | Hazards | Risk | Controls | Residual
-const hazardCol = StyleSheet.create({
-  task: { width: '20%' },
-  hazards: { width: '26%' },
-  risk: { width: '8%' },
-  controls: { width: '36%' },
-  residual: { width: '10%' },
+// Column widths
+const rowCol = StyleSheet.create({
+  label: { width: '32%' },
+  value: { width: '68%' },
 })
-
-// Signatures columns — Name | Signed | Version | Signature
+const hrcwCol = StyleSheet.create({
+  item: { width: '86%' },
+  answer: { width: '14%' },
+})
+const stepCol = StyleSheet.create({
+  step: { width: '16%' },
+  hazards: { width: '20%' },
+  initial: { width: '7%' },
+  controls: { width: '34%' },
+  residual: { width: '8%' },
+  responsible: { width: '15%' },
+})
+const scenarioCol = StyleSheet.create({
+  scenario: { width: '24%' },
+  action: { width: '40%' },
+  notification: { width: '36%' },
+})
 const sigCol = StyleSheet.create({
-  name: { width: '34%' },
-  date: { width: '18%' },
-  version: { width: '12%' },
-  signature: { width: '36%' },
+  name: { width: '24%' },
+  role: { width: '12%' },
+  company: { width: '18%' },
+  date: { width: '14%' },
+  signature: { width: '32%' },
+})
+const changeCol = StyleSheet.create({
+  date: { width: '15%' },
+  description: { width: '60%' },
+  by: { width: '25%' },
+})
+const matrixCol = StyleSheet.create({
+  lead: { width: '30%' },
+  cell: { width: '14%' },
 })
 
-function HazardsTable({ hazards }: { hazards: SwmsPdfHazard[] }) {
-  if (hazards.length === 0) return null
+// ─── Building blocks ─────────────────────────────────────────────────────────
 
+function SectionTable({
+  title,
+  children,
+}: {
+  title: string
+  children: ReactNode
+}) {
   return (
-    <View style={[tableStyles.table, styles.section]}>
+    <View style={tableStyles.table}>
       <View style={tableStyles.sectionTitleRow}>
-        <Text style={tableStyles.sectionTitle}>Hazards &amp; controls</Text>
+        <Text style={tableStyles.sectionTitle}>{title}</Text>
       </View>
-      <View style={tableStyles.headRow}>
-        <Text style={[tableStyles.headCell, hazardCol.task]}>Task</Text>
-        <Text style={[tableStyles.headCell, hazardCol.hazards]}>Hazards</Text>
-        <Text style={[tableStyles.headCell, hazardCol.risk]}>Risk</Text>
-        <Text style={[tableStyles.headCell, hazardCol.controls]}>Controls</Text>
-        <Text style={[tableStyles.headCell, hazardCol.residual]}>Residual</Text>
-      </View>
-      {hazards.map((h, i) => (
+      {children}
+    </View>
+  )
+}
+
+function LabelValueRows({ rows }: { rows: SwmsPdfRow[] }) {
+  return (
+    <>
+      {rows.map((r, i) => (
         <View key={i} style={tableStyles.row} wrap={false}>
-          <Text style={[tableStyles.cell, hazardCol.task]}>{h.task}</Text>
-          <Text style={[tableStyles.cell, hazardCol.hazards]}>{h.hazards}</Text>
-          <Text style={[tableStyles.cell, hazardCol.risk]}>{h.risk}</Text>
-          <Text style={[tableStyles.cell, hazardCol.controls]}>{h.controls}</Text>
-          <Text style={[tableStyles.cell, hazardCol.residual]}>
-            {h.residual_risk}
-          </Text>
+          <Text style={[tableStyles.cellMuted, rowCol.label]}>{r.label}</Text>
+          <Text style={[tableStyles.cell, rowCol.value]}>{r.value}</Text>
         </View>
       ))}
-    </View>
+    </>
+  )
+}
+
+function BulletList({ items }: { items: string[] }) {
+  return (
+    <>
+      {items.map((item, i) => (
+        <View key={i} style={styles.bulletRow} wrap={false}>
+          <Text style={styles.bulletMark}>-</Text>
+          <Text style={styles.bulletText}>{item}</Text>
+        </View>
+      ))}
+    </>
+  )
+}
+
+// ─── Static risk matrix reference (H/M/L rating rules) ───────────────────────
+
+const MATRIX_HEADERS = ['Common', 'Probable', 'Occasional', 'Rare', 'Practically never']
+const MATRIX_ROWS: { consequence: string; scores: number[] }[] = [
+  { consequence: 'Fatality', scores: [1, 2, 4, 7, 11] },
+  { consequence: 'Permanent disability or disease', scores: [3, 5, 8, 12, 16] },
+  { consequence: 'Lost time injury', scores: [6, 9, 13, 17, 20] },
+  { consequence: 'Medical treatment injury', scores: [10, 14, 18, 21, 23] },
+  { consequence: 'Minor injury or first aid', scores: [15, 19, 22, 24, 25] },
+]
+const MATRIX_BANDS: SwmsPdfRow[] = [
+  {
+    label: '1-6 — High (H)',
+    value:
+      'Do not start until controls are confirmed by the responsible director. Escalate if residual risk remains high.',
+  },
+  {
+    label: '7-15 — Medium (M)',
+    value:
+      'Proceed only with the nominated controls, competent workers, supervision and active monitoring.',
+  },
+  {
+    label: '16-25 — Low (L)',
+    value: 'Proceed with routine controls and monitor for changed conditions.',
+  },
+]
+
+function RiskMatrixReference() {
+  return (
+    <SectionTable title="Risk rating reference (H/M/L)">
+      <View style={{ paddingHorizontal: 8, paddingTop: 6 }}>
+        <Text style={styles.noteText}>
+          Controls are selected using the hierarchy of controls: elimination
+          first, then substitution, isolation, engineering and administrative
+          controls. PPE is the last line of defence. Ratings in this SWMS are
+          the practical H/M/L ratings below; the numeric matrix is reference
+          only and is not the corporate risk register scale.
+        </Text>
+      </View>
+      <View style={tableStyles.headRow}>
+        <Text style={[tableStyles.headCell, matrixCol.lead]}>
+          Consequence \ Likelihood
+        </Text>
+        {MATRIX_HEADERS.map((h) => (
+          <Text key={h} style={[tableStyles.headCell, matrixCol.cell, { textAlign: 'center' }]}>
+            {h}
+          </Text>
+        ))}
+      </View>
+      {MATRIX_ROWS.map((row, i) => (
+        <View key={i} style={tableStyles.row} wrap={false}>
+          <Text style={[styles.matrixLead, matrixCol.lead]}>{row.consequence}</Text>
+          {row.scores.map((s, j) => (
+            <Text key={j} style={[styles.matrixCell, matrixCol.cell]}>
+              {s}
+            </Text>
+          ))}
+        </View>
+      ))}
+      <LabelValueRows rows={MATRIX_BANDS} />
+    </SectionTable>
+  )
+}
+
+// ─── Main sections ───────────────────────────────────────────────────────────
+
+function StepsTable({ steps }: { steps: SwmsPdfStep[] }) {
+  if (steps.length === 0) return null
+  return (
+    <SectionTable title="Work steps, hazards & controls">
+      <View style={tableStyles.headRow}>
+        <Text style={[tableStyles.headCell, stepCol.step]}>Work step</Text>
+        <Text style={[tableStyles.headCell, stepCol.hazards]}>Key hazards</Text>
+        <Text style={[tableStyles.headCell, stepCol.initial]}>Initial</Text>
+        <Text style={[tableStyles.headCell, stepCol.controls]}>Required controls</Text>
+        <Text style={[tableStyles.headCell, stepCol.residual]}>Residual</Text>
+        <Text style={[tableStyles.headCell, stepCol.responsible]}>
+          Responsible / evidence
+        </Text>
+      </View>
+      {steps.map((s, i) => (
+        <View key={i} style={tableStyles.row} wrap={false}>
+          <Text style={[tableStyles.cell, stepCol.step]}>
+            {i + 1}. {s.step}
+          </Text>
+          <Text style={[tableStyles.cell, stepCol.hazards]}>{s.hazards}</Text>
+          <Text style={[tableStyles.cell, stepCol.initial]}>{s.initial_risk}</Text>
+          <Text style={[tableStyles.cell, stepCol.controls]}>{s.controls}</Text>
+          <Text style={[tableStyles.cell, stepCol.residual]}>{s.residual_risk}</Text>
+          <Text style={[tableStyles.cell, stepCol.responsible]}>{s.responsible}</Text>
+        </View>
+      ))}
+    </SectionTable>
   )
 }
 
@@ -181,14 +317,12 @@ function SignatureTable({
   earlierSignatureCount: number
 }) {
   return (
-    <View style={[tableStyles.table, styles.section]}>
-      <View style={tableStyles.sectionTitleRow}>
-        <Text style={tableStyles.sectionTitle}>Sign-on register</Text>
-      </View>
+    <SectionTable title="Worker sign-on register (digital)">
       <View style={tableStyles.headRow}>
         <Text style={[tableStyles.headCell, sigCol.name]}>Name</Text>
+        <Text style={[tableStyles.headCell, sigCol.role]}>Role</Text>
+        <Text style={[tableStyles.headCell, sigCol.company]}>Company</Text>
         <Text style={[tableStyles.headCell, sigCol.date]}>Signed</Text>
-        <Text style={[tableStyles.headCell, sigCol.version]}>Version</Text>
         <Text style={[tableStyles.headCell, sigCol.signature]}>Signature</Text>
       </View>
       {signatures.length === 0 ? (
@@ -199,8 +333,9 @@ function SignatureTable({
         signatures.map((s, i) => (
           <View key={i} style={tableStyles.row} wrap={false}>
             <Text style={[tableStyles.cell, sigCol.name]}>{s.name}</Text>
+            <Text style={[tableStyles.cell, sigCol.role]}>{s.role}</Text>
+            <Text style={[tableStyles.cell, sigCol.company]}>{s.company}</Text>
             <Text style={[tableStyles.cell, sigCol.date]}>{s.date}</Text>
-            <Text style={[tableStyles.cell, sigCol.version]}>v{s.version}</Text>
             <View style={sigCol.signature}>
               {s.imageUrl ? (
                 // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt prop
@@ -213,108 +348,188 @@ function SignatureTable({
         ))
       )}
       {earlierSignatureCount > 0 && (
-        <Text style={styles.earlierNote}>
-          {earlierSignatureCount}{' '}
-          {earlierSignatureCount === 1 ? 'signature' : 'signatures'} for earlier
-          versions not shown.
-        </Text>
+        <View style={{ paddingHorizontal: 8 }}>
+          <Text style={styles.earlierNote}>
+            {earlierSignatureCount}{' '}
+            {earlierSignatureCount === 1 ? 'signature' : 'signatures'} for earlier
+            versions not shown. Workers re-sign after every revision.
+          </Text>
+        </View>
       )}
-    </View>
+    </SectionTable>
   )
 }
 
+// ─── Document ────────────────────────────────────────────────────────────────
+
 /**
- * Safe work method statement export: title block (project/job, version,
- * status), safe work method body, hazards table and the current-version
- * sign-on register with signature images.
+ * Full-layout SWMS export following the professional SWMS anatomy:
+ * document control, project-specific details, answered HRCW checklist,
+ * minimum competency/PPE/equipment/monitoring, H/M/L rating reference,
+ * work-step risk table, stop-work triggers, emergency response, references,
+ * the digital sign-on register and the review/change record.
  */
 export function SwmsPdf({
   swms,
   company,
-  body,
-  hazards,
+  docControl,
+  scopeNote,
+  projectDetails,
+  hrcw,
+  requirements,
+  steps,
+  stopWorkTriggers,
+  emergencyContacts,
+  emergencyScenarios,
+  referencesList,
   signatures,
   earlierSignatureCount,
+  changes,
 }: SwmsPdfProps) {
-  const companyLines = [
-    company.abn ? `ABN ${company.abn}` : null,
-    company.address,
-    [company.phone, company.email].filter(Boolean).join('  ·  ') || null,
-  ].filter((line): line is string => Boolean(line))
-
-  const bodyParagraphs = (body ?? '')
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-
   return (
-    <Document title={`SWMS — ${swms.title}`} author={company.name}>
-      <Page size="A4" style={styles.page}>
-        <View style={headerStyles.bar}>
-          <View style={headerStyles.companyBlock}>
-            {company.logoUrl ? (
-              // eslint-disable-next-line jsx-a11y/alt-text -- react-pdf Image has no alt prop
-              <Image src={company.logoUrl} style={headerStyles.logo} />
-            ) : null}
-            <Text style={headerStyles.companyName}>{company.name}</Text>
-            {companyLines.map((line, i) => (
-              <Text key={i} style={headerStyles.companyLine}>
-                {line}
-              </Text>
-            ))}
-          </View>
-          <View style={headerStyles.titleBlock}>
-            <Text style={headerStyles.title}>SWMS</Text>
-            <Text style={headerStyles.docNumber}>{swms.title}</Text>
-            <Text style={headerStyles.docDate}>{swms.date}</Text>
-          </View>
-        </View>
-
-        <View style={styles.metaRow}>
-          <View style={styles.metaBlock}>
-            <Text style={styles.metaLabel}>Project / job</Text>
-            <Text style={styles.metaValue}>{swms.parentLabel}</Text>
-          </View>
-          <View style={styles.metaBlock}>
-            <Text style={styles.metaLabel}>Version</Text>
-            <Text style={styles.metaValue}>v{swms.version}</Text>
-          </View>
-          <View style={styles.metaBlock}>
-            <Text style={styles.metaLabel}>Status</Text>
-            <Text style={styles.metaValue}>
-              {swms.status === 'superseded' ? 'Superseded' : 'Active'}
-            </Text>
-          </View>
-        </View>
-
-        {bodyParagraphs.length > 0 && (
-          <View style={styles.section}>
-            <Text style={styles.sectionLabel}>Safe work method</Text>
-            {bodyParagraphs.map((p, i) => (
-              <Text key={i} style={[styles.bodyText, { marginBottom: 4 }]}>
-                {p}
-              </Text>
-            ))}
+    <DocShell
+      title="SWMS"
+      docNumber={swms.title}
+      docDate={swms.date}
+      company={company}
+      footerText={`SWMS — ${swms.title} (v${swms.version}) — ${swms.parentLabel}`}
+    >
+      {/* Document control */}
+      <SectionTable title="Document control">
+        <LabelValueRows
+          rows={[
+            { label: 'Project / job', value: swms.parentLabel },
+            { label: 'Version', value: `v${swms.version}` },
+            {
+              label: 'Status',
+              value: swms.status === 'superseded' ? 'Superseded' : 'Active',
+            },
+            ...docControl,
+          ]}
+        />
+        {scopeNote !== '' && (
+          <View style={{ paddingHorizontal: 8, paddingVertical: 6 }}>
+            <Text style={styles.scopeText}>{scopeNote}</Text>
           </View>
         )}
+      </SectionTable>
 
-        <HazardsTable hazards={hazards} />
-        <SignatureTable
-          signatures={signatures}
-          earlierSignatureCount={earlierSignatureCount}
-        />
+      {/* Project-specific details */}
+      {projectDetails.length > 0 && (
+        <SectionTable title="Project-specific details">
+          <LabelValueRows rows={projectDetails} />
+        </SectionTable>
+      )}
 
-        <View style={styles.footer} fixed>
-          <Text style={styles.footerText}>
-            SWMS — {swms.title} (v{swms.version}) — {swms.parentLabel}
-          </Text>
-          <Text
-            style={styles.pageNumber}
-            render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`}
-            fixed
+      {/* HRCW checklist */}
+      {hrcw.length > 0 && (
+        <SectionTable title="High-risk construction work checklist">
+          <View style={tableStyles.headRow}>
+            <Text style={[tableStyles.headCell, hrcwCol.item]}>Item</Text>
+            <Text style={[tableStyles.headCell, hrcwCol.answer]}>Answer</Text>
+          </View>
+          {hrcw.map((r, i) => (
+            <View key={i} style={tableStyles.row} wrap={false}>
+              <Text style={[tableStyles.cell, hrcwCol.item]}>{r.label}</Text>
+              <Text style={[tableStyles.cell, hrcwCol.answer]}>{r.value}</Text>
+            </View>
+          ))}
+        </SectionTable>
+      )}
+
+      {/* Minimum requirements */}
+      {requirements.length > 0 && (
+        <SectionTable title="Minimum competency, PPE, equipment & monitoring">
+          <LabelValueRows rows={requirements} />
+        </SectionTable>
+      )}
+
+      {/* Hierarchy note + static H/M/L matrix reference */}
+      <RiskMatrixReference />
+
+      {/* Task step table */}
+      <StepsTable steps={steps} />
+
+      {/* Stop-work triggers */}
+      {stopWorkTriggers.length > 0 && (
+        <SectionTable title="Stop-work triggers">
+          <View style={{ paddingVertical: 4 }}>
+            <BulletList items={stopWorkTriggers} />
+          </View>
+        </SectionTable>
+      )}
+
+      {/* Emergency response */}
+      {(emergencyContacts.length > 0 || emergencyScenarios.length > 0) && (
+        <SectionTable title="Emergency response">
+          <LabelValueRows
+            rows={[
+              {
+                label: 'Emergency services',
+                value: '000 (or 112 from a mobile phone)',
+              },
+              ...emergencyContacts,
+            ]}
           />
-        </View>
-      </Page>
-    </Document>
+          {emergencyScenarios.length > 0 && (
+            <>
+              <View style={tableStyles.headRow}>
+                <Text style={[tableStyles.headCell, scenarioCol.scenario]}>Scenario</Text>
+                <Text style={[tableStyles.headCell, scenarioCol.action]}>
+                  Immediate action
+                </Text>
+                <Text style={[tableStyles.headCell, scenarioCol.notification]}>
+                  Notification / follow-up
+                </Text>
+              </View>
+              {emergencyScenarios.map((s, i) => (
+                <View key={i} style={tableStyles.row} wrap={false}>
+                  <Text style={[tableStyles.cell, scenarioCol.scenario]}>{s.scenario}</Text>
+                  <Text style={[tableStyles.cell, scenarioCol.action]}>
+                    {s.immediate_action}
+                  </Text>
+                  <Text style={[tableStyles.cell, scenarioCol.notification]}>
+                    {s.notification}
+                  </Text>
+                </View>
+              ))}
+            </>
+          )}
+        </SectionTable>
+      )}
+
+      {/* References */}
+      {referencesList.length > 0 && (
+        <SectionTable title="References">
+          <View style={{ paddingVertical: 4 }}>
+            <BulletList items={referencesList} />
+          </View>
+        </SectionTable>
+      )}
+
+      {/* Digital sign-on register */}
+      <SignatureTable
+        signatures={signatures}
+        earlierSignatureCount={earlierSignatureCount}
+      />
+
+      {/* Review / change record */}
+      {changes.length > 0 && (
+        <SectionTable title="Review & change record">
+          <View style={tableStyles.headRow}>
+            <Text style={[tableStyles.headCell, changeCol.date]}>Date</Text>
+            <Text style={[tableStyles.headCell, changeCol.description]}>Change</Text>
+            <Text style={[tableStyles.headCell, changeCol.by]}>By</Text>
+          </View>
+          {changes.map((c, i) => (
+            <View key={i} style={tableStyles.row} wrap={false}>
+              <Text style={[tableStyles.cell, changeCol.date]}>{c.date}</Text>
+              <Text style={[tableStyles.cell, changeCol.description]}>{c.description}</Text>
+              <Text style={[tableStyles.cell, changeCol.by]}>{c.by}</Text>
+            </View>
+          ))}
+        </SectionTable>
+      )}
+    </DocShell>
   )
 }

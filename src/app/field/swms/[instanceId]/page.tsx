@@ -4,29 +4,10 @@ import { ArrowLeftIcon, CheckCircle2Icon } from 'lucide-react'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { StatusBadge } from '@/components/StatusBadge'
+import { SwmsFullView } from '@/components/SwmsFullView'
 import { fmtDate } from '@/lib/format'
-import {
-  RISK_LEVEL_LABELS,
-  type RiskLevel,
-  type SwmsHazard,
-} from '@/lib/zod'
+import { SWMS_STRUCTURE_COLUMNS, parseSwmsStructure } from '@/lib/swms'
 import { SignForm } from './sign-form'
-
-const RISK_CHIP: Record<RiskLevel, string> = {
-  H: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300',
-  M: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300',
-  L: 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300',
-}
-
-function RiskChip({ level, label }: { level: RiskLevel; label: string }) {
-  return (
-    <span
-      className={`rounded-full border px-2 py-0.5 text-xs font-medium ${RISK_CHIP[level] ?? RISK_CHIP.M}`}
-    >
-      {label}: {RISK_LEVEL_LABELS[level] ?? level}
-    </span>
-  )
-}
 
 export default async function FieldSwmsInstancePage({
   params,
@@ -42,7 +23,8 @@ export default async function FieldSwmsInstancePage({
   const { data: instance } = await supabase
     .from('swms_instances')
     .select(
-      'id, title, body, hazards, version, status, projects(number, name), jobs(number, title)'
+      `id, title, body, hazards, version, status, ${SWMS_STRUCTURE_COLUMNS},
+       projects(number, name), jobs(number, title)`
     )
     .eq('id', instanceId)
     .single()
@@ -67,11 +49,7 @@ export default async function FieldSwmsInstancePage({
       ? `${jobRel.number} — ${jobRel.title}`
       : '—'
 
-  const hazards = ((instance.hazards as SwmsHazard[] | null) ?? []).filter(Boolean)
-  const bodyParagraphs = (instance.body ?? '')
-    .split(/\n{2,}/)
-    .map((p: string) => p.trim())
-    .filter(Boolean)
+  const structure = parseSwmsStructure(instance)
 
   return (
     <div className="flex flex-col gap-5">
@@ -93,53 +71,7 @@ export default async function FieldSwmsInstancePage({
         <p className="text-sm text-muted-foreground">{parentLabel}</p>
       </div>
 
-      {/* Safe work method */}
-      {bodyParagraphs.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Safe work method
-          </h2>
-          {bodyParagraphs.map((p: string, i: number) => (
-            <p key={i} className="whitespace-pre-wrap text-sm leading-relaxed">
-              {p}
-            </p>
-          ))}
-        </section>
-      )}
-
-      {/* Hazards — mobile-stacked cards */}
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Hazards &amp; controls
-        </h2>
-        {hazards.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hazard rows.</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {hazards.map((h, i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-xl border p-4">
-                <p className="text-sm font-semibold">{h.task}</p>
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Hazards
-                  </p>
-                  <p className="text-sm">{h.hazards}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <RiskChip level={h.risk} label="Risk" />
-                  <RiskChip level={h.residual_risk} label="Residual" />
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Controls
-                  </p>
-                  <p className="text-sm">{h.controls}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
+      <SwmsFullView structure={structure} />
 
       {/* Sign-on */}
       <section className="flex flex-col gap-2 border-t pt-4">

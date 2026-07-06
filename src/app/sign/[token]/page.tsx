@@ -1,13 +1,10 @@
 import { format, isValid, parseISO } from 'date-fns'
 import { ShieldCheckIcon } from 'lucide-react'
 import { FormDataView } from '@/components/FormDataView'
+import { SwmsFullView } from '@/components/SwmsFullView'
 import { createPublicClient } from '@/lib/supabase/public'
-import {
-  RISK_LEVEL_LABELS,
-  type FormField,
-  type RiskLevel,
-  type SwmsHazard,
-} from '@/lib/zod'
+import { parseSwmsStructure } from '@/lib/swms'
+import { type FormField } from '@/lib/zod'
 import { SignClient } from './sign-client'
 
 // Public, token-gated, no auth — always resolve the token fresh.
@@ -19,8 +16,19 @@ interface SharedSwmsDoc {
   type: 'swms'
   title: string
   body: string | null
-  hazards: SwmsHazard[] | null
+  hazards: unknown
   version: number
+  // SWMS 2.0 structured sections (see src/lib/swms.ts / migration 0030)
+  doc_control?: unknown
+  hrcw_items?: unknown
+  hrcw_answers?: unknown
+  requirements?: unknown
+  steps?: unknown
+  stop_work_triggers?: unknown
+  emergency_scenarios?: unknown
+  emergency_contacts?: unknown
+  project_details?: unknown
+  references_list?: unknown
 }
 
 interface SharedFormDoc {
@@ -73,79 +81,9 @@ function ExpiredPage() {
   )
 }
 
-const RISK_CHIP: Record<RiskLevel, string> = {
-  H: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-300',
-  M: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300',
-  L: 'border-green-200 bg-green-50 text-green-700 dark:border-green-900 dark:bg-green-950 dark:text-green-300',
-}
-
-function RiskChip({ level, label }: { level: RiskLevel; label: string }) {
-  return (
-    <span
-      className={`rounded-full border px-2 py-0.5 text-xs font-medium ${RISK_CHIP[level] ?? RISK_CHIP.M}`}
-    >
-      {label}: {RISK_LEVEL_LABELS[level] ?? level}
-    </span>
-  )
-}
-
-/** SWMS read-through — body + hazards as mobile-stacked cards. */
+/** SWMS read-through — the full structured document (SwmsFullView). */
 function SwmsReadThrough({ doc }: { doc: SharedSwmsDoc }) {
-  const hazards = (doc.hazards ?? []).filter(Boolean)
-  const bodyParagraphs = (doc.body ?? '')
-    .split(/\n{2,}/)
-    .map((p) => p.trim())
-    .filter(Boolean)
-
-  return (
-    <>
-      {bodyParagraphs.length > 0 && (
-        <section className="flex flex-col gap-2">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-            Safe work method
-          </h2>
-          {bodyParagraphs.map((p, i) => (
-            <p key={i} className="whitespace-pre-wrap text-sm leading-relaxed">
-              {p}
-            </p>
-          ))}
-        </section>
-      )}
-
-      <section className="flex flex-col gap-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-          Hazards &amp; controls
-        </h2>
-        {hazards.length === 0 ? (
-          <p className="text-sm text-muted-foreground">No hazard rows.</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {hazards.map((h, i) => (
-              <div key={i} className="flex flex-col gap-2 rounded-xl border p-4">
-                <p className="text-sm font-semibold">{h.task}</p>
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Hazards
-                  </p>
-                  <p className="text-sm">{h.hazards}</p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <RiskChip level={h.risk} label="Risk" />
-                  <RiskChip level={h.residual_risk} label="Residual" />
-                </div>
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                    Controls
-                  </p>
-                  <p className="text-sm">{h.controls}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-    </>
-  )
+  return <SwmsFullView structure={parseSwmsStructure(doc)} />
 }
 
 /** Toolbox/induction read-through — the recorded form data. */
