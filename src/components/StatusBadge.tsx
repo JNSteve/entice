@@ -71,6 +71,11 @@ const STATUS_META: Record<string, StatusMeta> = {
   // Green / done / closed
   done:                { label: 'Done',                className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
 
+  // Lot conformance (ITP/lots): open (red) → conforming (green) /
+  // nonconforming (red) → closed (purple)
+  conforming:          { label: 'Conforming',          className: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300' },
+  nonconforming:       { label: 'Nonconforming',       className: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300' },
+
   // Purple / closed
   closed:              { label: 'Closed',              className: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300' },
 }

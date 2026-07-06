@@ -37,6 +37,9 @@ export default async function ProjectProgrammePage({
           'id, task_id, title, required_by, date, status, notified_at, released_at, released_by, release_ref, notes'
         )
         .eq('project_id', id)
+        // Quality-origin hold points (lots) live on the project Quality tab —
+        // the programme register/Gantt shows task hold points only.
+        .eq('origin', 'programme')
         .order('date', { ascending: true })
         .order('created_at', { ascending: true }),
     ])

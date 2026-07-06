@@ -25,6 +25,11 @@ import {
   type AccessReviewRow,
   type ReviewerOption,
 } from './security-section'
+import {
+  ItpSection,
+  type ItpTemplateRow,
+  type ItpTemplateItemRow,
+} from './itp-section'
 
 export type SettingsTab =
   | 'company'
@@ -39,6 +44,7 @@ export type SettingsTab =
   | 'backup'
   | 'errors'
   | 'security'
+  | 'itp'
 
 const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'company', label: 'Company' },
@@ -50,6 +56,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'swms', label: 'SWMS' },
   { value: 'whs-forms', label: 'WHS Forms' },
   { value: 'competencies', label: 'Competencies' },
+  { value: 'itp', label: 'ITP templates' },
   { value: 'backup', label: 'Backups' },
   { value: 'errors', label: 'Errors' },
   { value: 'security', label: 'Security' },
@@ -72,6 +79,8 @@ interface SettingsTabsProps {
   appErrors: AppErrorRow[]
   accessReviews: AccessReviewRow[]
   reviewers: ReviewerOption[]
+  itpTemplates: ItpTemplateRow[]
+  itpTemplateItems: ItpTemplateItemRow[]
 }
 
 export function SettingsTabs({
@@ -91,6 +100,8 @@ export function SettingsTabs({
   appErrors,
   accessReviews,
   reviewers,
+  itpTemplates,
+  itpTemplateItems,
 }: SettingsTabsProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab)
 
@@ -145,6 +156,9 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="security" className="pt-4">
         <SecuritySection reviews={accessReviews} reviewers={reviewers} />
+      </TabsContent>
+      <TabsContent value="itp" className="pt-4">
+        <ItpSection templates={itpTemplates} items={itpTemplateItems} />
       </TabsContent>
     </Tabs>
   )

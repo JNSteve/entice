@@ -418,14 +418,16 @@ export function HoldPointDialog({
 }
 
 // ─── Release dialog ───────────────────────────────────────────────────────────
+// Exported: the project Quality tab reuses this exact release flow for
+// quality-origin (lot) hold points — one release dialog, one server action.
 
-function ReleaseDialog({
+export function ReleaseDialog({
   projectId,
   holdPoint,
   onClose,
 }: {
   projectId: string
-  holdPoint: HoldPoint
+  holdPoint: Pick<HoldPoint, 'id' | 'title'>
   onClose: () => void
 }) {
   const [pending, startTransition] = useTransition()

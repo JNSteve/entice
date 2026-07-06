@@ -1315,6 +1315,7 @@ export const NCR_SOURCES = [
   'supplier',
   'safety',
   'legal_compliance',
+  'itp',
   'other',
 ] as const
 export type NcrSource = (typeof NCR_SOURCES)[number]
@@ -1327,6 +1328,7 @@ export const NCR_SOURCE_LABELS: Record<NcrSource, string> = {
   supplier: 'Supplier',
   safety: 'Safety',
   legal_compliance: 'Legal compliance',
+  itp: 'ITP / Lot',
   other: 'Other',
 }
 
@@ -2765,3 +2767,137 @@ export const envAspectSchema = z.object({
 })
 
 export type EnvAspectInput = z.infer<typeof envAspectSchema>
+// ─── ITP / Lot conformance / test records (ISO 9001 8.5/8.6/8.7) ─────────────
+
+export const ITP_POINT_TYPES = ['hold', 'witness', 'surveillance'] as const
+export type ItpPointType = (typeof ITP_POINT_TYPES)[number]
+
+export const ITP_POINT_TYPE_LABELS: Record<ItpPointType, string> = {
+  hold: 'Hold',
+  witness: 'Witness',
+  surveillance: 'Surveillance',
+}
+
+export const ITP_ITEM_STATUSES = ['pending', 'passed', 'failed', 'na'] as const
+export type ItpItemStatus = (typeof ITP_ITEM_STATUSES)[number]
+
+export const ITP_ITEM_STATUS_LABELS: Record<ItpItemStatus, string> = {
+  pending: 'Pending',
+  passed: 'Passed',
+  failed: 'Failed',
+  na: 'N/A',
+}
+
+// open/conforming/nonconforming are COMPUTED (lot_conformance() in SQL,
+// mirrored by sync triggers); 'closed' is set only by the gated close action.
+export const LOT_STATUSES = [
+  'open',
+  'conforming',
+  'nonconforming',
+  'closed',
+] as const
+export type LotStatus = (typeof LOT_STATUSES)[number]
+
+export const LOT_STATUS_LABELS: Record<LotStatus, string> = {
+  open: 'Open',
+  conforming: 'Conforming',
+  nonconforming: 'Nonconforming',
+  closed: 'Closed',
+}
+
+export const LOT_TEST_TYPES = [
+  'compaction',
+  'concrete_strength',
+  'survey_conformance',
+  'environmental_validation',
+  'other',
+] as const
+export type LotTestType = (typeof LOT_TEST_TYPES)[number]
+
+export const LOT_TEST_TYPE_LABELS: Record<LotTestType, string> = {
+  compaction: 'Compaction',
+  concrete_strength: 'Concrete strength',
+  survey_conformance: 'Survey conformance',
+  environmental_validation: 'Environmental validation',
+  other: 'Other',
+}
+
+export const itpTemplateSchema = z.object({
+  id: z.uuid().optional(),
+  name: z.string().min(1, 'Name is required'),
+  activity: z.string().min(1, 'Activity is required'),
+  discipline: optionalText,
+  active: z.boolean().default(true),
+})
+
+export type ItpTemplateInput = z.infer<typeof itpTemplateSchema>
+
+export const itpTemplateItemSchema = z.object({
+  id: z.uuid().optional(),
+  template_id: z.uuid(),
+  description: z.string().min(1, 'Inspection / test description is required'),
+  acceptance_criteria: z.string().min(1, 'Acceptance criteria are required'),
+  spec_ref: optionalText,
+  point_type: z.enum(ITP_POINT_TYPES).default('surveillance'),
+  record_required: z.boolean().default(true),
+  responsible: optionalText,
+})
+
+export type ItpTemplateItemInput = z.infer<typeof itpTemplateItemSchema>
+
+export const itpAdoptSchema = z.object({
+  project_id: z.uuid(),
+  template_id: z.uuid(),
+})
+
+export type ItpAdoptInput = z.infer<typeof itpAdoptSchema>
+
+export const lotCreateSchema = z.object({
+  project_id: z.uuid(),
+  itp_instance_id: z.uuid(),
+  description: z.string().min(1, 'Describe the work the lot covers'),
+  location: optionalText,
+})
+
+export type LotCreateInput = z.infer<typeof lotCreateSchema>
+
+export const lotInspectionSchema = z.object({
+  lot_id: z.uuid(),
+  itp_instance_item_id: z.uuid(),
+  result: z.enum(['pass', 'fail']),
+  notes: optionalText,
+})
+
+export type LotInspectionInput = z.infer<typeof lotInspectionSchema>
+
+export const lotTestResultSchema = z
+  .object({
+    lot_id: z.uuid(),
+    test_type: z.enum(LOT_TEST_TYPES),
+    description: z.string().min(1, 'Describe the test'),
+    value: z.coerce.number().nullish().transform((v) => v ?? null),
+    uom: optionalText,
+    spec_min: z.coerce.number().nullish().transform((v) => v ?? null),
+    spec_max: z.coerce.number().nullish().transform((v) => v ?? null),
+    pass: z.boolean(),
+    lab_ref: optionalText,
+    tested_on: isoDate.nullish().transform((v) => v ?? null),
+  })
+  .refine(
+    (d) => d.spec_min === null || d.spec_max === null || d.spec_min <= d.spec_max,
+    { message: 'Spec min must be ≤ spec max', path: ['spec_max'] }
+  )
+
+export type LotTestResultInput = z.infer<typeof lotTestResultSchema>
+
+/** Raise an NCR from a failed lot inspection or test (source 'itp'). */
+export const lotRaiseNcrSchema = z.object({
+  kind: z.enum(['inspection', 'test']),
+  record_id: z.uuid(),
+  severity: z.coerce.number().int().min(1).max(5),
+  title: z.string().min(1, 'Title is required'),
+  description: z.string().min(1, 'Describe the nonconformance'),
+  category: optionalText,
+})
+
+export type LotRaiseNcrInput = z.infer<typeof lotRaiseNcrSchema>
