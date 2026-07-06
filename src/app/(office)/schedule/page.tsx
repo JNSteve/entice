@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { nowAU } from '@/lib/tz'
 import { PageHeader } from '@/components/PageHeader'
 import { Button } from '@/components/ui/button'
+import { CalendarFeedCard } from '@/components/CalendarFeedCard'
 import { ScheduleBoard } from './schedule-board'
 import type { AssignmentWithTarget, ProfileRow } from './schedule-board'
 import type { SchedulableJob, SchedulableProject } from './assign-dialog'
@@ -33,7 +34,7 @@ export default async function SchedulePage({
 }: {
   searchParams: Promise<{ week?: string }>
 }) {
-  await requireRole('admin', 'office', 'supervisor')
+  const profile = await requireRole('admin', 'office', 'supervisor')
 
   const { week: weekParam } = await searchParams
 
@@ -92,6 +93,13 @@ export default async function SchedulePage({
     .in('status', ['active', 'practical_completion', 'defects_liability'])
     .order('number')
 
+  // Own calendar-feed token (RLS: select self) for the subscribe card.
+  const { data: feedToken } = await supabase
+    .from('calendar_feed_tokens')
+    .select('token, revoked_at')
+    .eq('profile_id', profile.id)
+    .maybeSingle()
+
   const profileRows: ProfileRow[] = (profiles ?? []) as ProfileRow[]
   const assignmentRows = (assignments ?? []) as unknown as AssignmentWithTarget[]
   const jobRows: SchedulableJob[] = (jobs ?? []) as SchedulableJob[]
@@ -134,6 +142,14 @@ export default async function SchedulePage({
         projects={projectRows}
         todayStr={todayStr}
       />
+
+      <div className="max-w-xl">
+        <CalendarFeedCard
+          initialToken={
+            feedToken && !feedToken.revoked_at ? (feedToken.token as string) : null
+          }
+        />
+      </div>
     </div>
   )
 }

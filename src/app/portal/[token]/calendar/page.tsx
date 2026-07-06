@@ -27,6 +27,7 @@ import {
   STATUS_DOT,
   type PortalBranding,
 } from '../portal-ui'
+import { CalendarSubscribe } from './subscribe'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
 export const dynamic = 'force-dynamic'
@@ -280,6 +281,8 @@ export default async function PortalCalendarPage({
           </ul>
         )}
       </div>
+
+      <CalendarSubscribe token={token} />
     </PortalShell>
   )
 }

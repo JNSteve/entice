@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { todayAU, dateAU } from '@/lib/tz'
+import { CalendarFeedCard } from '@/components/CalendarFeedCard'
 import { MyDayClient, type AssignmentCard, type OpenEntry, type TomorrowItem, type WeekSummary } from './my-day-client'
 
 export default async function MyDayPage() {
@@ -89,6 +90,14 @@ export default async function MyDayPage() {
     .gte('date', weekStartStr)
     .lte('date', todayStr)
     .not('end_at', 'is', null)
+
+  // ─── Calendar feed token (own row only — RLS select self) ────────────────
+
+  const { data: feedToken } = await supabase
+    .from('calendar_feed_tokens')
+    .select('token, revoked_at')
+    .eq('profile_id', profile.id)
+    .maybeSingle()
 
   // ─── Shape data ───────────────────────────────────────────────────────────
 
@@ -209,6 +218,12 @@ export default async function MyDayPage() {
         tomorrow={tomorrow}
         weekSummary={weekSummary}
         today={todayStr}
+      />
+
+      <CalendarFeedCard
+        initialToken={
+          feedToken && !feedToken.revoked_at ? (feedToken.token as string) : null
+        }
       />
     </div>
   )
