@@ -103,6 +103,64 @@ async function main() {
     check('insert costs rejected', false, `insert SUCCEEDED: ${JSON.stringify(inserted)}`)
   }
 
+  // ─── ITP / lots: field is READ-ONLY (SELECT ok, writes rejected) ────────
+
+  console.log('\n── ITP / lots field write-block ──')
+
+  const { error: lotInsertError, data: lotInserted } = await supabase
+    .from('lots')
+    .insert({
+      number: 'LOT-9999',
+      project_id: '00000000-0000-4000-a000-000000000000',
+      itp_instance_id: '00000000-0000-4000-a000-000000000000',
+      description: 'rls-check probe — must never be inserted',
+    })
+    .select()
+  if (lotInsertError) {
+    check('insert lots rejected (field)', true, lotInsertError.message)
+  } else {
+    check('insert lots rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(lotInserted)}`)
+  }
+
+  const { error: inspInsertError, data: inspInserted } = await supabase
+    .from('lot_inspections')
+    .insert({
+      lot_id: '00000000-0000-4000-a000-000000000000',
+      itp_instance_item_id: '00000000-0000-4000-a000-000000000000',
+      result: 'pass',
+    })
+    .select()
+  if (inspInsertError) {
+    check('insert lot_inspections rejected (field)', true, inspInsertError.message)
+  } else {
+    check('insert lot_inspections rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(inspInserted)}`)
+  }
+
+  const { error: tmplInsertError, data: tmplInserted } = await supabase
+    .from('itp_templates')
+    .insert({ name: 'rls probe', activity: 'rls probe' })
+    .select()
+  if (tmplInsertError) {
+    check('insert itp_templates rejected (field)', true, tmplInsertError.message)
+  } else {
+    check('insert itp_templates rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(tmplInserted)}`)
+  }
+
+  // SELECT is allowed (read-only role) — templates must be visible.
+  const { data: tmplRows, error: tmplSelectError } = await supabase
+    .from('itp_templates')
+    .select('id')
+    .limit(1)
+  if (tmplSelectError) {
+    check('select itp_templates allowed (field)', false, tmplSelectError.message)
+  } else {
+    check(
+      'select itp_templates allowed (field)',
+      (tmplRows ?? []).length > 0,
+      `${(tmplRows ?? []).length} row(s) visible`
+    )
+  }
+
   await supabase.auth.signOut()
 
   // ─── Audit log immutability checks ─────────────────────────────────────

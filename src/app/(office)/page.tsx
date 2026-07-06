@@ -30,6 +30,7 @@ import {
   NcrCard,
   PortalActivityCard,
   PropertyComplianceCard,
+  QualityCard,
   QuotesAwaitingCard,
   RetentionDueCard,
   SafetyCard,
@@ -48,6 +49,7 @@ import {
   type PortalActivityData,
   type PortalDecisionRow,
   type PropertyComplianceDueRow,
+  type QualityData,
   type QuoteAwaitingRow,
   type RetentionDueRow,
   type SafetyData,
@@ -599,6 +601,8 @@ async function loadHoldPoints(
   const { data, error } = await supabase
     .from('hold_points')
     .select('id, project_id, title, date, status, projects!inner(number, name, status)')
+    // Quality-origin (lot) hold points have their own dashboard card.
+    .eq('origin', 'programme')
     .neq('status', 'released')
     .lte('date', dateStr(addDays(today, 7)))
     .eq('projects.status', 'active')
@@ -668,6 +672,57 @@ async function loadSafety(
     investigatingCount: investigatingIncidents.length,
     highSeverityCount: highSeverity.length,
     overdueActions,
+  }
+}
+
+// ─── 13b. Quality (ITP / lots) ────────────────────────────────────────────────
+
+async function loadQuality(supabase: Db): Promise<QualityData> {
+  const [lotsRes, hpRes] = await Promise.all([
+    supabase
+      .from('lots')
+      .select('id, number, description, project_id, projects!inner(number, name, status)')
+      .eq('status', 'nonconforming')
+      .eq('projects.status', 'active')
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('hold_points')
+      .select('id, title, date, lot_id, project_id, projects!inner(number, name, status)')
+      .eq('origin', 'quality')
+      .neq('status', 'released')
+      .eq('projects.status', 'active')
+      .order('date', { ascending: true }),
+  ])
+  if (lotsRes.error) throw lotsRes.error
+  if (hpRes.error) throw hpRes.error
+
+  const label = (p: unknown) => {
+    const project = p as { number: string; name: string } | null
+    return project ? `${project.number} — ${project.name}` : '—'
+  }
+
+  return {
+    nonconformingLots: (lotsRes.data ?? []).map((l) => ({
+      id: l.id as string,
+      projectId: l.project_id as string,
+      number: l.number as string,
+      description: l.description as string,
+      projectLabel: label(l.projects),
+    })),
+    openHoldPoints: (hpRes.data ?? []).flatMap((hp) =>
+      hp.lot_id
+        ? [
+            {
+              id: hp.id as string,
+              projectId: hp.project_id as string,
+              lotId: hp.lot_id as string,
+              title: hp.title as string,
+              projectLabel: label(hp.projects),
+              date: hp.date as string,
+            },
+          ]
+        : []
+    ),
   }
 }
 
@@ -960,6 +1015,7 @@ export default async function DashboardPage() {
     ncr,
     systemHealth,
     portalActivity,
+    quality,
   ] = await Promise.all([
     showMoney ? settle(() => loadClaimsDue(supabase, today)) : none,
     showMoney ? settle(() => loadQuotesAwaiting(supabase, today)) : none,
@@ -981,6 +1037,7 @@ export default async function DashboardPage() {
         )
       : none,
     showMoney ? settle(() => loadPortalActivity(supabase, today)) : none,
+    settle(() => loadQuality(supabase)),
   ])
 
   return (
@@ -1014,6 +1071,7 @@ export default async function DashboardPage() {
         <DiariesMissingCard data={diariesMissing ?? null} />
         <SafetyCard data={safety ?? null} />
         <NcrCard data={ncr ?? null} />
+        <QualityCard data={quality ?? null} />
       </div>
     </div>
   )

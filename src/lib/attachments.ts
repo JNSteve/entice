@@ -21,6 +21,7 @@ const PARENT_TYPES = [
   'incident',
   'form_submission',
   'ncr',
+  'lot',
 ] as const
 
 const KINDS = ['photo', 'docket', 'document', 'pdf'] as const
@@ -43,6 +44,7 @@ const PARENT_TABLE: Record<(typeof PARENT_TYPES)[number], string> = {
   incident: 'incidents',
   form_submission: 'form_submissions',
   ncr: 'ncrs',
+  lot: 'lots',
 }
 
 const attachmentInputSchema = z.object({
@@ -86,6 +88,16 @@ async function revalidateParent(
     revalidatePath(`/field/safety/incident/${parentId}`)
   } else if (parentType === 'ncr') {
     revalidatePath(`/whs/ncr/${parentId}`)
+  } else if (parentType === 'lot') {
+    // Lots live under /projects/[id]/quality/lots/[lotId]
+    const { data } = await supabase
+      .from('lots')
+      .select('project_id')
+      .eq('id', parentId)
+      .maybeSingle()
+    if (data?.project_id) {
+      revalidatePath(`/projects/${data.project_id}/quality/lots/${parentId}`)
+    }
   } else if (parentType === 'variation') {
     // Variations live under their project, not at a top-level /variations
     const { data } = await supabase

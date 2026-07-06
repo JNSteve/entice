@@ -332,7 +332,7 @@ export async function setHoldPointStatus(
 
   const { data: hp } = await supabase
     .from('hold_points')
-    .select('id, status, notified_at')
+    .select('id, status, notified_at, lot_id')
     .eq('id', holdPointId)
     .eq('project_id', projectId)
     .single()
@@ -384,6 +384,12 @@ export async function setHoldPointStatus(
   if (error) return { error: error.message }
 
   revalidateProgramme(projectId)
+  // Quality-origin hold points (lots) surface on the Quality tab too — the
+  // release flow is shared, so refresh those pages as well.
+  if (hp.lot_id) {
+    revalidatePath(`/projects/${projectId}/quality`)
+    revalidatePath(`/projects/${projectId}/quality/lots/${hp.lot_id}`)
+  }
   return {}
 }
 

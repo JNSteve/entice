@@ -67,6 +67,13 @@ import {
   type LegalRegisterPdfGroup,
   type LegalRegisterPdfRow,
 } from '@/pdf/LegalRegisterPdf'
+import { ItpPdf, type ItpPdfItem } from '@/pdf/ItpPdf'
+import {
+  LotPdf,
+  type LotPdfHoldPoint,
+  type LotPdfItem,
+  type LotPdfTest,
+} from '@/pdf/LotPdf'
 import { latestEvaluation } from '@/lib/legal'
 import {
   MGMT_REVIEW_INPUT_KEYS,
@@ -177,7 +184,7 @@ export async function GET(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register' || type === 'itp' || type === 'lot'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -237,6 +244,12 @@ export async function GET(
     case 'legal-register':
       // [id] is a placeholder (use 'list') — covers the whole register.
       return legalRegisterPdf()
+    case 'itp':
+      // [id] = itp_instances row id → adopted checklist with statuses
+      return itpPdf(id)
+    case 'lot':
+      // [id] = lots row id → Lot Conformance Report
+      return lotPdf(id)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -963,6 +976,9 @@ async function programmePdf(projectId: string): Promise<Response> {
       .from('hold_points')
       .select('task_id, title, date, status')
       .eq('project_id', projectId)
+      // Quality-origin (lot) hold points have no task — programme PDF shows
+      // task hold points only (lot releases appear on the Lot report).
+      .eq('origin', 'programme')
       .order('date'),
     supabase
       .from('settings')
@@ -2254,6 +2270,268 @@ async function legalRegisterPdf(): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': 'inline; filename="legal-register.pdf"',
+    },
+  })
+}
+
+// ─── ITP / Lot conformance (ISO 9001 8.5/8.6/8.7) ─────────────────────────────
+
+async function itpPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: itp }, { data: items }, { data: lotCountRows }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('itp_instances')
+        .select(
+          `number, title, activity, status, adopted_at,
+           projects(number, name),
+           adopter:profiles!itp_instances_adopted_by_fkey(full_name)`
+        )
+        .eq('id', id)
+        .single(),
+      supabase
+        .from('itp_instance_items')
+        .select(
+          `position, description, acceptance_criteria, spec_ref, point_type,
+           record_required, responsible, status, checked_at,
+           checker:profiles!itp_instance_items_checked_by_fkey(full_name)`
+        )
+        .eq('instance_id', id)
+        .order('position'),
+      supabase.from('lots').select('id').eq('itp_instance_id', id),
+      supabase
+        .from('settings')
+        .select('company_name, abn, address, phone, email, logo_path')
+        .eq('id', 1)
+        .single(),
+    ])
+
+  if (!itp) return new Response('Not found', { status: 404 })
+
+  const project = itp.projects as unknown as { number: string; name: string } | null
+  const adopter = itp.adopter as unknown as { full_name: string } | null
+
+  const pdfItems: ItpPdfItem[] = (items ?? []).map((it) => {
+    const checker = it.checker as unknown as { full_name: string } | null
+    return {
+      position: it.position as number,
+      description: it.description as string,
+      acceptance_criteria: it.acceptance_criteria as string,
+      spec_ref: (it.spec_ref as string | null) ?? null,
+      point_type: it.point_type as string,
+      record_required: it.record_required as boolean,
+      responsible: (it.responsible as string | null) ?? null,
+      status: it.status as string,
+      checked_by: checker?.full_name ?? null,
+      checked_at: it.checked_at ? fmtDate(it.checked_at as string) : null,
+    }
+  })
+
+  const buffer = await renderToBuffer(
+    <ItpPdf
+      itp={{
+        number: itp.number as string,
+        title: itp.title as string,
+        activity: itp.activity as string,
+        status: (itp.status as string) === 'active' ? 'Active' : 'Closed',
+        project: project ? `${project.number} — ${project.name}` : '—',
+        adoptedAt: fmtDate(itp.adopted_at as string),
+        adoptedBy: adopter?.full_name ?? null,
+        lotCount: (lotCountRows ?? []).length,
+      }}
+      company={toCompany(settings)}
+      items={pdfItems}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${itp.number}.pdf"`,
+    },
+  })
+}
+
+async function lotPdf(id: string): Promise<Response> {
+  const supabase = await createClient()
+
+  const { data: lot } = await supabase
+    .from('lots')
+    .select(
+      `number, description, location, status, opened_on, closed_at,
+       itp_instance_id,
+       projects(number, name),
+       itp_instances(number, title),
+       closer:profiles!lots_closed_by_fkey(full_name)`
+    )
+    .eq('id', id)
+    .single()
+
+  if (!lot) return new Response('Not found', { status: 404 })
+
+  const [
+    { data: items },
+    { data: inspections },
+    { data: tests },
+    { data: holdPoints },
+    { data: verdict },
+    { data: attachmentRows },
+    { data: settings },
+  ] = await Promise.all([
+    supabase
+      .from('itp_instance_items')
+      .select('id, position, description, acceptance_criteria, spec_ref, point_type, status')
+      .eq('instance_id', lot.itp_instance_id as string)
+      .order('position'),
+    supabase
+      .from('lot_inspections')
+      .select(
+        `itp_instance_item_id, result, inspected_at, ncr_id,
+         inspector:profiles!lot_inspections_inspected_by_fkey(full_name),
+         ncrs(number)`
+      )
+      .eq('lot_id', id)
+      .order('inspected_at', { ascending: false }),
+    supabase
+      .from('lot_test_results')
+      .select(
+        'test_type, description, value, uom, spec_min, spec_max, pass, lab_ref, tested_on, ncrs(number)'
+      )
+      .eq('lot_id', id)
+      .order('created_at'),
+    supabase
+      .from('hold_points')
+      .select('title, required_by, status, released_at, released_by, release_ref')
+      .eq('lot_id', id)
+      .order('created_at'),
+    supabase.rpc('lot_conformance', { p_lot: id }),
+    supabase.from('attachments').select('id').eq('parent_type', 'lot').eq('parent_id', id),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+  ])
+
+  const project = lot.projects as unknown as { number: string; name: string } | null
+  const instance = lot.itp_instances as unknown as {
+    number: string
+    title: string
+  } | null
+  const closer = lot.closer as unknown as { full_name: string } | null
+
+  // Latest inspection per item (query is newest-first) — plus the newest
+  // inspection with a linked NCR so the disposition stays on the report after
+  // a passing re-inspection.
+  type LotInspRow = NonNullable<typeof inspections>[number]
+  const latestByItem = new Map<string, LotInspRow>()
+  const latestNcrByItem = new Map<string, LotInspRow>()
+  for (const insp of inspections ?? []) {
+    const key = insp.itp_instance_item_id as string
+    if (!latestByItem.has(key)) latestByItem.set(key, insp)
+    if (insp.ncr_id && !latestNcrByItem.has(key)) latestNcrByItem.set(key, insp)
+  }
+
+  const TEST_LABEL: Record<string, string> = {
+    compaction: 'Compaction',
+    concrete_strength: 'Concrete strength',
+    survey_conformance: 'Survey conformance',
+    environmental_validation: 'Environmental validation',
+    other: 'Other',
+  }
+
+  const pdfItems: LotPdfItem[] = (items ?? []).map((it) => {
+    const latest = latestByItem.get(it.id as string)
+    const inspector = latest?.inspector as unknown as { full_name: string } | null
+    const ncr = latestNcrByItem.get(it.id as string)?.ncrs as unknown as {
+      number: string
+    } | null
+    return {
+      position: it.position as number,
+      description: it.description as string,
+      acceptance_criteria: it.acceptance_criteria as string,
+      spec_ref: (it.spec_ref as string | null) ?? null,
+      point_type: it.point_type as string,
+      item_status: it.status as string,
+      result: (latest?.result as string | undefined) ?? null,
+      inspected_by: inspector?.full_name ?? null,
+      inspected_at: latest?.inspected_at
+        ? fmtDate(latest.inspected_at as string)
+        : null,
+      ncr_number: ncr?.number ?? null,
+    }
+  })
+
+  const pdfTests: LotPdfTest[] = (tests ?? []).map((t) => {
+    const ncr = t.ncrs as unknown as { number: string } | null
+    const value =
+      t.value !== null && t.value !== undefined
+        ? `${Number(t.value)}${t.uom ? ` ${t.uom}` : ''}`
+        : null
+    const spec =
+      t.spec_min !== null || t.spec_max !== null
+        ? `${t.spec_min !== null ? Number(t.spec_min) : '—'} to ${t.spec_max !== null ? Number(t.spec_max) : '—'}`
+        : null
+    return {
+      test_type: TEST_LABEL[t.test_type as string] ?? (t.test_type as string),
+      description: t.description as string,
+      value,
+      spec,
+      pass: t.pass as boolean,
+      lab_ref: (t.lab_ref as string | null) ?? null,
+      tested_on: t.tested_on ? fmtDate(t.tested_on as string) : null,
+      ncr_number: ncr?.number ?? null,
+    }
+  })
+
+  const pdfHoldPoints: LotPdfHoldPoint[] = (holdPoints ?? []).map((hp) => ({
+    title: hp.title as string,
+    required_by: hp.required_by as string,
+    status: hp.status as string,
+    released_at: hp.released_at ? fmtDate(hp.released_at as string) : null,
+    released_by: (hp.released_by as string | null) ?? null,
+    release_ref: (hp.release_ref as string | null) ?? null,
+  }))
+
+  const ncrNumbers = [
+    ...new Set([
+      ...(inspections ?? [])
+        .map((i) => (i.ncrs as unknown as { number: string } | null)?.number)
+        .filter((n): n is string => Boolean(n)),
+      ...(tests ?? [])
+        .map((t) => (t.ncrs as unknown as { number: string } | null)?.number)
+        .filter((n): n is string => Boolean(n)),
+    ]),
+  ]
+
+  const buffer = await renderToBuffer(
+    <LotPdf
+      lot={{
+        number: lot.number as string,
+        description: lot.description as string,
+        location: (lot.location as string | null) ?? null,
+        project: project ? `${project.number} — ${project.name}` : '—',
+        itp: instance ? `${instance.number} — ${instance.title}` : '—',
+        status: lot.status as string,
+        conformance: (verdict as string | null) ?? 'open',
+        openedOn: fmtDate(lot.opened_on as string),
+        closedAt: lot.closed_at ? fmtDate(lot.closed_at as string) : null,
+        closedBy: closer?.full_name ?? null,
+        ncrNumbers,
+        attachmentCount: (attachmentRows ?? []).length,
+      }}
+      company={toCompany(settings)}
+      items={pdfItems}
+      tests={pdfTests}
+      holdPoints={pdfHoldPoints}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': `inline; filename="${lot.number}-conformance.pdf"`,
     },
   })
 }

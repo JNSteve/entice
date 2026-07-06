@@ -1226,3 +1226,102 @@ export function PortalActivityCard({ data }: { data: PortalActivityData | null }
     </DashboardCard>
   )
 }
+
+// ─── Quality (ITP / lots) ─────────────────────────────────────────────────────
+
+export type QualityLotRow = {
+  id: string
+  projectId: string
+  number: string
+  description: string
+  projectLabel: string
+}
+
+export type QualityHoldPointRow = {
+  id: string
+  projectId: string
+  lotId: string
+  title: string
+  projectLabel: string
+  date: string
+}
+
+export type QualityData = {
+  nonconformingLots: QualityLotRow[]
+  openHoldPoints: QualityHoldPointRow[]
+}
+
+export function QualityCard({ data }: { data: QualityData | null }) {
+  return (
+    <DashboardCard title="Quality (ITP / lots)" href="/projects">
+      {data === null ? (
+        <LoadError />
+      ) : data.nonconformingLots.length === 0 &&
+        data.openHoldPoints.length === 0 ? (
+        <Muted>No nonconforming lots or unreleased quality hold points.</Muted>
+      ) : (
+        <>
+          {data.nonconformingLots.length > 0 && (
+            <>
+              <p className="text-xs font-medium text-muted-foreground">
+                Nonconforming lots
+              </p>
+              {data.nonconformingLots.slice(0, MAX_ROWS).map((l) => (
+                <div
+                  key={l.id}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <Link
+                      href={`/projects/${l.projectId}/quality/lots/${l.id}`}
+                      className="truncate hover:underline"
+                    >
+                      {l.number} — {l.description}
+                    </Link>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {l.projectLabel}
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400">
+                    Nonconforming
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.nonconformingLots.length} />
+            </>
+          )}
+
+          {data.openHoldPoints.length > 0 && (
+            <>
+              <p className="mt-1 text-xs font-medium text-muted-foreground">
+                Unreleased quality hold points
+              </p>
+              {data.openHoldPoints.slice(0, MAX_ROWS).map((hp) => (
+                <div
+                  key={hp.id}
+                  className="flex items-center justify-between gap-2 text-sm"
+                >
+                  <div className="flex min-w-0 flex-col">
+                    <Link
+                      href={`/projects/${hp.projectId}/quality/lots/${hp.lotId}`}
+                      className="truncate hover:underline"
+                    >
+                      {hp.title}
+                    </Link>
+                    <span className="truncate text-xs text-muted-foreground">
+                      {hp.projectLabel}
+                    </span>
+                  </div>
+                  <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
+                    {fmtDate(hp.date)}
+                  </span>
+                </div>
+              ))}
+              <MoreNote total={data.openHoldPoints.length} />
+            </>
+          )}
+        </>
+      )}
+    </DashboardCard>
+  )
+}
