@@ -14,6 +14,7 @@ import {
   AwardSection,
   type AwardQuoteOption,
   type AwardedCommitment,
+  type BudgetLineOption,
 } from './award-section'
 
 export default async function PackageDetailPage({
@@ -36,6 +37,7 @@ export default async function PackageDetailPage({
     { data: costCodes },
     { data: owners },
     { data: settings },
+    { data: budgetLines },
   ] = await Promise.all([
     supabase.from('projects').select('id, name, number').eq('id', projectId).single(),
     supabase
@@ -77,6 +79,11 @@ export default async function PackageDetailPage({
       .eq('active', true)
       .order('full_name'),
     supabase.from('settings').select('company_name').eq('id', 1).single(),
+    supabase
+      .from('budget_lines')
+      .select('id, description, cost_code_id')
+      .eq('project_id', projectId)
+      .order('position'),
   ])
 
   if (!project || !pkg) notFound()
@@ -175,6 +182,12 @@ export default async function PackageDetailPage({
     full_name: o.full_name,
   }))
 
+  const budgetLineOptions: BudgetLineOption[] = (budgetLines ?? []).map((b) => ({
+    id: b.id,
+    description: b.description,
+    cost_code_id: b.cost_code_id,
+  }))
+
   const showComparison = rfqs.length > 0
   const showAward =
     quotes.length > 0 || quotes.some((q) => q.recommended) || pkg.status === 'awarded'
@@ -263,6 +276,7 @@ export default async function PackageDetailPage({
           packageCostCodeId={pkg.cost_code_id ?? null}
           quotes={awardQuotes}
           costCodes={costCodeOptions}
+          budgetLines={budgetLineOptions}
           awardedCommitment={awardedCommitment}
           isAdmin={profile.role === 'admin'}
         />

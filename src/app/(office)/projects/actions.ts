@@ -245,6 +245,7 @@ export async function addProjectCost(data: unknown): Promise<Result> {
     description: parsed.data.description,
     amount: parsed.data.amount,
     cost_code_id: parsed.data.cost_code_id,
+    budget_line_id: parsed.data.budget_line_id,
     source: 'manual',
     created_by: profile.id,
   })

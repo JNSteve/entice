@@ -526,6 +526,10 @@ export const projectCostSchema = z.object({
     .uuid()
     .nullish()
     .transform((v) => v ?? null),
+  budget_line_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
 })
 
 export type ProjectCostInput = z.infer<typeof projectCostSchema>
@@ -557,6 +561,7 @@ export const poLineCreateSchema = z.object({
   qty: z.coerce.number().min(0),
   unit: z.string().min(1, 'Unit is required'),
   unit_cost: z.coerce.number().min(0),
+  budget_line_id: z.uuid().nullish().transform((v) => v ?? null),
 })
 
 export type PoLineCreateInput = z.infer<typeof poLineCreateSchema>
@@ -567,6 +572,7 @@ export const poLineUpdateSchema = z.object({
   qty: z.coerce.number().min(0).optional(),
   unit: z.string().min(1, 'Unit is required').optional(),
   unit_cost: z.coerce.number().min(0).optional(),
+  budget_line_id: z.uuid().nullish().transform((v) => v ?? null).optional(),
 })
 
 export type PoLineUpdateInput = z.infer<typeof poLineUpdateSchema>
@@ -793,6 +799,10 @@ export const packageAwardSchema = z.object({
   vendor_id: z.uuid('Pick a supplier'),
   amount: z.coerce.number().positive('Amount must be positive'),
   cost_code_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  budget_line_id: z
     .uuid()
     .nullish()
     .transform((v) => v ?? null),

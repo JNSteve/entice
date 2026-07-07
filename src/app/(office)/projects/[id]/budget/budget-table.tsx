@@ -55,9 +55,13 @@ export interface CostCodeOption {
 interface BudgetTableProps {
   projectId: string
   lines: BudgetLineRow[]
-  /** Σ issued/closed po_lines + Σ active commitments, keyed by cost_code_id (or 'uncoded'). */
+  /** Σ committed (PO lines + commitments) attributed to a specific budget_line_id. */
+  committedByLine: Record<string, number>
+  /** Σ committed for UNLINKED rows, keyed by cost_code_id (or 'uncoded'). */
   committedByCode: Record<string, number>
-  /** Σ project costs, keyed by cost_code_id (or 'uncoded'). */
+  /** Σ actual (costs) attributed to a specific budget_line_id. */
+  actualByLine: Record<string, number>
+  /** Σ actual for UNLINKED rows, keyed by cost_code_id (or 'uncoded'). */
   actualByCode: Record<string, number>
   costCodes: CostCodeOption[]
 }
@@ -90,7 +94,9 @@ function Variance({ value }: { value: number }) {
 export function BudgetTable({
   projectId,
   lines,
+  committedByLine,
   committedByCode,
+  actualByLine,
   actualByCode,
   costCodes,
 }: BudgetTableProps) {
@@ -107,6 +113,7 @@ export function BudgetTable({
   const [costDate, setCostDate] = useState(new Date().toISOString().slice(0, 10))
   const [costDescription, setCostDescription] = useState('')
   const [costCostCodeId, setCostCostCodeId] = useState(NONE)
+  const [costBudgetLineId, setCostBudgetLineId] = useState(NONE)
   const [costAmount, setCostAmount] = useState<number | null>(null)
 
   // Delete confirm state
@@ -130,8 +137,12 @@ export function BudgetTable({
     .map((key) => {
       const groupLines = lines.filter((l) => l.cost_code_id === key)
       const budget = round2(groupLines.reduce((s, l) => s + l.budget_amount, 0))
-      const committed = committedByCode[key] ?? 0
-      const actual = actualByCode[key] ?? 0
+      // Header = spend attributed to this group's individual lines + unlinked
+      // spend sitting at this cost code. Each source row is in exactly one bucket.
+      const linkedCommitted = groupLines.reduce((s, l) => s + (committedByLine[l.id] ?? 0), 0)
+      const linkedActual = groupLines.reduce((s, l) => s + (actualByLine[l.id] ?? 0), 0)
+      const committed = round2(linkedCommitted + (committedByCode[key] ?? 0))
+      const actual = round2(linkedActual + (actualByCode[key] ?? 0))
       return {
         key,
         label: codeLabel(key),
@@ -224,6 +235,7 @@ export function BudgetTable({
     setCostDate(new Date().toISOString().slice(0, 10))
     setCostDescription('')
     setCostCostCodeId(NONE)
+    setCostBudgetLineId(NONE)
     setCostAmount(null)
   }
 
@@ -240,6 +252,7 @@ export function BudgetTable({
         description: costDescription,
         amount: costAmount,
         cost_code_id: costCostCodeId === NONE ? null : costCostCodeId,
+        budget_line_id: costBudgetLineId === NONE ? null : costBudgetLineId,
       })
       if (result.error) {
         toast.error(result.error)
@@ -346,9 +359,24 @@ export function BudgetTable({
                           className="ml-auto h-8 w-32"
                         />
                       </TableCell>
-                      <TableCell />
-                      <TableCell />
-                      <TableCell />
+                      {(() => {
+                        const committed = committedByLine[line.id] ?? 0
+                        const actual = actualByLine[line.id] ?? 0
+                        const variance = round2(line.budget_amount - Math.max(committed, actual))
+                        return (
+                          <>
+                            <TableCell className="text-right tabular-nums text-muted-foreground">
+                              {committed ? aud(committed) : '—'}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums text-muted-foreground">
+                              {actual ? aud(actual) : '—'}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {committed || actual ? <Variance value={variance} /> : null}
+                            </TableCell>
+                          </>
+                        )
+                      })()}
                       <TableCell>
                         <Button
                           variant="ghost"
@@ -476,6 +504,33 @@ export function BudgetTable({
                   {activeCodes.map((cc) => (
                     <SelectItem key={cc.id} value={cc.id}>
                       {cc.code} – {cc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pc-line">Budget line (optional)</Label>
+              <Select
+                value={costBudgetLineId}
+                onValueChange={(v) => {
+                  const next = v ?? NONE
+                  setCostBudgetLineId(next)
+                  // Keep the cost code consistent with the chosen line.
+                  if (next !== NONE) {
+                    const bl = lines.find((l) => l.id === next)
+                    if (bl) setCostCostCodeId(bl.cost_code_id)
+                  }
+                }}
+              >
+                <SelectTrigger id="pc-line" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No specific line</SelectItem>
+                  {lines.map((l) => (
+                    <SelectItem key={l.id} value={l.id}>
+                      {l.description}
                     </SelectItem>
                   ))}
                 </SelectContent>

@@ -49,6 +49,7 @@ export interface PoLine {
   position: number
   description: string
   cost_code_id: string | null
+  budget_line_id: string | null
   qty: number
   unit: string
   unit_cost: number
@@ -66,6 +67,12 @@ export interface VendorOption {
   name: string
 }
 
+export interface BudgetLineOption {
+  id: string
+  description: string
+  cost_code_id: string
+}
+
 export interface PoEditorProps {
   projectId: string
   po: {
@@ -80,12 +87,13 @@ export interface PoEditorProps {
   lines: PoLine[]
   costCodes: CostCodeOption[]
   vendors: VendorOption[]
+  budgetLines: BudgetLineOption[]
   gstRate: number
 }
 
 const NONE = 'none'
 
-export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCodes, gstRate }: PoEditorProps) {
+export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCodes, budgetLines, gstRate }: PoEditorProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
@@ -103,6 +111,7 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
   const [lineQty, setLineQty] = useState<number | null>(1)
   const [lineUnit, setLineUnit] = useState('ea')
   const [lineUnitCost, setLineUnitCost] = useState<number | null>(null)
+  const [lineBudgetLine, setLineBudgetLine] = useState(NONE)
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<PoLine | null>(null)
@@ -149,6 +158,7 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
     setLineQty(1)
     setLineUnit('ea')
     setLineUnitCost(null)
+    setLineBudgetLine(NONE)
   }
 
   function handleAddLine(e: React.FormEvent) {
@@ -161,6 +171,7 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
         po_id: po.id,
         description: lineDesc,
         cost_code_id: lineCostCode === NONE ? null : lineCostCode,
+        budget_line_id: lineBudgetLine === NONE ? null : lineBudgetLine,
         qty: lineQty ?? 1,
         unit: lineUnit,
         unit_cost: lineUnitCost ?? 0,
@@ -525,6 +536,33 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
                   {activeCodes.map((cc) => (
                     <SelectItem key={cc.id} value={cc.id}>
                       {cc.code} – {cc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="pl-line">Budget line (optional)</Label>
+              <Select
+                value={lineBudgetLine}
+                onValueChange={(v) => {
+                  const next = v ?? NONE
+                  setLineBudgetLine(next)
+                  // Keep the cost code consistent with the chosen line.
+                  if (next !== NONE) {
+                    const bl = budgetLines.find((b) => b.id === next)
+                    if (bl) setLineCostCode(bl.cost_code_id)
+                  }
+                }}
+              >
+                <SelectTrigger id="pl-line" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No specific line</SelectItem>
+                  {budgetLines.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.description}
                     </SelectItem>
                   ))}
                 </SelectContent>

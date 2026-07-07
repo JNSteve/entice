@@ -46,6 +46,12 @@ export interface AwardedCommitment {
   description: string
 }
 
+export interface BudgetLineOption {
+  id: string
+  description: string
+  cost_code_id: string
+}
+
 interface AwardSectionProps {
   projectId: string
   packageId: string
@@ -54,6 +60,7 @@ interface AwardSectionProps {
   packageCostCodeId: string | null
   quotes: AwardQuoteOption[]
   costCodes: CostCodeOption[]
+  budgetLines: BudgetLineOption[]
   awardedCommitment: AwardedCommitment | null
   isAdmin: boolean
 }
@@ -76,6 +83,7 @@ export function AwardSection({
   packageCostCodeId,
   quotes,
   costCodes,
+  budgetLines,
   awardedCommitment,
   isAdmin,
 }: AwardSectionProps) {
@@ -90,6 +98,7 @@ export function AwardSection({
   const [vendorId, setVendorId] = useState('')
   const [amount, setAmount] = useState<number | null>(null)
   const [costCodeId, setCostCodeId] = useState<string>(NONE)
+  const [budgetLineId, setBudgetLineId] = useState<string>(NONE)
   const [description, setDescription] = useState('')
 
   // Un-award confirm
@@ -100,6 +109,7 @@ export function AwardSection({
     setVendorId(initial?.vendor_id ?? '')
     setAmount(initial?.amount ?? null)
     setCostCodeId(packageCostCodeId ?? NONE)
+    setBudgetLineId(NONE)
     setDescription(initial ? `${packageName} — ${initial.vendor_name}` : packageName)
     setAwardOpen(true)
   }
@@ -129,6 +139,7 @@ export function AwardSection({
         vendor_id: vendorId,
         amount,
         cost_code_id: costCodeId === NONE ? null : costCodeId,
+        budget_line_id: budgetLineId === NONE ? null : budgetLineId,
         description: description.trim(),
       })
       if (result.error) {
@@ -325,6 +336,33 @@ export function AwardSection({
                   {costCodes.map((cc) => (
                     <SelectItem key={cc.id} value={cc.id}>
                       {cc.code} — {cc.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="award-budgetline">Budget line (optional)</Label>
+              <Select
+                value={budgetLineId}
+                onValueChange={(v) => {
+                  const next = v ?? NONE
+                  setBudgetLineId(next)
+                  // Keep the cost code consistent with the chosen line.
+                  if (next !== NONE) {
+                    const bl = budgetLines.find((b) => b.id === next)
+                    if (bl) setCostCodeId(bl.cost_code_id)
+                  }
+                }}
+              >
+                <SelectTrigger id="award-budgetline" className="w-full">
+                  <SelectValue placeholder="No specific line" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No specific line</SelectItem>
+                  {budgetLines.map((b) => (
+                    <SelectItem key={b.id} value={b.id}>
+                      {b.description}
                     </SelectItem>
                   ))}
                 </SelectContent>

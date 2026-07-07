@@ -267,6 +267,7 @@ export async function awardPackage(
     vendor_id: parsed.data.vendor_id,
     package_id: packageId,
     cost_code_id: parsed.data.cost_code_id,
+    budget_line_id: parsed.data.budget_line_id,
     description: parsed.data.description,
     amount: parsed.data.amount,
     status: 'active',

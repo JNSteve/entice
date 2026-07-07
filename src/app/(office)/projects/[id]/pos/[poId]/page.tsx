@@ -1,7 +1,13 @@
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { PoEditor, type PoLine, type CostCodeOption, type VendorOption } from './po-editor'
+import {
+  PoEditor,
+  type PoLine,
+  type CostCodeOption,
+  type VendorOption,
+  type BudgetLineOption,
+} from './po-editor'
 
 export default async function ProjectPoDetailPage({
   params,
@@ -19,6 +25,7 @@ export default async function ProjectPoDetailPage({
     { data: costCodes },
     { data: vendors },
     { data: settings },
+    { data: budgetLines },
   ] = await Promise.all([
     supabase
       .from('purchase_orders')
@@ -28,13 +35,18 @@ export default async function ProjectPoDetailPage({
       .single(),
     supabase
       .from('po_lines')
-      .select('id, position, description, cost_code_id, qty, unit, unit_cost')
+      .select('id, position, description, cost_code_id, budget_line_id, qty, unit, unit_cost')
       .eq('po_id', poId)
       .order('position')
       .order('id'),
     supabase.from('cost_codes').select('id, code, name, active').order('code'),
     supabase.from('vendors').select('id, name').eq('archived', false).order('name'),
     supabase.from('settings').select('gst_rate').eq('id', 1).single(),
+    supabase
+      .from('budget_lines')
+      .select('id, description, cost_code_id')
+      .eq('project_id', projectId)
+      .order('position'),
   ])
 
   if (!po) notFound()
@@ -46,6 +58,7 @@ export default async function ProjectPoDetailPage({
     position: l.position,
     description: l.description,
     cost_code_id: l.cost_code_id,
+    budget_line_id: l.budget_line_id,
     qty: Number(l.qty),
     unit: l.unit,
     unit_cost: Number(l.unit_cost),
@@ -63,6 +76,12 @@ export default async function ProjectPoDetailPage({
     name: v.name,
   }))
 
+  const budgetLineOptions: BudgetLineOption[] = (budgetLines ?? []).map((b) => ({
+    id: b.id,
+    description: b.description,
+    cost_code_id: b.cost_code_id,
+  }))
+
   return (
     <PoEditor
       projectId={projectId}
@@ -78,6 +97,7 @@ export default async function ProjectPoDetailPage({
       lines={lines}
       costCodes={codes}
       vendors={vendorOptions}
+      budgetLines={budgetLineOptions}
       gstRate={Number(settings?.gst_rate ?? 10)}
     />
   )

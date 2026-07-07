@@ -30,17 +30,17 @@ export default async function ProjectBudgetPage({
       .order('position'),
     supabase
       .from('costs')
-      .select('amount, cost_code_id')
+      .select('amount, cost_code_id, budget_line_id')
       .eq('parent_type', 'project')
       .eq('parent_id', id),
     supabase
       .from('po_lines')
-      .select('qty, unit_cost, cost_code_id, purchase_orders!inner(project_id, status)')
+      .select('qty, unit_cost, cost_code_id, budget_line_id, purchase_orders!inner(project_id, status)')
       .eq('purchase_orders.project_id', id)
       .in('purchase_orders.status', ['issued', 'closed']),
     supabase
       .from('commitments')
-      .select('amount, cost_code_id')
+      .select('amount, cost_code_id, budget_line_id')
       .eq('project_id', id)
       .eq('status', 'active'),
     supabase.from('cost_codes').select('id, code, name, active').order('code'),
@@ -48,24 +48,43 @@ export default async function ProjectBudgetPage({
 
   if (!project) notFound()
 
-  // Committed = Σ issued/closed po_lines + Σ active commitments, PER COST CODE.
+  // Committed = Σ issued/closed po_lines + Σ active commitments.
+  // If a source row is linked to a budget line, attribute it to that line;
+  // otherwise fall back to cost-code grouping (existing behaviour). Each row
+  // lands in EXACTLY ONE bucket (line XOR code) — the group header relies on
+  // that mutual exclusion to avoid double-counting.
+  const committedByLine: Record<string, number> = {}
   const committedByCode: Record<string, number> = {}
   for (const l of poLines ?? []) {
-    const key = l.cost_code_id ?? 'uncoded'
-    committedByCode[key] = round2(
-      (committedByCode[key] ?? 0) + lineTotal(Number(l.qty), Number(l.unit_cost))
-    )
+    const amt = lineTotal(Number(l.qty), Number(l.unit_cost))
+    if (l.budget_line_id) {
+      committedByLine[l.budget_line_id] = round2((committedByLine[l.budget_line_id] ?? 0) + amt)
+    } else {
+      const key = l.cost_code_id ?? 'uncoded'
+      committedByCode[key] = round2((committedByCode[key] ?? 0) + amt)
+    }
   }
   for (const c of commitments ?? []) {
-    const key = c.cost_code_id ?? 'uncoded'
-    committedByCode[key] = round2((committedByCode[key] ?? 0) + Number(c.amount))
+    const amt = Number(c.amount)
+    if (c.budget_line_id) {
+      committedByLine[c.budget_line_id] = round2((committedByLine[c.budget_line_id] ?? 0) + amt)
+    } else {
+      const key = c.cost_code_id ?? 'uncoded'
+      committedByCode[key] = round2((committedByCode[key] ?? 0) + amt)
+    }
   }
 
-  // Actual = Σ costs, PER COST CODE.
+  // Actual = Σ costs, same line-vs-code precedence.
+  const actualByLine: Record<string, number> = {}
   const actualByCode: Record<string, number> = {}
   for (const c of costs ?? []) {
-    const key = c.cost_code_id ?? 'uncoded'
-    actualByCode[key] = round2((actualByCode[key] ?? 0) + Number(c.amount))
+    const amt = Number(c.amount)
+    if (c.budget_line_id) {
+      actualByLine[c.budget_line_id] = round2((actualByLine[c.budget_line_id] ?? 0) + amt)
+    } else {
+      const key = c.cost_code_id ?? 'uncoded'
+      actualByCode[key] = round2((actualByCode[key] ?? 0) + amt)
+    }
   }
 
   const lines: BudgetLineRow[] = (budgetLines ?? []).map((l) => ({
@@ -86,7 +105,9 @@ export default async function ProjectBudgetPage({
     <BudgetTable
       projectId={id}
       lines={lines}
+      committedByLine={committedByLine}
       committedByCode={committedByCode}
+      actualByLine={actualByLine}
       actualByCode={actualByCode}
       costCodes={codes}
     />

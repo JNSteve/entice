@@ -144,6 +144,7 @@ export async function addPoLine(data: unknown): Promise<Result> {
     po_id: parsed.data.po_id,
     description: parsed.data.description,
     cost_code_id: parsed.data.cost_code_id,
+    budget_line_id: parsed.data.budget_line_id,
     qty: parsed.data.qty,
     unit: parsed.data.unit,
     unit_cost: parsed.data.unit_cost,
