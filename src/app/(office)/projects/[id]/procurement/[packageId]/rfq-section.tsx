@@ -64,6 +64,10 @@ interface RfqSectionProps {
 const ALL_TRADES = '__all__'
 const MAILTO_BODY_LIMIT = 1800
 
+// RFQs open in Gmail web compose signed in as this account (via authuser).
+// Change this if the mailbox that sends procurement RFQs ever changes.
+const RFQ_GMAIL_ACCOUNT = 'nick@ecr.com.au'
+
 const COMPLIANCE_COLOURS: Record<ComplianceStatus, string> = {
   green: 'bg-green-500',
   amber: 'bg-amber-400',
@@ -199,7 +203,7 @@ export function RfqSection({
     }
   }
 
-  function openInMailApp() {
+  function openInGmail() {
     if (body.length > MAILTO_BODY_LIMIT) {
       void copyEmailText()
       toast.info('Body too long for a mail link — text copied instead')
@@ -210,13 +214,18 @@ export function RfqSection({
         `${selectedVendors.length - selectedEmails.length} selected supplier(s) have no email address`
       )
     }
+    // Gmail web compose. view=cm/fs=1 opens a full compose window; authuser
+    // biases Gmail to the ECR account when several Googles are signed in.
     const params = new URLSearchParams()
+    params.set('view', 'cm')
+    params.set('fs', '1')
+    params.set('authuser', RFQ_GMAIL_ACCOUNT)
     if (selectedEmails.length > 0) params.set('bcc', selectedEmails.join(','))
-    params.set('subject', subject)
+    params.set('su', subject) // Gmail uses 'su' for subject
     params.set('body', body)
-    // URLSearchParams encodes spaces as '+', mailto expects %20
+    // URLSearchParams encodes spaces as '+'; normalise to %20 for the URL
     const query = params.toString().replace(/\+/g, '%20')
-    window.location.href = `mailto:?${query}`
+    window.open(`https://mail.google.com/mail/?${query}`, '_blank', 'noopener,noreferrer')
   }
 
   function handleMarkSent() {
@@ -398,9 +407,9 @@ export function RfqSection({
               <ClipboardCopyIcon className="size-4" />
               Copy email text
             </Button>
-            <Button type="button" variant="outline" size="sm" onClick={openInMailApp}>
+            <Button type="button" variant="outline" size="sm" onClick={openInGmail}>
               <MailIcon className="size-4" />
-              Open in mail app
+              Open in Gmail
             </Button>
             <Button
               type="button"
