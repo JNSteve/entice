@@ -27,7 +27,9 @@ export interface ConvertSection {
 
 export interface ConvertLine {
   section_id: string | null
+  description: string
   qty: number
+  unit_cost: number
   unit_sell: number
 }
 
@@ -112,38 +114,25 @@ export function projectPayloadFromQuote(
     quote.gst_rate
   ).subtotal
 
-  // Build per-section budget lines
-  const sectionedBudgetLines: BudgetLinePayload[] = sections.map((section) => {
-    const sectionLines = lines.filter((l) => l.section_id === section.id)
-    const sectionSubtotal = round2(
-      sectionLines.reduce((sum, l) => sum + lineTotal(l.qty, l.unit_sell), 0)
-    )
-    return {
-      description: section.title,
-      budget_amount: sectionSubtotal,
+  // One budget line per quote line, valued at COST (qty × unit_cost) — the
+  // budget tracks committed/actual COSTS, so seeding it with sell prices would
+  // make every line look over budget from day one.  Lines are grouped by their
+  // section's position (unsectioned lines last), preserving the incoming line
+  // order within each group, then handed sequential positions.
+  const LAST = Number.MAX_SAFE_INTEGER
+  const sectionPosition = new Map(sections.map((s) => [s.id, s.position]))
+  const sectionOf = (l: ConvertLine) =>
+    l.section_id !== null ? sectionPosition.get(l.section_id) ?? LAST : LAST
+
+  const budgetLines: BudgetLinePayload[] = lines
+    .map((line, index) => ({ line, index }))
+    .sort((a, b) => sectionOf(a.line) - sectionOf(b.line) || a.index - b.index)
+    .map(({ line }, position) => ({
+      description: line.description,
+      budget_amount: round2(lineTotal(line.qty, line.unit_cost)),
       cost_code_id: otherCostCodeId,
-      position: section.position,
-    }
-  })
-
-  // Lines with no section → single "General" budget line (if any exist)
-  const unsectionedLines = lines.filter((l) => l.section_id === null)
-  const generalBudgetLine: BudgetLinePayload | null =
-    unsectionedLines.length > 0
-      ? {
-          description: 'General',
-          budget_amount: round2(
-            unsectionedLines.reduce((sum, l) => sum + lineTotal(l.qty, l.unit_sell), 0)
-          ),
-          cost_code_id: otherCostCodeId,
-          // Place after all sections
-          position: sections.length,
-        }
-      : null
-
-  const budgetLines = generalBudgetLine
-    ? [...sectionedBudgetLines, generalBudgetLine]
-    : sectionedBudgetLines
+      position,
+    }))
 
   const project: ProjectPayload = {
     number: '', // caller replaces this with nextNumber('project')

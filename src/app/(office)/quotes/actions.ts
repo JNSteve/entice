@@ -640,8 +640,9 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
       .order('id'),
     supabase
       .from('quote_lines')
-      .select('section_id, qty, unit_sell')
-      .eq('quote_id', quoteId),
+      .select('section_id, description, qty, unit_cost, unit_sell')
+      .eq('quote_id', quoteId)
+      .order('position'),
   ])
 
   // Fetch the "Other" cost code (code = '99').
@@ -672,7 +673,9 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
     sections ?? [],
     (lines ?? []).map((l) => ({
       section_id: l.section_id,
+      description: l.description,
       qty: Number(l.qty),
+      unit_cost: Number(l.unit_cost),
       unit_sell: Number(l.unit_sell),
     })),
     otherCode.id

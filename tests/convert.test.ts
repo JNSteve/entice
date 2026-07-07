@@ -23,13 +23,12 @@ const SECTIONS: ConvertSection[] = [
   { id: 'sec-2', title: 'Materials', position: 1 },
 ]
 
-// Section 1: 2 lines  →  lineTotal(3, 100) + lineTotal(2, 50) = 300 + 100 = 400
-// Section 2: 1 line   →  lineTotal(1, 250.50) = 250.50
-// Unsectioned: none
+// Sell subtotal (contract_sum): 300 + 100 + 250.50 = 650.50
+// Cost per line (budget_amount): 180, 60, 150
 const LINES: ConvertLine[] = [
-  { section_id: 'sec-1', qty: 3, unit_sell: 100 },
-  { section_id: 'sec-1', qty: 2, unit_sell: 50 },
-  { section_id: 'sec-2', qty: 1, unit_sell: 250.50 },
+  { section_id: 'sec-1', description: 'Site setup',   qty: 3, unit_cost: 60,  unit_sell: 100 },
+  { section_id: 'sec-1', description: 'Traffic mgmt', qty: 2, unit_cost: 30,  unit_sell: 50 },
+  { section_id: 'sec-2', description: 'Membrane',     qty: 1, unit_cost: 150, unit_sell: 250.50 },
 ]
 
 const OTHER_CODE_ID = 'cc-99'
@@ -97,54 +96,60 @@ describe('projectPayloadFromQuote', () => {
     expect(project.number).toBe('')
   })
 
-  test('creates one budget line per section with correct subtotals', () => {
+  test('creates one budget line per quote line, valued at cost', () => {
     const { budgetLines } = projectPayloadFromQuote(QUOTE, SECTIONS, LINES, OTHER_CODE_ID, TODAY)
-    // Two sections → two budget lines; no unsectioned lines → no General line
-    expect(budgetLines).toHaveLength(2)
+    // One budget line per quote line (not per section)
+    expect(budgetLines).toHaveLength(3)
 
-    const prep = budgetLines.find((bl) => bl.description === 'Preparation')
-    const mat = budgetLines.find((bl) => bl.description === 'Materials')
-
-    expect(prep).toBeDefined()
-    expect(prep!.budget_amount).toBe(400)       // 3*100 + 2*50
-    expect(prep!.cost_code_id).toBe(OTHER_CODE_ID)
-    expect(prep!.position).toBe(0)
-
-    expect(mat).toBeDefined()
-    expect(mat!.budget_amount).toBe(250.50)     // 1*250.50
-    expect(mat!.cost_code_id).toBe(OTHER_CODE_ID)
-    expect(mat!.position).toBe(1)
+    // Ordered by section position, preserving line order within each section
+    expect(budgetLines.map((bl) => bl.description)).toEqual([
+      'Site setup',
+      'Traffic mgmt',
+      'Membrane',
+    ])
+    // budget_amount = qty × unit_cost (COST, not sell)
+    expect(budgetLines.map((bl) => bl.budget_amount)).toEqual([180, 60, 150])
+    expect(budgetLines.map((bl) => bl.position)).toEqual([0, 1, 2])
+    expect(budgetLines.every((bl) => bl.cost_code_id === OTHER_CODE_ID)).toBe(true)
   })
 
-  test('unsectioned lines produce a General budget line', () => {
+  test('unsectioned lines become their own budget lines, ordered last', () => {
     const linesWithOrphans: ConvertLine[] = [
       ...LINES,
-      { section_id: null, qty: 2, unit_sell: 75 },  // 150
-      { section_id: null, qty: 1, unit_sell: 33.33 }, // 33.33
+      { section_id: null, description: 'Contingency', qty: 2, unit_cost: 40, unit_sell: 75 },
+      { section_id: null, description: 'Disposal',    qty: 1, unit_cost: 20, unit_sell: 33.33 },
     ]
     const { budgetLines } = projectPayloadFromQuote(
       QUOTE, SECTIONS, linesWithOrphans, OTHER_CODE_ID, TODAY
     )
-    // 2 section lines + 1 General line
-    expect(budgetLines).toHaveLength(3)
+    // Every line carries across; unsectioned ones sort after the sectioned ones
+    expect(budgetLines).toHaveLength(5)
+    expect(budgetLines.map((bl) => bl.description)).toEqual([
+      'Site setup',
+      'Traffic mgmt',
+      'Membrane',
+      'Contingency',
+      'Disposal',
+    ])
 
-    const general = budgetLines.find((bl) => bl.description === 'General')
-    expect(general).toBeDefined()
-    expect(general!.budget_amount).toBe(183.33)  // round2(150 + 33.33)
-    expect(general!.position).toBe(2)            // after 2 sections
+    const contingency = budgetLines.find((bl) => bl.description === 'Contingency')!
+    expect(contingency.budget_amount).toBe(80)  // 2 × 40
+    expect(contingency.position).toBe(3)
   })
 
-  test('no sections and no unsectioned lines → zero budget lines', () => {
+  test('no lines → zero budget lines', () => {
     const { budgetLines } = projectPayloadFromQuote(QUOTE, [], [], OTHER_CODE_ID, TODAY)
     expect(budgetLines).toHaveLength(0)
   })
 
-  test('no sections but unsectioned lines → single General line', () => {
-    const orphans: ConvertLine[] = [{ section_id: null, qty: 5, unit_sell: 20 }]
+  test('lines with no matching section still produce budget lines', () => {
+    const orphans: ConvertLine[] = [
+      { section_id: null, description: 'Lump sum', qty: 5, unit_cost: 20, unit_sell: 40 },
+    ]
     const { budgetLines } = projectPayloadFromQuote(QUOTE, [], orphans, OTHER_CODE_ID, TODAY)
     expect(budgetLines).toHaveLength(1)
-    expect(budgetLines[0].description).toBe('General')
-    expect(budgetLines[0].budget_amount).toBe(100)
+    expect(budgetLines[0].description).toBe('Lump sum')
+    expect(budgetLines[0].budget_amount).toBe(100)  // 5 × 20
     expect(budgetLines[0].position).toBe(0)
   })
 
@@ -155,9 +160,11 @@ describe('projectPayloadFromQuote', () => {
     expect(project.contract_sum).toBe(650.50)
   })
 
-  test('rounding: section budget amounts use round2', () => {
-    // 3 * 33.33 = 99.99 (exactly via lineTotal), section sum = round2(99.99) = 99.99
-    const lines: ConvertLine[] = [{ section_id: 'sec-1', qty: 3, unit_sell: 33.33 }]
+  test('rounding: budget amounts use round2', () => {
+    // 3 × 33.33 = 99.99
+    const lines: ConvertLine[] = [
+      { section_id: 'sec-1', description: 'Odd', qty: 3, unit_cost: 33.33, unit_sell: 50 },
+    ]
     const { budgetLines } = projectPayloadFromQuote(
       QUOTE,
       [{ id: 'sec-1', title: 'Works', position: 0 }],
