@@ -81,7 +81,10 @@ describe('projectPayloadFromQuote', () => {
     expect(project.dlp_months).toBe(12)
     expect(project.claim_day).toBe(25)
     expect(project.start_date).toBe(TODAY)
-    expect(project.status).toBe('quote')
+    // Must be a value the projects.status CHECK accepts
+    // (active|practical_completion|defects_liability|closed) — 'quote' is a JOB
+    // status and previously made every quote→project conversion fail at insert.
+    expect(project.status).toBe('active')
   })
 
   test('project name equals quote title', () => {

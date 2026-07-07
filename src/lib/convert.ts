@@ -68,7 +68,7 @@ export interface ProjectPayload {
   quote_id: string
   name: string
   description: string | null
-  status: 'quote'
+  status: 'active'
   contract_sum: number
   retention_pct: number
   retention_cap_pct: number
@@ -152,7 +152,10 @@ export function projectPayloadFromQuote(
     quote_id: quote.id,
     name: quote.title,
     description: quote.description,
-    status: 'quote',
+    // A converted project is a live project — 'active' matches the projects
+    // status CHECK (active|practical_completion|defects_liability|closed).
+    // ('quote' is a JOB status; using it here rejected every project insert.)
+    status: 'active',
     contract_sum: contractSum,
     retention_pct: 10,
     retention_cap_pct: 5,
