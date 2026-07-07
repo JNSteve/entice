@@ -19,6 +19,7 @@ import { SignonSection } from './signon-section'
 
 const KIND_LABELS: Record<FormTemplateKind, string> = {
   prestart: 'Pre-Start',
+  prestart_meeting: 'Pre-Start Meeting',
   take5: 'Take 5',
   toolbox: 'Toolbox',
   induction: 'Induction',

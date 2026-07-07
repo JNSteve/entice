@@ -35,6 +35,7 @@ import {
 
 const KIND_ICONS: Record<FormTemplateKind, React.ComponentType<{ className?: string }>> = {
   prestart: WrenchIcon,
+  prestart_meeting: ShieldCheckIcon,
   take5: HandIcon,
   toolbox: UsersIcon,
   induction: ClipboardListIcon,
@@ -45,6 +46,7 @@ const KIND_ICONS: Record<FormTemplateKind, React.ComponentType<{ className?: str
 
 const KIND_LABELS: Record<FormTemplateKind, string> = {
   prestart: 'Pre-Start',
+  prestart_meeting: 'Pre-Start Meeting',
   take5: 'Take 5',
   toolbox: 'Toolbox',
   induction: 'Induction',
@@ -55,6 +57,7 @@ const KIND_LABELS: Record<FormTemplateKind, string> = {
 
 const KIND_ORDER: FormTemplateKind[] = [
   'prestart',
+  'prestart_meeting',
   'take5',
   'toolbox',
   'induction',

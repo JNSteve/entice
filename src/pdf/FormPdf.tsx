@@ -36,6 +36,7 @@ export type FormPdfProps = {
 
 const KIND_LABELS: Record<FormTemplateKind, string> = {
   prestart: 'Pre-Start',
+  prestart_meeting: 'Pre-Start Meeting',
   take5: 'Take 5',
   toolbox: 'Toolbox Talk',
   induction: 'Site Induction',

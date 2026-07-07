@@ -1080,6 +1080,7 @@ export type ProgrammePredecessorsInput = z.infer<typeof programmePredecessorsSch
 
 export const FORM_TEMPLATE_KINDS = [
   'prestart',
+  'prestart_meeting',
   'take5',
   'toolbox',
   'induction',

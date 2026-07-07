@@ -17,6 +17,7 @@ import type { FormTemplateKind } from '@/lib/zod'
 
 const KIND_SHORT: Record<FormTemplateKind, string> = {
   prestart: 'pre-start',
+  prestart_meeting: 'pre-start meeting',
   take5: 'take 5',
   toolbox: 'toolbox',
   induction: 'induction',

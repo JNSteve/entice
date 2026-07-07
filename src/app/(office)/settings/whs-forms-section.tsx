@@ -58,6 +58,7 @@ export interface FormTemplateRow {
 
 const KIND_LABELS: Record<FormTemplateKind, string> = {
   prestart: 'Pre-Start',
+  prestart_meeting: 'Pre-Start Meeting',
   take5: 'Take 5',
   toolbox: 'Toolbox',
   induction: 'Induction',
@@ -68,6 +69,7 @@ const KIND_LABELS: Record<FormTemplateKind, string> = {
 
 const KIND_COLORS: Record<FormTemplateKind, string> = {
   prestart: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300',
+  prestart_meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950 dark:text-cyan-300',
   take5: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300',
   toolbox: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300',
   induction: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300',
