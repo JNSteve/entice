@@ -6,6 +6,11 @@ import { createClient } from '@/lib/supabase/server'
 import { round2 } from '@/lib/money'
 import { areaM2, explodeAssembly, lengthM, type Pt } from '@/lib/takeoff'
 import {
+  extractTakeoffFromReport,
+  extractionEnabled,
+  MAX_REPORT_BYTES,
+} from '@/lib/extract-takeoff'
+import {
   takeoffCalibrateSchema,
   takeoffItemSchema,
   takeoffSheetSchema,
@@ -337,6 +342,103 @@ export async function applyAssembly(
 
   revalidateTakeoff(quoteId)
   return {}
+}
+
+// ─── Report extraction ────────────────────────────────────────────────────────
+
+/**
+ * Sends a quote-attached PDF (asbestos register / survey report) to Claude and
+ * inserts the extracted rows as takeoff items with source 'report'. Never
+ * auto-pushes to the quote — the estimator reviews, rates and pushes manually.
+ * Dormant until ANTHROPIC_API_KEY is set.
+ */
+export async function ingestReportTakeoff(
+  quoteId: string,
+  attachmentId: string
+): Promise<{ error?: string; added?: number }> {
+  const profile = await requireRole('admin', 'office')
+
+  if (!extractionEnabled()) {
+    return { error: 'Add ANTHROPIC_API_KEY to the environment to enable report extraction' }
+  }
+
+  const supabase = await createClient()
+  const editable = await assertQuoteEditable(supabase, quoteId)
+  if (editable.error) return editable
+
+  // The report must be a PDF attached to THIS quote.
+  const { data: attachment } = await supabase
+    .from('attachments')
+    .select('id, path, filename, content_type, size')
+    .eq('id', attachmentId)
+    .eq('parent_type', 'quote')
+    .eq('parent_id', quoteId)
+    .maybeSingle()
+  if (!attachment) return { error: 'Pick a document attached to this quote' }
+  const isPdf =
+    attachment.content_type === 'application/pdf' ||
+    (attachment.filename as string).toLowerCase().endsWith('.pdf')
+  if (!isPdf) return { error: 'Report extraction only works on PDF documents' }
+  if (attachment.size !== null && Number(attachment.size) > MAX_REPORT_BYTES) {
+    return { error: 'This PDF is over 20MB — split it and retry' }
+  }
+
+  const { data: blob, error: downloadError } = await supabase.storage
+    .from('attachments')
+    .download(attachment.path as string)
+  if (downloadError || !blob) {
+    return { error: downloadError?.message ?? 'Could not download the document' }
+  }
+  const bytes = Buffer.from(await blob.arrayBuffer())
+  if (bytes.byteLength > MAX_REPORT_BYTES) {
+    return { error: 'This PDF is over 20MB — split it and retry' }
+  }
+
+  const result = await extractTakeoffFromReport(bytes.toString('base64'))
+  if (result.error) return { error: result.error }
+  const extracted = result.items ?? []
+  if (extracted.length === 0) {
+    return { error: 'No register rows or material findings were found in this document' }
+  }
+
+  const { data: last } = await supabase
+    .from('takeoff_items')
+    .select('position')
+    .eq('quote_id', quoteId)
+    .order('position', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  let position = (last?.position ?? -1) + 1
+
+  const groupId = crypto.randomUUID()
+  for (const item of extracted) {
+    const notes = [
+      item.friable === null ? null : item.friable ? 'Friable' : 'Non-friable',
+      item.condition ? `Condition: ${item.condition}` : null,
+      item.recommendation ? `Recommendation: ${item.recommendation}` : null,
+      item.description && item.description !== item.material
+        ? item.description
+        : null,
+    ]
+      .filter(Boolean)
+      .join('. ')
+
+    const { error } = await supabase.from('takeoff_items').insert({
+      quote_id: quoteId,
+      source: 'report',
+      description: `${item.material} — ${item.location}`,
+      qty: item.qty ?? 1,
+      unit: item.unit || 'item',
+      notes: notes || null,
+      group_id: groupId,
+      position: position++,
+      created_by: profile.id,
+    })
+    if (error) return { error: error.message }
+  }
+
+  revalidateTakeoff(quoteId)
+  return { added: extracted.length }
 }
 
 // ─── Push to quote ────────────────────────────────────────────────────────────

@@ -3,7 +3,7 @@
 import React, { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import {
   Dialog,
   DialogContent,
@@ -37,9 +37,11 @@ import { cn } from '@/lib/utils'
 import {
   BlocksIcon,
   CalculatorIcon,
+  FileTextIcon,
   FileUpIcon,
   PlusIcon,
   SendIcon,
+  SparklesIcon,
   Trash2Icon,
 } from 'lucide-react'
 import { TakeoffCanvas, SHAPE_COLORS, type CanvasItem } from './takeoff-canvas'
@@ -50,6 +52,7 @@ import {
   createTakeoffSheet,
   deleteTakeoffItem,
   deleteTakeoffSheet,
+  ingestReportTakeoff,
   pushTakeoffToQuote,
   updateTakeoffItem,
 } from './actions'
@@ -190,6 +193,9 @@ export function TakeoffWorkspace({
   const [assemblyId, setAssemblyId] = useState<string | null>(assemblies[0]?.id ?? null)
   const [assemblyQty, setAssemblyQty] = useState('')
   const [assemblySection, setAssemblySection] = useState('')
+  const [extractOpen, setExtractOpen] = useState(false)
+  const [extractAttachment, setExtractAttachment] = useState<string | null>(null)
+  const [extracting, setExtracting] = useState(false)
 
   const activeSheet = sheets.find((s) => s.id === activeSheetId) ?? null
   const sheetItems: CanvasItem[] = useMemo(
@@ -376,6 +382,30 @@ export function TakeoffWorkspace({
     })
   }
 
+  function handleExtract(e: React.FormEvent) {
+    e.preventDefault()
+    if (!extractAttachment) {
+      toast.error('Pick the report PDF')
+      return
+    }
+    const attachmentId = extractAttachment
+    setExtracting(true)
+    startTransition(async () => {
+      const result = await ingestReportTakeoff(quoteId, attachmentId)
+      setExtracting(false)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        `${result.added} item${result.added === 1 ? '' : 's'} extracted — review and rate them below`
+      )
+      setExtractOpen(false)
+      setExtractAttachment(null)
+      router.refresh()
+    })
+  }
+
   function handlePush() {
     startTransition(async () => {
       const result = await pushTakeoffToQuote(quoteId)
@@ -505,31 +535,51 @@ export function TakeoffWorkspace({
               {items.length}
             </span>
           </h2>
-          {editable && (
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => setItemDraft(emptyDraft())}>
-                <PlusIcon className="size-4" />
-                Add item
-              </Button>
-              <Button size="sm" variant="outline" onClick={() => setWasteOpen(true)}>
-                <CalculatorIcon className="size-4" />
-                Waste calculator
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setAssemblyOpen(true)}
-                disabled={assemblies.length === 0}
-              >
-                <BlocksIcon className="size-4" />
-                Apply assembly
-              </Button>
-              <Button size="sm" onClick={handlePush} disabled={pending || items.length === 0}>
-                <SendIcon className="size-4" />
-                Push to quote
-              </Button>
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {editable && (
+              <>
+                <Button size="sm" variant="outline" onClick={() => setItemDraft(emptyDraft())}>
+                  <PlusIcon className="size-4" />
+                  Add item
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => setWasteOpen(true)}>
+                  <CalculatorIcon className="size-4" />
+                  Waste calculator
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setAssemblyOpen(true)}
+                  disabled={assemblies.length === 0}
+                >
+                  <BlocksIcon className="size-4" />
+                  Apply assembly
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setExtractOpen(true)}
+                  disabled={planAttachments.length === 0}
+                >
+                  <SparklesIcon className="size-4" />
+                  Extract from report
+                </Button>
+                <Button size="sm" onClick={handlePush} disabled={pending || items.length === 0}>
+                  <SendIcon className="size-4" />
+                  Push to quote
+                </Button>
+              </>
+            )}
+            <a
+              href={`/api/pdf/takeoff/${quoteId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              <FileTextIcon className="size-4" />
+              Schedule PDF
+            </a>
+          </div>
         </div>
 
         {items.length === 0 ? (
@@ -921,6 +971,60 @@ export function TakeoffWorkspace({
                 Cancel
               </Button>
               <Button type="submit">Create item</Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* ── Extract from report ── */}
+      <Dialog
+        open={extractOpen}
+        onOpenChange={(open) => {
+          if (!extracting) setExtractOpen(open)
+        }}
+      >
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Extract items from a report</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleExtract} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Report PDF (quote attachments)</Label>
+              <Select
+                value={extractAttachment ?? NONE}
+                onValueChange={(v) => setExtractAttachment(!v || v === NONE ? null : v)}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Pick a PDF…</SelectItem>
+                  {planAttachments.map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.filename}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+              Sends this document to Anthropic (Claude) to read the asbestos
+              register / findings and turn them into takeoff items. Items land
+              as “Report” rows for you to review and rate — nothing is pushed
+              to the quote automatically.
+            </p>
+            <DialogFooter>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={extracting}
+                onClick={() => setExtractOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={extracting || !extractAttachment}>
+                {extracting ? 'Extracting… this can take a minute' : 'Extract items'}
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>

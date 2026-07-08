@@ -1,6 +1,10 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeftIcon } from 'lucide-react'
+
+// Report extraction (Claude reading a full survey PDF) can run past the
+// default serverless window — give actions invoked from this page headroom.
+export const maxDuration = 300
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
