@@ -144,7 +144,7 @@ export async function buildQuotePdfResponse(
   })
 }
 
-type SettingsRow = {
+export type SettingsRow = {
   company_name: string
   abn: string | null
   address: string | null
@@ -161,7 +161,7 @@ const LOGO_EXTENSIONS = ['png', 'jpg', 'jpeg']
  * URL. Returns a fetchable URL, or undefined when unset or not a format
  * react-pdf can render. (Mirrors resolveLogoUrl in /api/pdf.)
  */
-function resolveLogo(logoPath: string | null): string | undefined {
+export function resolveLogo(logoPath: string | null): string | undefined {
   if (!logoPath) return undefined
   const url = logoPath.startsWith('http')
     ? logoPath
@@ -174,7 +174,7 @@ function resolveLogo(logoPath: string | null): string | undefined {
   }
 }
 
-function toDocCompany(settings: SettingsRow | null): DocCompany {
+export function toDocCompany(settings: SettingsRow | null): DocCompany {
   return {
     name: settings?.company_name ?? 'Company',
     abn: settings?.abn,

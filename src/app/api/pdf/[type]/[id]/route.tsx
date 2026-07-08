@@ -7,6 +7,7 @@ import { computeClaim, type ClaimLineInput } from '@/lib/claims'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
 import { buildQuotePdfResponse } from '@/pdf/build-quote-pdf'
+import { buildComplianceReportResponse } from '@/pdf/build-compliance-report'
 import { buildHandoverPdfResponse } from '@/pdf/build-handover-pdf'
 import { InvoicePdf } from '@/pdf/InvoicePdf'
 import { PoPdf } from '@/pdf/PoPdf'
@@ -279,6 +280,12 @@ export async function GET(
         url.searchParams.get('kind') ?? 'job',
         id
       )
+    }
+    case 'compliance-report': {
+      // [id] = client id → portfolio property-compliance report (no money;
+      // money-roles default gate keeps it admin/office like the client pages).
+      const supabase = await createClient()
+      return buildComplianceReportResponse(supabase, id)
     }
     default:
       return new Response('Not found', { status: 404 })

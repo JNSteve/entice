@@ -5,7 +5,9 @@ import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
 import { StatusBadge } from '@/components/StatusBadge'
 import { fmtDate } from '@/lib/format'
+import { FileTextIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import { buttonVariants } from '@/components/ui/button'
 import {
   Table,
   TableHeader,
@@ -158,6 +160,17 @@ export default async function ClientDetailPage({
           <div className="flex items-center gap-2">
             {client.archived && (
               <Badge variant="destructive">Archived</Badge>
+            )}
+            {canEdit && (
+              <a
+                href={`/api/pdf/compliance-report/${client.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
+                <FileTextIcon className="size-4" />
+                Compliance report
+              </a>
             )}
             {canEdit && (
               <>

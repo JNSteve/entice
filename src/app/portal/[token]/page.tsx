@@ -6,6 +6,7 @@ import {
   CircleCheckIcon,
   ClockIcon,
   FileSignatureIcon,
+  FileTextIcon,
   MapPinIcon,
   PlusIcon,
   TriangleAlertIcon,
@@ -91,14 +92,25 @@ export default async function PortalHomePage({
 
   return (
     <PortalShell branding={branding} token={token} active="properties">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-bold tracking-tight text-slate-900">
-          Welcome, {branding.client_name}
-        </h1>
-        <p className="text-sm text-slate-500">
-          Your property compliance and works with {branding.company_name} —{' '}
-          all in one place.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+            Welcome, {branding.client_name}
+          </h1>
+          <p className="text-sm text-slate-500">
+            Your property compliance and works with {branding.company_name} —{' '}
+            all in one place.
+          </p>
+        </div>
+        <a
+          href={`/portal/${token}/report-pdf`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="flex min-h-11 items-center gap-2 rounded-xl border bg-white px-3.5 text-sm font-medium text-[#162040] transition-colors hover:bg-slate-50"
+        >
+          <FileTextIcon className="size-4" />
+          Compliance report (PDF)
+        </a>
       </div>
 
       {/* Awaiting approvals */}
