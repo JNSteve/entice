@@ -27,6 +27,10 @@ import {
   type CompetencyRecordLike,
 } from '@/lib/competency'
 import {
+  FORM_KIND_LABELS as KIND_LABELS,
+  FORM_KIND_ORDER as KIND_ORDER,
+} from '@/lib/form-kinds'
+import {
   DOC_CATEGORIES,
   DOC_CATEGORY_LABELS,
   type FormTemplateKind,
@@ -43,27 +47,6 @@ const KIND_ICONS: Record<FormTemplateKind, React.ComponentType<{ className?: str
   custom: FileIcon,
   audit: ClipboardCheckIcon,
 }
-
-const KIND_LABELS: Record<FormTemplateKind, string> = {
-  prestart: 'Pre-Start',
-  prestart_meeting: 'Pre-Start Meeting',
-  take5: 'Take 5',
-  toolbox: 'Toolbox',
-  induction: 'Induction',
-  incident: 'Incident',
-  custom: 'Custom',
-  audit: 'Audit',
-}
-
-const KIND_ORDER: FormTemplateKind[] = [
-  'prestart',
-  'prestart_meeting',
-  'take5',
-  'toolbox',
-  'induction',
-  'incident',
-  'custom',
-]
 
 type RecentItem = {
   id: string

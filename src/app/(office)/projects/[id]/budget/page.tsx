@@ -48,43 +48,40 @@ export default async function ProjectBudgetPage({
 
   if (!project) notFound()
 
-  // Committed = Σ issued/closed po_lines + Σ active commitments.
   // If a source row is linked to a budget line, attribute it to that line;
   // otherwise fall back to cost-code grouping (existing behaviour). Each row
   // lands in EXACTLY ONE bucket (line XOR code) — the group header relies on
   // that mutual exclusion to avoid double-counting.
+  function bucket(
+    byLine: Record<string, number>,
+    byCode: Record<string, number>,
+    budgetLineId: string | null,
+    costCodeId: string | null,
+    amt: number
+  ) {
+    if (budgetLineId) {
+      byLine[budgetLineId] = round2((byLine[budgetLineId] ?? 0) + amt)
+    } else {
+      const key = costCodeId ?? 'uncoded'
+      byCode[key] = round2((byCode[key] ?? 0) + amt)
+    }
+  }
+
+  // Committed = Σ issued/closed po_lines + Σ active commitments.
   const committedByLine: Record<string, number> = {}
   const committedByCode: Record<string, number> = {}
   for (const l of poLines ?? []) {
-    const amt = lineTotal(Number(l.qty), Number(l.unit_cost))
-    if (l.budget_line_id) {
-      committedByLine[l.budget_line_id] = round2((committedByLine[l.budget_line_id] ?? 0) + amt)
-    } else {
-      const key = l.cost_code_id ?? 'uncoded'
-      committedByCode[key] = round2((committedByCode[key] ?? 0) + amt)
-    }
+    bucket(committedByLine, committedByCode, l.budget_line_id, l.cost_code_id, lineTotal(Number(l.qty), Number(l.unit_cost)))
   }
   for (const c of commitments ?? []) {
-    const amt = Number(c.amount)
-    if (c.budget_line_id) {
-      committedByLine[c.budget_line_id] = round2((committedByLine[c.budget_line_id] ?? 0) + amt)
-    } else {
-      const key = c.cost_code_id ?? 'uncoded'
-      committedByCode[key] = round2((committedByCode[key] ?? 0) + amt)
-    }
+    bucket(committedByLine, committedByCode, c.budget_line_id, c.cost_code_id, Number(c.amount))
   }
 
   // Actual = Σ costs, same line-vs-code precedence.
   const actualByLine: Record<string, number> = {}
   const actualByCode: Record<string, number> = {}
   for (const c of costs ?? []) {
-    const amt = Number(c.amount)
-    if (c.budget_line_id) {
-      actualByLine[c.budget_line_id] = round2((actualByLine[c.budget_line_id] ?? 0) + amt)
-    } else {
-      const key = c.cost_code_id ?? 'uncoded'
-      actualByCode[key] = round2((actualByCode[key] ?? 0) + amt)
-    }
+    bucket(actualByLine, actualByCode, c.budget_line_id, c.cost_code_id, Number(c.amount))
   }
 
   const lines: BudgetLineRow[] = (budgetLines ?? []).map((l) => ({

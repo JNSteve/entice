@@ -14,19 +14,9 @@ import { AttachmentList } from '@/components/AttachmentList'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { ShareLinkDialog } from '@/components/ShareLinkDialog'
 import { Button } from '@/components/ui/button'
+import { FORM_KIND_LABELS as KIND_LABELS } from '@/lib/form-kinds'
 import type { FormField, FormTemplateKind } from '@/lib/zod'
 import { SignonSection } from './signon-section'
-
-const KIND_LABELS: Record<FormTemplateKind, string> = {
-  prestart: 'Pre-Start',
-  prestart_meeting: 'Pre-Start Meeting',
-  take5: 'Take 5',
-  toolbox: 'Toolbox',
-  induction: 'Induction',
-  incident: 'Incident',
-  custom: 'Custom',
-  audit: 'Audit',
-}
 
 function fmtDateTime(value: string): string {
   const d = parseISO(value)

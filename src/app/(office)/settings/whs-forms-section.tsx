@@ -25,6 +25,10 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import {
+  FORM_KIND_COLORS as KIND_COLORS,
+  FORM_KIND_LABELS as KIND_LABELS,
+} from '@/lib/form-kinds'
+import {
   FORM_TEMPLATE_KINDS,
   FORM_FIELD_TYPES,
   type FormTemplateKind,
@@ -54,28 +58,6 @@ export interface FormTemplateRow {
   active: boolean
   requires_signon: boolean
   submission_count: number
-}
-
-const KIND_LABELS: Record<FormTemplateKind, string> = {
-  prestart: 'Pre-Start',
-  prestart_meeting: 'Pre-Start Meeting',
-  take5: 'Take 5',
-  toolbox: 'Toolbox',
-  induction: 'Induction',
-  incident: 'Incident',
-  custom: 'Custom',
-  audit: 'Audit',
-}
-
-const KIND_COLORS: Record<FormTemplateKind, string> = {
-  prestart: 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-300',
-  prestart_meeting: 'bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950 dark:text-cyan-300',
-  take5: 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950 dark:text-yellow-300',
-  toolbox: 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-300',
-  induction: 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-300',
-  incident: 'bg-red-50 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-300',
-  custom: 'bg-gray-50 text-gray-700 border-gray-200 dark:bg-gray-800 dark:text-gray-300',
-  audit: 'bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950 dark:text-indigo-300',
 }
 
 export function WhsFormsSection({ templates }: { templates: FormTemplateRow[] }) {

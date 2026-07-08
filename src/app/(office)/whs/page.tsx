@@ -13,18 +13,8 @@ import {
 import { AuditHistory } from '@/components/AuditHistory'
 import type { AuditRow } from '@/lib/audit-queries'
 import { fmtDate } from '@/lib/format'
+import { FORM_KIND_SHORT as KIND_SHORT } from '@/lib/form-kinds'
 import type { FormTemplateKind } from '@/lib/zod'
-
-const KIND_SHORT: Record<FormTemplateKind, string> = {
-  prestart: 'pre-start',
-  prestart_meeting: 'pre-start meeting',
-  take5: 'take 5',
-  toolbox: 'toolbox',
-  induction: 'induction',
-  incident: 'incident',
-  custom: 'custom',
-  audit: 'audit',
-}
 
 function dateStr(d: Date): string {
   return format(d, 'yyyy-MM-dd')
