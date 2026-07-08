@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition } from 'react'
+import React, { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import {
@@ -27,6 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { BudgetAttributionFields } from '@/components/BudgetAttributionFields'
 import { EmptyState } from '@/components/EmptyState'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud } from '@/lib/format'
@@ -35,7 +36,6 @@ import { cn } from '@/lib/utils'
 import { PlusIcon, Trash2Icon, WalletIcon } from 'lucide-react'
 import { addBudgetLine, updateBudgetLine, deleteBudgetLine, addProjectCost } from '../../actions'
 
-const NONE = 'none'
 const UNCODED = 'uncoded'
 
 export interface BudgetLineRow {
@@ -112,8 +112,8 @@ export function BudgetTable({
   const [addCostOpen, setAddCostOpen] = useState(false)
   const [costDate, setCostDate] = useState(new Date().toISOString().slice(0, 10))
   const [costDescription, setCostDescription] = useState('')
-  const [costCostCodeId, setCostCostCodeId] = useState(NONE)
-  const [costBudgetLineId, setCostBudgetLineId] = useState(NONE)
+  const [costCostCodeId, setCostCostCodeId] = useState<string | null>(null)
+  const [costBudgetLineId, setCostBudgetLineId] = useState<string | null>(null)
   const [costAmount, setCostAmount] = useState<number | null>(null)
 
   // Delete confirm state
@@ -127,35 +127,40 @@ export function BudgetTable({
   }
 
   // ── Grouping by cost code ──────────────────────────────────────────────────
-  const groupKeys = new Set<string>([
-    ...lines.map((l) => l.cost_code_id),
-    ...Object.keys(committedByCode),
-    ...Object.keys(actualByCode),
-  ])
+  // Memoised: dialog input state lives in this component, so without this the
+  // whole grouping pass would re-run on every keystroke.
+  const groups: Group[] = useMemo(() => {
+    const groupKeys = new Set<string>([
+      ...lines.map((l) => l.cost_code_id),
+      ...Object.keys(committedByCode),
+      ...Object.keys(actualByCode),
+    ])
 
-  const groups: Group[] = [...groupKeys]
-    .map((key) => {
-      const groupLines = lines.filter((l) => l.cost_code_id === key)
-      const budget = round2(groupLines.reduce((s, l) => s + l.budget_amount, 0))
-      // Header = spend attributed to this group's individual lines + unlinked
-      // spend sitting at this cost code. Each source row is in exactly one bucket.
-      const linkedCommitted = groupLines.reduce((s, l) => s + (committedByLine[l.id] ?? 0), 0)
-      const linkedActual = groupLines.reduce((s, l) => s + (actualByLine[l.id] ?? 0), 0)
-      const committed = round2(linkedCommitted + (committedByCode[key] ?? 0))
-      const actual = round2(linkedActual + (actualByCode[key] ?? 0))
-      return {
-        key,
-        label: codeLabel(key),
-        lines: groupLines,
-        budget,
-        committed,
-        actual,
-        variance: round2(budget - Math.max(committed, actual)),
-      }
-    })
-    .sort((a, b) =>
-      a.key === UNCODED ? 1 : b.key === UNCODED ? -1 : a.label.localeCompare(b.label)
-    )
+    return [...groupKeys]
+      .map((key) => {
+        const groupLines = lines.filter((l) => l.cost_code_id === key)
+        const budget = round2(groupLines.reduce((s, l) => s + l.budget_amount, 0))
+        // Header = spend attributed to this group's individual lines + unlinked
+        // spend sitting at this cost code. Each source row is in exactly one bucket.
+        const linkedCommitted = groupLines.reduce((s, l) => s + (committedByLine[l.id] ?? 0), 0)
+        const linkedActual = groupLines.reduce((s, l) => s + (actualByLine[l.id] ?? 0), 0)
+        const committed = round2(linkedCommitted + (committedByCode[key] ?? 0))
+        const actual = round2(linkedActual + (actualByCode[key] ?? 0))
+        return {
+          key,
+          label: codeLabel(key),
+          lines: groupLines,
+          budget,
+          committed,
+          actual,
+          variance: round2(budget - Math.max(committed, actual)),
+        }
+      })
+      .sort((a, b) =>
+        a.key === UNCODED ? 1 : b.key === UNCODED ? -1 : a.label.localeCompare(b.label)
+      )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines, committedByLine, committedByCode, actualByLine, actualByCode, costCodes])
 
   const totalBudget = round2(groups.reduce((s, g) => s + g.budget, 0))
   const totalCommitted = round2(groups.reduce((s, g) => s + g.committed, 0))
@@ -234,8 +239,8 @@ export function BudgetTable({
   function resetAddCost() {
     setCostDate(new Date().toISOString().slice(0, 10))
     setCostDescription('')
-    setCostCostCodeId(NONE)
-    setCostBudgetLineId(NONE)
+    setCostCostCodeId(null)
+    setCostBudgetLineId(null)
     setCostAmount(null)
   }
 
@@ -251,8 +256,8 @@ export function BudgetTable({
         date: costDate,
         description: costDescription,
         amount: costAmount,
-        cost_code_id: costCostCodeId === NONE ? null : costCostCodeId,
-        budget_line_id: costBudgetLineId === NONE ? null : costBudgetLineId,
+        cost_code_id: costCostCodeId,
+        budget_line_id: costBudgetLineId,
       })
       if (result.error) {
         toast.error(result.error)
@@ -490,52 +495,17 @@ export function BudgetTable({
                 required
               />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pc-code">Cost code (optional)</Label>
-              <Select
-                value={costCostCodeId}
-                onValueChange={(v) => setCostCostCodeId(v ?? NONE)}
-              >
-                <SelectTrigger id="pc-code" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>No cost code</SelectItem>
-                  {activeCodes.map((cc) => (
-                    <SelectItem key={cc.id} value={cc.id}>
-                      {cc.code} – {cc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pc-line">Budget line (optional)</Label>
-              <Select
-                value={costBudgetLineId}
-                onValueChange={(v) => {
-                  const next = v ?? NONE
-                  setCostBudgetLineId(next)
-                  // Keep the cost code consistent with the chosen line.
-                  if (next !== NONE) {
-                    const bl = lines.find((l) => l.id === next)
-                    if (bl) setCostCostCodeId(bl.cost_code_id)
-                  }
-                }}
-              >
-                <SelectTrigger id="pc-line" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>No specific line</SelectItem>
-                  {lines.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.description}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <BudgetAttributionFields
+              idPrefix="pc"
+              costCodes={activeCodes}
+              budgetLines={lines}
+              costCodeId={costCostCodeId}
+              budgetLineId={costBudgetLineId}
+              onChange={(next) => {
+                setCostCostCodeId(next.costCodeId)
+                setCostBudgetLineId(next.budgetLineId)
+              }}
+            />
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="pc-amount">Amount</Label>
               <MoneyInput value={costAmount} onChange={setCostAmount} />

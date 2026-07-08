@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { resolveBudgetLine } from '@/lib/budget-lines'
 import { nextNumber } from '@/lib/numbering'
 import { syncRequestsForQuote } from '@/lib/notify'
 import { todayAU } from '@/lib/tz'
@@ -238,13 +239,23 @@ export async function addProjectCost(data: unknown): Promise<Result> {
   }
 
   const supabase = await createClient()
+
+  // A linked budget line must belong to this project, and the line's cost
+  // code wins — the budget rollup attributes by budget_line_id first.
+  let costCodeId = parsed.data.cost_code_id
+  if (parsed.data.budget_line_id) {
+    const line = await resolveBudgetLine(supabase, parsed.data.budget_line_id, parsed.data.project_id)
+    if (line.error) return { error: line.error }
+    costCodeId = line.costCodeId ?? costCodeId
+  }
+
   const { error } = await supabase.from('costs').insert({
     parent_type: 'project',
     parent_id: parsed.data.project_id,
     date: parsed.data.date,
     description: parsed.data.description,
     amount: parsed.data.amount,
-    cost_code_id: parsed.data.cost_code_id,
+    cost_code_id: costCodeId,
     budget_line_id: parsed.data.budget_line_id,
     source: 'manual',
     created_by: profile.id,

@@ -642,7 +642,8 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
       .from('quote_lines')
       .select('section_id, description, qty, unit_cost, unit_sell')
       .eq('quote_id', quoteId)
-      .order('position'),
+      .order('position')
+      .order('id'),
   ])
 
   // Fetch the "Other" cost code (code = '99').

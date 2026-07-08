@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { resolveBudgetLine } from '@/lib/budget-lines'
 import { todayAU } from '@/lib/tz'
 import {
   packageAwardSchema,
@@ -261,12 +262,21 @@ export async function awardPackage(
     .single()
   if (!quote) return { error: 'Selected supplier has no quote on this package' }
 
+  // A linked budget line must belong to this project, and the line's cost
+  // code wins — the budget rollup attributes by budget_line_id first.
+  let costCodeId = parsed.data.cost_code_id
+  if (parsed.data.budget_line_id) {
+    const line = await resolveBudgetLine(supabase, parsed.data.budget_line_id, projectId)
+    if (line.error) return { error: line.error }
+    costCodeId = line.costCodeId ?? costCodeId
+  }
+
   const { error: insertError } = await supabase.from('commitments').insert({
     project_id: projectId,
     kind: 'subcontract',
     vendor_id: parsed.data.vendor_id,
     package_id: packageId,
-    cost_code_id: parsed.data.cost_code_id,
+    cost_code_id: costCodeId,
     budget_line_id: parsed.data.budget_line_id,
     description: parsed.data.description,
     amount: parsed.data.amount,

@@ -153,6 +153,25 @@ describe('projectPayloadFromQuote', () => {
     expect(budgetLines[0].position).toBe(0)
   })
 
+  test('sell-only quote (all unit_cost 0) falls back to sell-valued budget', () => {
+    // unit_cost defaults to 0 in the DB; estimators can price purely via sell.
+    const sellOnly: ConvertLine[] = LINES.map((l) => ({ ...l, unit_cost: 0 }))
+    const { budgetLines } = projectPayloadFromQuote(QUOTE, SECTIONS, sellOnly, OTHER_CODE_ID, TODAY)
+    // Without the fallback this would be an all-zero (useless) budget.
+    expect(budgetLines.map((bl) => bl.budget_amount)).toEqual([300, 100, 250.50])
+  })
+
+  test('partial cost data still values every line at cost', () => {
+    // One line with a real cost is enough to trust cost-based pricing.
+    const partial: ConvertLine[] = [
+      { ...LINES[0], unit_cost: 0 },
+      LINES[1],
+      LINES[2],
+    ]
+    const { budgetLines } = projectPayloadFromQuote(QUOTE, SECTIONS, partial, OTHER_CODE_ID, TODAY)
+    expect(budgetLines.map((bl) => bl.budget_amount)).toEqual([0, 60, 150])
+  })
+
   test('contract_sum with GST rate 0 still equals subtotal', () => {
     const q = { ...QUOTE, gst_rate: 0 }
     const { project } = projectPayloadFromQuote(q, SECTIONS, LINES, OTHER_CODE_ID, TODAY)

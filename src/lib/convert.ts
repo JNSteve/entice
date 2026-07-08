@@ -116,20 +116,26 @@ export function projectPayloadFromQuote(
 
   // One budget line per quote line, valued at COST (qty × unit_cost) — the
   // budget tracks committed/actual COSTS, so seeding it with sell prices would
-  // make every line look over budget from day one.  Lines are grouped by their
-  // section's position (unsectioned lines last), preserving the incoming line
-  // order within each group, then handed sequential positions.
+  // make every line look over budget from day one.  Exception: quotes priced
+  // via sell rates only (unit_cost left at its 0 default on every line) would
+  // seed a useless all-zero budget, so fall back to sell for the whole quote.
+  const hasCostData = lines.some((l) => lineTotal(l.qty, l.unit_cost) !== 0)
+  const amountOf = (l: ConvertLine) =>
+    round2(lineTotal(l.qty, hasCostData ? l.unit_cost : l.unit_sell))
+
+  // Lines are grouped by their section's position (unsectioned lines last),
+  // preserving the incoming line order within each group (sort is stable),
+  // then handed sequential positions.
   const LAST = Number.MAX_SAFE_INTEGER
   const sectionPosition = new Map(sections.map((s) => [s.id, s.position]))
   const sectionOf = (l: ConvertLine) =>
     l.section_id !== null ? sectionPosition.get(l.section_id) ?? LAST : LAST
 
-  const budgetLines: BudgetLinePayload[] = lines
-    .map((line, index) => ({ line, index }))
-    .sort((a, b) => sectionOf(a.line) - sectionOf(b.line) || a.index - b.index)
-    .map(({ line }, position) => ({
+  const budgetLines: BudgetLinePayload[] = [...lines]
+    .sort((a, b) => sectionOf(a) - sectionOf(b))
+    .map((line, position) => ({
       description: line.description,
-      budget_amount: round2(lineTotal(line.qty, line.unit_cost)),
+      budget_amount: amountOf(line),
       cost_code_id: otherCostCodeId,
       position,
     }))

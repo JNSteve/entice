@@ -54,6 +54,8 @@ interface RfqSectionProps {
   packageNotes: string | null
   letByDate: string | null
   companyName: string
+  /** Settings → Company email; biases Gmail compose to this account when set. */
+  companyEmail: string | null
   vendors: RfqVendorOption[]
   rfqs: RfqRow[]
   attachments: AttachmentItem[]
@@ -62,11 +64,11 @@ interface RfqSectionProps {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const ALL_TRADES = '__all__'
-const MAILTO_BODY_LIMIT = 1800
 
-// RFQs open in Gmail web compose signed in as this account (via authuser).
-// Change this if the mailbox that sends procurement RFQs ever changes.
-const RFQ_GMAIL_ACCOUNT = 'nick@ecr.com.au'
+// Gmail compose opens via a plain https URL, so the old 1800-char mailto:
+// limit doesn't apply — but keep a generous ceiling on the FINAL encoded URL
+// to stay under the ~8k point where some browsers/proxies misbehave.
+const GMAIL_URL_LIMIT = 7500
 
 const COMPLIANCE_COLOURS: Record<ComplianceStatus, string> = {
   green: 'bg-green-500',
@@ -128,6 +130,7 @@ export function RfqSection({
   packageNotes,
   letByDate,
   companyName,
+  companyEmail,
   vendors,
   rfqs,
   attachments,
@@ -204,28 +207,31 @@ export function RfqSection({
   }
 
   function openInGmail() {
-    if (body.length > MAILTO_BODY_LIMIT) {
-      void copyEmailText()
-      toast.info('Body too long for a mail link — text copied instead')
-      return
-    }
     if (selectedVendors.length > selectedEmails.length) {
       toast.warning(
         `${selectedVendors.length - selectedEmails.length} selected supplier(s) have no email address`
       )
     }
     // Gmail web compose. view=cm/fs=1 opens a full compose window; authuser
-    // biases Gmail to the ECR account when several Googles are signed in.
+    // (the company email from Settings, when set) biases Gmail to that
+    // account when several Googles are signed in. Without it Gmail uses the
+    // browser's default account, so the button works for every user.
     const params = new URLSearchParams()
     params.set('view', 'cm')
     params.set('fs', '1')
-    params.set('authuser', RFQ_GMAIL_ACCOUNT)
+    if (companyEmail) params.set('authuser', companyEmail)
     if (selectedEmails.length > 0) params.set('bcc', selectedEmails.join(','))
     params.set('su', subject) // Gmail uses 'su' for subject
     params.set('body', body)
     // URLSearchParams encodes spaces as '+'; normalise to %20 for the URL
     const query = params.toString().replace(/\+/g, '%20')
-    window.open(`https://mail.google.com/mail/?${query}`, '_blank', 'noopener,noreferrer')
+    const url = `https://mail.google.com/mail/?${query}`
+    if (url.length > GMAIL_URL_LIMIT) {
+      void copyEmailText()
+      toast.info('Body too long to open in Gmail — text copied instead')
+      return
+    }
+    window.open(url, '_blank', 'noopener,noreferrer')
   }
 
   function handleMarkSent() {

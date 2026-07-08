@@ -21,6 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import { BudgetAttributionFields, type BudgetLineOption } from '@/components/BudgetAttributionFields'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud, fmtDate } from '@/lib/format'
 import { cn } from '@/lib/utils'
@@ -46,11 +47,7 @@ export interface AwardedCommitment {
   description: string
 }
 
-export interface BudgetLineOption {
-  id: string
-  description: string
-  cost_code_id: string
-}
+export type { BudgetLineOption }
 
 interface AwardSectionProps {
   projectId: string
@@ -64,8 +61,6 @@ interface AwardSectionProps {
   awardedCommitment: AwardedCommitment | null
   isAdmin: boolean
 }
-
-const NONE = '__none__'
 
 function deltaText(amount: number, budget: number): string {
   const delta = amount - budget
@@ -97,8 +92,8 @@ export function AwardSection({
   const [awardOpen, setAwardOpen] = useState(false)
   const [vendorId, setVendorId] = useState('')
   const [amount, setAmount] = useState<number | null>(null)
-  const [costCodeId, setCostCodeId] = useState<string>(NONE)
-  const [budgetLineId, setBudgetLineId] = useState<string>(NONE)
+  const [costCodeId, setCostCodeId] = useState<string | null>(null)
+  const [budgetLineId, setBudgetLineId] = useState<string | null>(null)
   const [description, setDescription] = useState('')
 
   // Un-award confirm
@@ -108,8 +103,8 @@ export function AwardSection({
     const initial = recommended ?? quotes[0] ?? null
     setVendorId(initial?.vendor_id ?? '')
     setAmount(initial?.amount ?? null)
-    setCostCodeId(packageCostCodeId ?? NONE)
-    setBudgetLineId(NONE)
+    setCostCodeId(packageCostCodeId)
+    setBudgetLineId(null)
     setDescription(initial ? `${packageName} — ${initial.vendor_name}` : packageName)
     setAwardOpen(true)
   }
@@ -138,8 +133,8 @@ export function AwardSection({
       const result = await awardPackage(packageId, projectId, {
         vendor_id: vendorId,
         amount,
-        cost_code_id: costCodeId === NONE ? null : costCodeId,
-        budget_line_id: budgetLineId === NONE ? null : budgetLineId,
+        cost_code_id: costCodeId,
+        budget_line_id: budgetLineId,
         description: description.trim(),
       })
       if (result.error) {
@@ -322,52 +317,18 @@ export function AwardSection({
               <Label>Amount</Label>
               <MoneyInput value={amount} onChange={setAmount} placeholder="0.00" />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="award-costcode">Cost code</Label>
-              <Select
-                value={costCodeId}
-                onValueChange={(v) => setCostCodeId(v ?? NONE)}
-              >
-                <SelectTrigger id="award-costcode" className="w-full">
-                  <SelectValue placeholder="Select cost code…" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>— None —</SelectItem>
-                  {costCodes.map((cc) => (
-                    <SelectItem key={cc.id} value={cc.id}>
-                      {cc.code} — {cc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="award-budgetline">Budget line (optional)</Label>
-              <Select
-                value={budgetLineId}
-                onValueChange={(v) => {
-                  const next = v ?? NONE
-                  setBudgetLineId(next)
-                  // Keep the cost code consistent with the chosen line.
-                  if (next !== NONE) {
-                    const bl = budgetLines.find((b) => b.id === next)
-                    if (bl) setCostCodeId(bl.cost_code_id)
-                  }
-                }}
-              >
-                <SelectTrigger id="award-budgetline" className="w-full">
-                  <SelectValue placeholder="No specific line" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>No specific line</SelectItem>
-                  {budgetLines.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.description}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <BudgetAttributionFields
+              idPrefix="award"
+              codeLabel="Cost code"
+              costCodes={costCodes}
+              budgetLines={budgetLines}
+              costCodeId={costCodeId}
+              budgetLineId={budgetLineId}
+              onChange={(next) => {
+                setCostCodeId(next.costCodeId)
+                setBudgetLineId(next.budgetLineId)
+              }}
+            />
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="award-description">Description</Label>
               <Input

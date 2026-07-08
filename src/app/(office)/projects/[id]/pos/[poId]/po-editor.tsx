@@ -29,6 +29,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
+import { BudgetAttributionFields, type BudgetLineOption } from '@/components/BudgetAttributionFields'
 import { StatusBadge } from '@/components/StatusBadge'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud, fmtDate } from '@/lib/format'
@@ -67,11 +68,7 @@ export interface VendorOption {
   name: string
 }
 
-export interface BudgetLineOption {
-  id: string
-  description: string
-  cost_code_id: string
-}
+export type { BudgetLineOption }
 
 export interface PoEditorProps {
   projectId: string
@@ -107,11 +104,11 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
   // Add line dialog
   const [addOpen, setAddOpen] = useState(false)
   const [lineDesc, setLineDesc] = useState('')
-  const [lineCostCode, setLineCostCode] = useState(NONE)
+  const [lineCostCode, setLineCostCode] = useState<string | null>(null)
   const [lineQty, setLineQty] = useState<number | null>(1)
   const [lineUnit, setLineUnit] = useState('ea')
   const [lineUnitCost, setLineUnitCost] = useState<number | null>(null)
-  const [lineBudgetLine, setLineBudgetLine] = useState(NONE)
+  const [lineBudgetLine, setLineBudgetLine] = useState<string | null>(null)
 
   // Delete confirm
   const [deleteTarget, setDeleteTarget] = useState<PoLine | null>(null)
@@ -129,6 +126,10 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
     const cc = costCodes.find((c) => c.id === id)
     return cc ? `${cc.code} – ${cc.name}` : '—'
   }
+
+  const hasBudgetLines = budgetLines.length > 0
+  const budgetLineLabel = (id: string | null) =>
+    id ? budgetLines.find((b) => b.id === id)?.description ?? '—' : '—'
 
   // Totals
   const subtotal = round2(lines.reduce((s, l) => s + lineTotal(l.qty, l.unit_cost), 0))
@@ -154,11 +155,11 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
 
   function resetAddLine() {
     setLineDesc('')
-    setLineCostCode(NONE)
+    setLineCostCode(null)
     setLineQty(1)
     setLineUnit('ea')
     setLineUnitCost(null)
-    setLineBudgetLine(NONE)
+    setLineBudgetLine(null)
   }
 
   function handleAddLine(e: React.FormEvent) {
@@ -170,8 +171,8 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
       const result = await addPoLine({
         po_id: po.id,
         description: lineDesc,
-        cost_code_id: lineCostCode === NONE ? null : lineCostCode,
-        budget_line_id: lineBudgetLine === NONE ? null : lineBudgetLine,
+        cost_code_id: lineCostCode,
+        budget_line_id: lineBudgetLine,
         qty: lineQty ?? 1,
         unit: lineUnit,
         unit_cost: lineUnitCost ?? 0,
@@ -212,9 +213,27 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
   function handleLineCostCode(line: PoLine, codeId: string) {
     const next = codeId === NONE ? null : codeId
     if (next === line.cost_code_id) return
-    setLines((prev) => prev.map((l) => l.id === line.id ? { ...l, cost_code_id: next } : l))
+    // Re-coding a linked line unlinks it — the budget rollup attributes by
+    // budget_line_id first, so a kept link would silently override this code.
+    setLines((prev) => prev.map((l) => l.id === line.id ? { ...l, cost_code_id: next, budget_line_id: null } : l))
     startTransition(async () => {
-      const result = await updatePoLine(line.id, po.id, projectId, { cost_code_id: next })
+      const result = await updatePoLine(line.id, po.id, projectId, { cost_code_id: next, budget_line_id: null })
+      if (result.error) toast.error(result.error)
+    })
+  }
+
+  function handleLineBudgetLine(line: PoLine, v: string) {
+    const next = v === NONE ? null : v
+    if (next === line.budget_line_id) return
+    const bl = next ? budgetLines.find((b) => b.id === next) ?? null : null
+    setLines((prev) => prev.map((l) =>
+      l.id === line.id
+        ? { ...l, budget_line_id: next, cost_code_id: bl ? bl.cost_code_id : l.cost_code_id }
+        : l
+    ))
+    startTransition(async () => {
+      // The server derives cost_code_id from the linked line.
+      const result = await updatePoLine(line.id, po.id, projectId, { budget_line_id: next })
       if (result.error) toast.error(result.error)
     })
   }
@@ -407,6 +426,7 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
                 <TableRow>
                   <TableHead>Description</TableHead>
                   <TableHead>Cost code</TableHead>
+                  {hasBudgetLines && <TableHead>Budget line</TableHead>}
                   <TableHead className="text-right">Qty</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Unit cost</TableHead>
@@ -442,6 +462,32 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
                         <span className="text-sm text-muted-foreground">{codeLabel(line.cost_code_id)}</span>
                       )}
                     </TableCell>
+                    {hasBudgetLines && (
+                      <TableCell>
+                        {isDraft ? (
+                          <Select
+                            value={line.budget_line_id ?? NONE}
+                            onValueChange={(v) => v && handleLineBudgetLine(line, v)}
+                          >
+                            <SelectTrigger size="sm" className="w-full max-w-48 text-xs">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value={NONE}>No specific line</SelectItem>
+                              {budgetLines.map((b) => (
+                                <SelectItem key={b.id} value={b.id}>
+                                  {b.description}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">
+                            {budgetLineLabel(line.budget_line_id)}
+                          </span>
+                        )}
+                      </TableCell>
+                    )}
                     <TableCell className="text-right">
                       {isDraft ? (
                         <MoneyInput
@@ -525,49 +571,17 @@ export function PoEditor({ projectId, po: initialPo, lines: initialLines, costCo
                 required
               />
             </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pl-code">Cost code (optional)</Label>
-              <Select value={lineCostCode} onValueChange={(v) => setLineCostCode(v ?? NONE)}>
-                <SelectTrigger id="pl-code" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>No cost code</SelectItem>
-                  {activeCodes.map((cc) => (
-                    <SelectItem key={cc.id} value={cc.id}>
-                      {cc.code} – {cc.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="pl-line">Budget line (optional)</Label>
-              <Select
-                value={lineBudgetLine}
-                onValueChange={(v) => {
-                  const next = v ?? NONE
-                  setLineBudgetLine(next)
-                  // Keep the cost code consistent with the chosen line.
-                  if (next !== NONE) {
-                    const bl = budgetLines.find((b) => b.id === next)
-                    if (bl) setLineCostCode(bl.cost_code_id)
-                  }
-                }}
-              >
-                <SelectTrigger id="pl-line" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={NONE}>No specific line</SelectItem>
-                  {budgetLines.map((b) => (
-                    <SelectItem key={b.id} value={b.id}>
-                      {b.description}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+            <BudgetAttributionFields
+              idPrefix="pl"
+              costCodes={activeCodes}
+              budgetLines={budgetLines}
+              costCodeId={lineCostCode}
+              budgetLineId={lineBudgetLine}
+              onChange={(next) => {
+                setLineCostCode(next.costCodeId)
+                setLineBudgetLine(next.budgetLineId)
+              }}
+            />
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="pl-qty">Qty</Label>

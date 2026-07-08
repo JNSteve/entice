@@ -78,7 +78,7 @@ export default async function PackageDetailPage({
       .in('role', ['admin', 'office'])
       .eq('active', true)
       .order('full_name'),
-    supabase.from('settings').select('company_name').eq('id', 1).single(),
+    supabase.from('settings').select('company_name, email').eq('id', 1).single(),
     supabase
       .from('budget_lines')
       .select('id, description, cost_code_id')
@@ -249,6 +249,7 @@ export default async function PackageDetailPage({
         packageNotes={pkg.notes ?? null}
         letByDate={pkg.let_by_date ?? null}
         companyName={settings?.company_name ?? 'Company'}
+        companyEmail={settings?.email ?? null}
         vendors={vendors}
         rfqs={rfqs}
         attachments={attachments}

@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { resolveBudgetLine } from '@/lib/budget-lines'
 import { nextNumber } from '@/lib/numbering'
 import { todayAU } from '@/lib/tz'
 import {
@@ -131,6 +132,15 @@ export async function addPoLine(data: unknown): Promise<Result> {
   if (!po) return { error: 'PO not found' }
   if (po.status !== 'draft') return { error: 'PO is not in draft status' }
 
+  // A linked budget line must belong to this PO's project, and the line's
+  // cost code wins — the budget rollup attributes by budget_line_id first.
+  let costCodeId = parsed.data.cost_code_id
+  if (parsed.data.budget_line_id) {
+    const line = await resolveBudgetLine(supabase, parsed.data.budget_line_id, po.project_id)
+    if (line.error) return { error: line.error }
+    costCodeId = line.costCodeId ?? costCodeId
+  }
+
   // Get next position.
   const { data: last } = await supabase
     .from('po_lines')
@@ -143,7 +153,7 @@ export async function addPoLine(data: unknown): Promise<Result> {
   const { error } = await supabase.from('po_lines').insert({
     po_id: parsed.data.po_id,
     description: parsed.data.description,
-    cost_code_id: parsed.data.cost_code_id,
+    cost_code_id: costCodeId,
     budget_line_id: parsed.data.budget_line_id,
     qty: parsed.data.qty,
     unit: parsed.data.unit,
@@ -181,9 +191,18 @@ export async function updatePoLine(
   if (!po) return { error: 'PO not found' }
   if (po.status !== 'draft') return { error: 'PO is not in draft status' }
 
+  // Same invariant as addPoLine: a linked budget line must belong to this
+  // project and drags its cost code along.
+  const update = { ...parsed.data }
+  if (update.budget_line_id) {
+    const line = await resolveBudgetLine(supabase, update.budget_line_id, projectId)
+    if (line.error) return { error: line.error }
+    if (line.costCodeId) update.cost_code_id = line.costCodeId
+  }
+
   const { error } = await supabase
     .from('po_lines')
-    .update(parsed.data)
+    .update(update)
     .eq('id', lineId)
     .eq('po_id', poId)
 
