@@ -10,6 +10,7 @@ import { nextNumber } from '@/lib/numbering'
 import { syncRequestsForQuote } from '@/lib/notify'
 import { canPublishQuote } from '@/lib/portal-interactions'
 import { jobPayloadFromQuote, projectPayloadFromQuote } from '@/lib/convert'
+import { copyQuoteAttachments, seedConvertChecklist } from '@/lib/convert-side-effects'
 import {
   quoteCreateSchema,
   quoteHeaderSchema,
@@ -556,7 +557,7 @@ export async function moveLine(id: string, dir: 'up' | 'down'): Promise<Result> 
 // ─── Conversion ──────────────────────────────────────────────────────────────
 
 export async function convertQuoteToJob(quoteId: string): Promise<Result> {
-  await requireRole('admin', 'office')
+  const profile = await requireRole('admin', 'office')
 
   const supabase = await createClient()
 
@@ -622,6 +623,10 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
 
   if (jobErr || !job) return { error: jobErr?.message ?? 'Failed to create job' }
 
+  // Carry the working context across — start-up checklist + scope documents.
+  await seedConvertChecklist(supabase, { table: 'job_checklist_items', fk: 'job_id' }, job.id)
+  await copyQuoteAttachments(supabase, quoteId, 'job', job.id, profile.id)
+
   const { error: updateErr } = await supabase
     .from('quotes')
     .update({ converted_to: 'job', converted_id: job.id })
@@ -639,7 +644,7 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
 }
 
 export async function convertQuoteToProject(quoteId: string): Promise<Result> {
-  await requireRole('admin', 'office')
+  const profile = await requireRole('admin', 'office')
 
   const supabase = await createClient()
 
@@ -723,6 +728,14 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
 
     if (blErr) return { error: blErr.message }
   }
+
+  // Carry the working context across — mobilisation checklist + scope documents.
+  await seedConvertChecklist(
+    supabase,
+    { table: 'project_checklist_items', fk: 'project_id' },
+    project.id
+  )
+  await copyQuoteAttachments(supabase, quoteId, 'project', project.id, profile.id)
 
   const { error: updateErr } = await supabase
     .from('quotes')
