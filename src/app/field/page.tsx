@@ -1,4 +1,6 @@
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
+import { CheckCircle2Icon, ShieldCheckIcon } from 'lucide-react'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { todayAU, dateAU } from '@/lib/tz'
@@ -50,6 +52,28 @@ export default async function MyDayPage() {
     `)
     .eq('user_id', profile.id)
     .eq('date', todayStr)
+
+  // ─── Pre-start meeting status for today's targets ─────────────────────────
+  // One prestart_meeting per project/job per AU day is the expectation; nudge
+  // when today's assigned target doesn't have one yet. Brisbane is fixed +10.
+
+  const dayStartIso = new Date(`${todayStr}T00:00:00+10:00`).toISOString()
+
+  const [{ data: prestartTemplate }, { data: todaysMeetings }] = await Promise.all([
+    supabase
+      .from('form_templates')
+      .select('id')
+      .eq('kind', 'prestart_meeting')
+      .eq('active', true)
+      .order('version', { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabase
+      .from('form_submissions')
+      .select('id, project_id, job_id')
+      .eq('kind', 'prestart_meeting')
+      .gte('submitted_at', dayStartIso),
+  ])
 
   // ─── Open timesheet entry ─────────────────────────────────────────────────
 
@@ -146,6 +170,35 @@ export default async function MyDayPage() {
     }
   })
 
+  // Distinct assigned targets → done (link to submission) or todo (link to form).
+  type PrestartNudge = {
+    key: string
+    label: string
+    href: string
+    done: boolean
+  }
+  const prestartNudges: PrestartNudge[] = []
+  if (prestartTemplate) {
+    const seen = new Set<string>()
+    for (const a of assignments) {
+      const key = a.project_id ?? a.job_id
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      const meeting = (todaysMeetings ?? []).find((m) =>
+        a.project_id ? m.project_id === a.project_id : m.job_id === a.job_id
+      )
+      const targetParam = a.project_id ? `project=${a.project_id}` : `job=${a.job_id}`
+      prestartNudges.push({
+        key,
+        label: `${a.number} — ${a.title}`,
+        href: meeting
+          ? `/field/safety/submission/${meeting.id}`
+          : `/field/safety/new/${prestartTemplate.id}?${targetParam}`,
+        done: Boolean(meeting),
+      })
+    }
+  }
+
   const openEntry: OpenEntry | null = openRow
     ? (() => {
         const j = Array.isArray(openRow.jobs) ? openRow.jobs[0] : openRow.jobs
@@ -211,6 +264,38 @@ export default async function MyDayPage() {
         </h1>
         <p className="text-sm text-muted-foreground">{dateLabel}</p>
       </div>
+
+      {prestartNudges.length > 0 && (
+        <div className="flex flex-col gap-2">
+          {prestartNudges.map((n) =>
+            n.done ? (
+              <Link
+                key={n.key}
+                href={n.href}
+                className="flex items-center gap-3 rounded-xl border border-green-500/40 bg-green-500/10 px-4 py-3"
+              >
+                <CheckCircle2Icon className="size-5 shrink-0 text-green-600 dark:text-green-400" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Pre-start meeting done</p>
+                  <p className="truncate text-xs text-muted-foreground">{n.label}</p>
+                </div>
+              </Link>
+            ) : (
+              <Link
+                key={n.key}
+                href={n.href}
+                className="flex items-center gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 transition-colors active:bg-amber-100 dark:border-amber-700 dark:bg-amber-950"
+              >
+                <ShieldCheckIcon className="size-5 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Start today&apos;s Pre-Start Meeting</p>
+                  <p className="truncate text-xs text-muted-foreground">{n.label}</p>
+                </div>
+              </Link>
+            )
+          )}
+        </div>
+      )}
 
       <MyDayClient
         assignments={assignments}
