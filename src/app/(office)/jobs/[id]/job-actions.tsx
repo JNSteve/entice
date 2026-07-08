@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { setJobStatus } from '../actions'
+import { scheduleJob, setJobStatus } from '../actions'
 
 interface StatusActionsProps {
   jobId: string
@@ -52,11 +52,12 @@ export function StatusActions({ jobId, status, scheduledStart }: StatusActionsPr
       toast.error('Start date is required')
       return
     }
-    // Update dates then transition
+    // scheduleJob sets both dates, flips quote → scheduled, and pushes the
+    // schedule into any linked portal request.
     startTransition(async () => {
-      const result = await setJobStatus(jobId, {
-        status: 'scheduled',
+      const result = await scheduleJob(jobId, {
         scheduled_start: startDate,
+        scheduled_end: endDate || null,
       })
       if (result.error) {
         toast.error(result.error)

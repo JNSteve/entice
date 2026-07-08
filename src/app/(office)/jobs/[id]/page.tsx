@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { fmtDate } from '@/lib/format'
 import { StatusActions } from './job-actions'
 import { EditJobDialog } from './edit-job-dialog'
+import { ScheduleWorkDialog } from './schedule-work-dialog'
 import { ChecklistSection } from './checklist-section'
 import { WorkLogSection } from './work-log-section'
 import { CostsSection } from './costs-section'
@@ -192,6 +193,14 @@ export default async function JobDetailPage({
           title={`${job.number} — ${job.title}`}
           actions={
             <div className="flex flex-wrap items-center gap-2">
+              {canMutate && (
+                <ScheduleWorkDialog
+                  jobId={job.id}
+                  status={job.status}
+                  scheduledStart={job.scheduled_start ?? null}
+                  scheduledEnd={job.scheduled_end ?? null}
+                />
+              )}
               {canMutate && (
                 <EditJobDialog
                   jobId={job.id}

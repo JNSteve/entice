@@ -397,6 +397,16 @@ export const jobStatusSchema = z.object({
   scheduled_start: z.string().nullish().optional(),
 })
 
+export const jobScheduleSchema = z.object({
+  scheduled_start: z.string().min(1, 'A start date is required'),
+  scheduled_end: z
+    .string()
+    .nullish()
+    .transform((v) => v || null),
+})
+
+export type JobScheduleInput = z.infer<typeof jobScheduleSchema>
+
 export type JobStatusInput = z.infer<typeof jobStatusSchema>
 
 export const checklistItemSchema = z.object({

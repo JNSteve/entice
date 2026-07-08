@@ -5,10 +5,11 @@ import { after } from 'next/server'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
-import { syncRequestsForQuote } from '@/lib/notify'
+import { notifyClientRequestStatus, syncRequestsForQuote } from '@/lib/notify'
 import {
   jobCreateSchema,
   jobUpdateSchema,
+  jobScheduleSchema,
   jobStatusSchema,
   checklistItemSchema,
   workLogSchema,
@@ -90,6 +91,77 @@ export async function updateJob(
     .eq('id', jobId)
 
   if (error) return { error: error.message }
+
+  revalidateJob(jobId)
+  return {}
+}
+
+// ─── Schedule work ────────────────────────────────────────────────────────────
+
+/**
+ * Sets the job's schedule (start required, end optional) in one visible
+ * action, flips quote → scheduled when applicable, and pushes the date into
+ * any portal work request linked via the job's quote — so the client's
+ * request timeline shows "scheduled for {date}" (plus the dormant status
+ * email) the moment the office schedules the work.
+ */
+export async function scheduleJob(jobId: string, data: unknown): Promise<Result> {
+  await requireRole('admin', 'office', 'supervisor')
+
+  const parsed = jobScheduleSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createClient()
+  const { data: job } = await supabase
+    .from('jobs')
+    .select('id, status, quote_id')
+    .eq('id', jobId)
+    .single()
+  if (!job) return { error: 'Job not found' }
+  if (job.status === 'completed' || job.status === 'lost') {
+    return { error: `A ${job.status} job can no longer be scheduled` }
+  }
+
+  const update: Record<string, unknown> = {
+    scheduled_start: parsed.data.scheduled_start,
+    scheduled_end: parsed.data.scheduled_end,
+  }
+  if (job.status === 'quote') update.status = 'scheduled'
+
+  const { error } = await supabase.from('jobs').update(update).eq('id', jobId)
+  if (error) return { error: error.message }
+
+  // Push the schedule into linked portal requests (request.quote_id = the
+  // quote this job was converted from). Forward-only like the SQL sync:
+  // declined/completed requests are never touched; the date always follows
+  // the job (the job IS the source of truth once work is scheduled).
+  if (job.quote_id) {
+    const { data: requests } = await supabase
+      .from('portal_requests')
+      .select('id, status')
+      .eq('quote_id', job.quote_id)
+      .in('status', ['submitted', 'reviewed', 'quoted', 'scheduled'])
+
+    for (const request of requests ?? []) {
+      const patch: Record<string, unknown> = {
+        scheduled_for: parsed.data.scheduled_start,
+      }
+      if (request.status !== 'scheduled') patch.status = 'scheduled'
+      const { error: reqError } = await supabase
+        .from('portal_requests')
+        .update(patch)
+        .eq('id', request.id)
+      if (!reqError) {
+        const requestId = request.id as string
+        after(() =>
+          notifyClientRequestStatus({ requestId, status: 'scheduled' })
+        )
+      }
+    }
+    revalidatePath('/clients/requests')
+  }
 
   revalidateJob(jobId)
   return {}
