@@ -17,6 +17,14 @@ interface SiteOption {
   name: string
 }
 
+/** Renewal mode: seeded from a due compliance item (?site=&item=). */
+export interface RequestPrefill {
+  itemId: string
+  itemLabel: string
+  title: string
+  description: string
+}
+
 const URGENCY_CHIP_ACTIVE: Record<RequestUrgency, string> = {
   low: 'border-slate-400 bg-slate-100 text-slate-800',
   normal: 'border-blue-400 bg-blue-50 text-blue-800',
@@ -35,11 +43,13 @@ export function RequestForm({
   sites,
   initialSiteId,
   companyName,
+  prefill,
 }: {
   token: string
   sites: SiteOption[]
   initialSiteId?: string
   companyName: string
+  prefill?: RequestPrefill | null
 }) {
   const [pending, startTransition] = useTransition()
   const [siteId, setSiteId] = useState(
@@ -47,8 +57,8 @@ export function RequestForm({
       ? initialSiteId
       : (sites[0]?.id ?? '')
   )
-  const [title, setTitle] = useState('')
-  const [description, setDescription] = useState('')
+  const [title, setTitle] = useState(prefill?.title ?? '')
+  const [description, setDescription] = useState(prefill?.description ?? '')
   const [urgency, setUrgency] = useState<RequestUrgency>('normal')
   const [files, setFiles] = useState<File[]>([])
   const [previews, setPreviews] = useState<string[]>([])
@@ -130,6 +140,7 @@ export function RequestForm({
         description,
         urgency,
         photoPaths,
+        complianceItemId: prefill?.itemId ?? null,
       })
       if ('error' in result) {
         setError(result.error)
@@ -186,6 +197,13 @@ export function RequestForm({
       onSubmit={handleSubmit}
       className="flex flex-col gap-4 rounded-2xl border bg-white p-4 shadow-sm sm:p-5"
     >
+      {prefill && (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2.5 text-sm text-amber-900">
+          Requesting renewal of:{' '}
+          <span className="font-semibold">{prefill.itemLabel}</span>
+        </div>
+      )}
+
       {/* Property */}
       <div className="flex flex-col gap-1.5">
         <label htmlFor="req-site" className="text-sm font-medium text-slate-700">

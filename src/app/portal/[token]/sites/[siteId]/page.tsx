@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import {
   ArrowLeftIcon,
+  CalendarClockIcon,
   CalendarIcon,
   ChevronRightIcon,
   CircleCheckIcon,
@@ -540,18 +541,31 @@ export default async function PortalSitePage({
                     {item.notes && (
                       <p className="text-sm text-slate-600">{item.notes}</p>
                     )}
-                    {item.has_file && (
-                      <a
-                        href={`/portal/${token}/file/item/${item.id}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex min-h-11 w-fit items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium text-[#162040] transition-colors hover:bg-slate-50"
-                      >
-                        <DownloadIcon className="size-4" />
-                        <span className="max-w-60 truncate">
-                          {item.filename ?? 'View document'}
-                        </span>
-                      </a>
+                    {(item.has_file || itemStatus !== 'green') && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        {item.has_file && (
+                          <a
+                            href={`/portal/${token}/file/item/${item.id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex min-h-11 w-fit items-center gap-2 rounded-xl border px-3.5 py-2 text-sm font-medium text-[#162040] transition-colors hover:bg-slate-50"
+                          >
+                            <DownloadIcon className="size-4" />
+                            <span className="max-w-60 truncate">
+                              {item.filename ?? 'View document'}
+                            </span>
+                          </a>
+                        )}
+                        {itemStatus !== 'green' && (
+                          <Link
+                            href={`/portal/${token}/request?site=${siteId}&item=${item.id}`}
+                            className="flex min-h-11 w-fit items-center gap-2 rounded-xl bg-[#162040] px-3.5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
+                          >
+                            <CalendarClockIcon className="size-4" />
+                            Request re-inspection
+                          </Link>
+                        )}
+                      </div>
                     )}
                   </PortalCard>
                 </li>

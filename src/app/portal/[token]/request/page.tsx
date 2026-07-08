@@ -1,12 +1,17 @@
 import Link from 'next/link'
 import { ArrowLeftIcon } from 'lucide-react'
 import { createPublicClient } from '@/lib/supabase/public'
+import { fmtDate } from '@/lib/format'
+import {
+  PROPERTY_COMPLIANCE_KIND_LABELS,
+  type PropertyComplianceKind,
+} from '@/lib/portal'
 import {
   LinkInactivePage,
   PortalShell,
   type PortalBranding,
 } from '../portal-ui'
-import { RequestForm } from './request-form'
+import { RequestForm, type RequestPrefill } from './request-form'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
 export const dynamic = 'force-dynamic'
@@ -26,10 +31,10 @@ export default async function PortalRequestPage({
   searchParams,
 }: {
   params: Promise<{ token: string }>
-  searchParams: Promise<{ site?: string }>
+  searchParams: Promise<{ site?: string; item?: string }>
 }) {
   const { token } = await params
-  const { site } = await searchParams
+  const { site, item } = await searchParams
   const supabase = createPublicClient()
 
   const { data: resolved } = await supabase.rpc('portal_resolve_link', {
@@ -50,6 +55,33 @@ export default async function PortalRequestPage({
     id: s.id,
     name: s.name,
   }))
+
+  // Renewal mode (?site=&item=): prefill from the due compliance item so a
+  // red light becomes a one-tap re-inspection request.
+  let prefill: RequestPrefill | null = null
+  if (site && item) {
+    const { data: detailData } = await supabase.rpc('portal_site_detail', {
+      p_token: token,
+      p_site: site,
+    })
+    const detail = (detailData ?? null) as {
+      items?: { id: string; kind: string; title: string; review_due: string | null }[]
+    } | null
+    const found = detail?.items?.find((i) => i.id === item)
+    if (found) {
+      const kindLabel =
+        PROPERTY_COMPLIANCE_KIND_LABELS[found.kind as PropertyComplianceKind] ??
+        found.kind
+      prefill = {
+        itemId: found.id,
+        itemLabel: `${kindLabel} — ${found.title}`,
+        title: `Re-inspection — ${kindLabel}: ${found.title}`,
+        description: found.review_due
+          ? `Our ${kindLabel.toLowerCase()} "${found.title}" is due for review on ${fmtDate(found.review_due)}. Please arrange a re-inspection/renewal.`
+          : `Please arrange a re-inspection/renewal of our ${kindLabel.toLowerCase()} "${found.title}".`,
+      }
+    }
+  }
 
   return (
     <PortalShell branding={branding} token={token} active="properties">
@@ -82,6 +114,7 @@ export default async function PortalRequestPage({
           sites={sites}
           initialSiteId={site}
           companyName={branding.company_name}
+          prefill={prefill}
         />
       )}
     </PortalShell>

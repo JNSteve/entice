@@ -97,6 +97,8 @@ export async function submitPortalRequest(input: {
   description: string
   urgency: string
   photoPaths: string[]
+  /** Set when the request was raised from a due compliance item (renewal). */
+  complianceItemId?: string | null
 }): Promise<PortalActionResult> {
   const title = (input.title ?? '').trim()
   const description = (input.description ?? '').trim()
@@ -119,6 +121,7 @@ export async function submitPortalRequest(input: {
     p_description: description,
     p_urgency: input.urgency,
     p_photo_paths: photoPaths,
+    p_compliance_item: input.complianceItemId ?? null,
   })
   if (error) return { error: GENERIC_FAILURE }
   const result = mapRpcResult(
