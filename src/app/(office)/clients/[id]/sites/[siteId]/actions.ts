@@ -108,6 +108,109 @@ export async function updatePropertyComplianceItem(
 }
 
 /**
+ * Approves a client-filed document: copies the blob from the link-scoped
+ * portal-uploads/ prefix into the compliance evidence prefix (rows must never
+ * share a path — deletes remove the blob), creates the register item, and
+ * marks the upload approved. The portal then shows it as a normal item.
+ */
+export async function approvePortalUpload(
+  clientId: string,
+  uploadId: string
+): Promise<Result> {
+  const profile = await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { data: upload } = await supabase
+    .from('portal_uploads')
+    .select('id, site_id, client_id, kind, title, issue_date, review_due, notes, path, filename, status')
+    .eq('id', uploadId)
+    .eq('client_id', clientId)
+    .single()
+  if (!upload) return { error: 'Upload not found' }
+  if (upload.status !== 'pending') {
+    return { error: 'This upload has already been reviewed' }
+  }
+
+  const ext = (upload.path as string).split('.').pop() ?? 'pdf'
+  const evidencePath = `property-compliance/${upload.site_id}/${crypto.randomUUID()}.${ext}`
+  const { error: copyErr } = await supabase.storage
+    .from('attachments')
+    .copy(upload.path as string, evidencePath)
+  if (copyErr) return { error: `File copy failed: ${copyErr.message}` }
+
+  const { data: inserted, error } = await supabase
+    .from('property_compliance_items')
+    .insert({
+      site_id: upload.site_id,
+      kind: upload.kind,
+      title: upload.title,
+      issue_date: upload.issue_date,
+      review_due: upload.review_due,
+      notes: upload.notes,
+      evidence_path: evidencePath,
+      evidence_filename: upload.filename,
+      created_by: profile.id,
+    })
+    .select('id')
+    .single()
+  if (error || !inserted) return { error: error?.message ?? 'Insert failed' }
+
+  const { error: markErr } = await supabase
+    .from('portal_uploads')
+    .update({
+      status: 'approved',
+      compliance_item_id: inserted.id,
+      reviewed_by: profile.id,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq('id', uploadId)
+  if (markErr) {
+    return { error: `Item created, but marking the upload reviewed failed: ${markErr.message}` }
+  }
+
+  revalidateSite(clientId, upload.site_id as string)
+  return {}
+}
+
+/** Refuses a client-filed document; the note is shown to the client. */
+export async function rejectPortalUpload(
+  clientId: string,
+  uploadId: string,
+  note: string
+): Promise<Result> {
+  const profile = await requireRole('admin', 'office')
+
+  const trimmed = note.trim()
+  if (!trimmed) return { error: 'Give the client a short reason' }
+
+  const supabase = await createClient()
+  const { data: upload } = await supabase
+    .from('portal_uploads')
+    .select('id, site_id, status')
+    .eq('id', uploadId)
+    .eq('client_id', clientId)
+    .single()
+  if (!upload) return { error: 'Upload not found' }
+  if (upload.status !== 'pending') {
+    return { error: 'This upload has already been reviewed' }
+  }
+
+  const { error } = await supabase
+    .from('portal_uploads')
+    .update({
+      status: 'rejected',
+      review_note: trimmed.slice(0, 500),
+      reviewed_by: profile.id,
+      reviewed_at: new Date().toISOString(),
+    })
+    .eq('id', uploadId)
+  if (error) return { error: error.message }
+
+  revalidateSite(clientId, upload.site_id as string)
+  return {}
+}
+
+/**
  * Admin-only hard delete. Mirrors competency records: deleting the newest
  * item makes the one it superseded active again; evidence object removal is
  * best-effort (an orphaned object is recoverable, a dangling row is not).

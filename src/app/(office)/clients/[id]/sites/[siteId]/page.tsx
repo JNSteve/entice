@@ -19,6 +19,7 @@ import {
   type PropertyItemRow,
 } from './compliance-items'
 import { OfficeThread, type OfficeMessageRow } from './office-thread'
+import { PendingUploads, type PendingUploadRow } from './pending-uploads'
 
 /**
  * Office view of one property (site): its compliance register (the portal's
@@ -119,6 +120,39 @@ export default async function SiteDetailPage({
     unreadCount = threadMessages.filter((m) => m.unread).length
   }
 
+  // Client-filed documents awaiting review (admin/office only — the table's
+  // RLS is staff-only anyway).
+  let pendingUploads: PendingUploadRow[] = []
+  if (canEdit) {
+    const { data: uploads } = await supabase
+      .from('portal_uploads')
+      .select('id, kind, title, issue_date, review_due, notes, path, filename, created_at')
+      .eq('site_id', siteId)
+      .eq('status', 'pending')
+      .order('created_at', { ascending: true })
+    const uploadPaths = (uploads ?? []).map((u) => u.path as string)
+    const uploadUrlMap = new Map<string, string>()
+    if (uploadPaths.length > 0) {
+      const { data: signed } = await supabase.storage
+        .from('attachments')
+        .createSignedUrls(uploadPaths, 3600)
+      for (const entry of signed ?? []) {
+        if (entry.signedUrl && entry.path) uploadUrlMap.set(entry.path, entry.signedUrl)
+      }
+    }
+    pendingUploads = (uploads ?? []).map((u) => ({
+      id: u.id as string,
+      kind: u.kind as string,
+      title: u.title as string,
+      issue_date: u.issue_date as string,
+      review_due: (u.review_due as string | null) ?? null,
+      notes: (u.notes as string | null) ?? null,
+      filename: u.filename as string,
+      signedUrl: uploadUrlMap.get(u.path as string) ?? null,
+      created_at: u.created_at as string,
+    }))
+  }
+
   // Batch-sign evidence paths (office-side 1h links; the portal uses its own
   // logged short-lived route instead).
   const paths = (items ?? [])
@@ -175,6 +209,8 @@ export default async function SiteDetailPage({
           description={address || 'Property compliance register'}
         />
       </div>
+
+      {canEdit && <PendingUploads clientId={clientId} uploads={pendingUploads} />}
 
       <ComplianceItems
         clientId={clientId}

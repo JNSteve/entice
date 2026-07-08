@@ -1300,6 +1300,8 @@ export type PortalActivityData = {
   newRequests: PortalNewRequestRow[]
   decisions: PortalDecisionRow[]
   recentFeedback: PortalFeedbackLiteRow[]
+  /** Client-filed compliance documents awaiting office review. */
+  pendingUploads: number
 }
 
 export function PortalActivityCard({ data }: { data: PortalActivityData | null }) {
@@ -1308,7 +1310,8 @@ export function PortalActivityCard({ data }: { data: PortalActivityData | null }
     data.unreadThreads.length === 0 &&
     data.newRequests.length === 0 &&
     data.decisions.length === 0 &&
-    data.recentFeedback.length === 0
+    data.recentFeedback.length === 0 &&
+    data.pendingUploads === 0
 
   return (
     <DashboardCard title="Client portal" href="/clients/requests">
@@ -1318,6 +1321,13 @@ export function PortalActivityCard({ data }: { data: PortalActivityData | null }
         <Muted>No portal activity needing attention.</Muted>
       ) : (
         <>
+          {data.pendingUploads > 0 && (
+            <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+              {data.pendingUploads} client{' '}
+              {data.pendingUploads === 1 ? 'document' : 'documents'} awaiting
+              review
+            </p>
+          )}
           {data.unreadThreads.length > 0 && (
             <>
               <p className="text-xs font-medium text-muted-foreground">

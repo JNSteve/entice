@@ -825,7 +825,7 @@ async function loadPortalActivity(
 ): Promise<PortalActivityData> {
   const since = subDays(today, 14).toISOString()
 
-  const [messagesRes, requestsRes, decisionsRes, feedbackRes] = await Promise.all([
+  const [messagesRes, requestsRes, decisionsRes, feedbackRes, uploadsRes] = await Promise.all([
     supabase
       .from('portal_messages')
       .select('client_id, site_id, clients(name), sites(name)')
@@ -849,11 +849,17 @@ async function loadPortalActivity(
       .gte('created_at', since)
       .order('created_at', { ascending: false })
       .limit(6),
+    supabase
+      .from('portal_uploads')
+      .select('id', { count: 'exact', head: true })
+      .eq('status', 'pending'),
   ])
   if (messagesRes.error) throw messagesRes.error
   if (requestsRes.error) throw requestsRes.error
   if (decisionsRes.error) throw decisionsRes.error
   if (feedbackRes.error) throw feedbackRes.error
+  // portal_uploads may not exist until migration 0042 runs — treat as zero.
+  const pendingUploads = uploadsRes.error ? 0 : (uploadsRes.count ?? 0)
 
   // Group unread messages into one row per thread (client × property).
   const threads = new Map<
@@ -969,6 +975,7 @@ async function loadPortalActivity(
         createdAt: f.created_at as string,
       }
     }),
+    pendingUploads,
   }
 }
 
