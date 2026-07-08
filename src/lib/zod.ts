@@ -273,6 +273,67 @@ export const quoteLineUpdateSchema = z.object({
 
 export type QuoteLineUpdateInput = z.infer<typeof quoteLineUpdateSchema>
 
+// ─── Takeoff & estimating ────────────────────────────────────────────────────
+
+export const TAKEOFF_SOURCES = ['measured', 'manual', 'report', 'assembly'] as const
+export type TakeoffSource = (typeof TAKEOFF_SOURCES)[number]
+
+export const TAKEOFF_SHAPES = ['area', 'line', 'count'] as const
+export type TakeoffShape = (typeof TAKEOFF_SHAPES)[number]
+
+export const takeoffSheetSchema = z.object({
+  quote_id: z.uuid(),
+  attachment_id: z.uuid(),
+  name: z.string().min(1, 'Give the sheet a name'),
+  page: z.coerce.number().int().min(1).default(1),
+})
+
+export type TakeoffSheetInput = z.infer<typeof takeoffSheetSchema>
+
+export const takeoffItemSchema = z.object({
+  quote_id: z.uuid(),
+  sheet_id: z.uuid().nullish().transform((v) => v ?? null),
+  source: z.enum(TAKEOFF_SOURCES).default('manual'),
+  shape: z.enum(TAKEOFF_SHAPES).nullish().transform((v) => v ?? null),
+  /** [[x,y],…] in PDF point coordinates. */
+  geometry: z.array(z.tuple([z.number(), z.number()])).nullish().transform((v) => v ?? null),
+  deduction: z.boolean().default(false),
+  color: optionalText.optional(),
+  description: z.string().min(1, 'Description is required'),
+  qty: z.coerce.number(),
+  unit: z.string().min(1, 'Unit is required'),
+  rate_item_id: z.uuid().nullish().transform((v) => v ?? null),
+  unit_cost: z.coerce.number().min(0).nullish().transform((v) => v ?? null),
+  markup_pct: z.coerce.number().min(-100).max(1000).nullish().transform((v) => v ?? null),
+  section_title: optionalText.optional(),
+  notes: optionalText.optional(),
+})
+
+export type TakeoffItemInput = z.infer<typeof takeoffItemSchema>
+
+export const takeoffCalibrateSchema = z.object({
+  scale_m_per_pt: z.coerce.number().positive('Calibration must be positive'),
+})
+
+export const takeoffAssemblySchema = z.object({
+  name: z.string().min(1, 'Name is required'),
+  unit: z.string().min(1, 'Unit is required'),
+  description: optionalText.optional(),
+})
+
+export type TakeoffAssemblyInput = z.infer<typeof takeoffAssemblySchema>
+
+export const takeoffAssemblyComponentSchema = z.object({
+  assembly_id: z.uuid(),
+  description: z.string().min(1, 'Description is required'),
+  unit: z.string().min(1, 'Unit is required'),
+  factor: z.coerce.number().min(0).default(1),
+  fixed_qty: z.coerce.number().min(0).nullish().transform((v) => v ?? null),
+  rate_item_id: z.uuid().nullish().transform((v) => v ?? null),
+})
+
+export type TakeoffAssemblyComponentInput = z.infer<typeof takeoffAssemblyComponentSchema>
+
 // ─── Invoices ────────────────────────────────────────────────────────────────
 
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'void'] as const
