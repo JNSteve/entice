@@ -870,6 +870,17 @@ export default async function PortalSitePage({
                       {b.context ? ` — ${b.context}` : ''}
                     </p>
                   </div>
+                  {b.kind === 'invoice' && b.id && (
+                    <a
+                      href={`/portal/${token}/invoice-pdf/${b.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Download ${b.number}`}
+                      className="flex size-9 shrink-0 items-center justify-center rounded-xl border text-[#162040] transition-colors hover:bg-slate-50"
+                    >
+                      <DownloadIcon className="size-4" />
+                    </a>
+                  )}
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <span className="text-sm font-bold tabular-nums text-slate-900">
                       {b.amount != null ? aud(b.amount) : '—'}

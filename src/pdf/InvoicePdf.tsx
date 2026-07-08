@@ -37,6 +37,8 @@ export type InvoicePdfProps = {
   /** Total inc GST less payments received. */
   balanceDue: number
   footerText?: string | null
+  /** Portal issue watermark ("Issued to {client} via the client portal — {date}"). */
+  watermark?: string | null
 }
 
 const styles = StyleSheet.create({
@@ -143,6 +145,7 @@ export function InvoicePdf({
   payments,
   balanceDue,
   footerText,
+  watermark,
 }: InvoicePdfProps) {
   return (
     <DocShell
@@ -151,6 +154,7 @@ export function InvoicePdf({
       docDate={invoice.date}
       company={company}
       footerText={footerText}
+      watermark={watermark ?? null}
     >
       <View style={styles.toBlock}>
         <Text style={styles.toLabel}>Bill to</Text>

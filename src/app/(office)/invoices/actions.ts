@@ -2,8 +2,10 @@
 
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
+import { after } from 'next/server'
 import { addDays, format } from 'date-fns'
 import { requireRole } from '@/lib/auth'
+import { notifyClientInvoiceSent } from '@/lib/notify'
 import { createClient } from '@/lib/supabase/server'
 import { docTotals, round2 } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
@@ -285,6 +287,11 @@ export async function markInvoiceSent(id: string): Promise<Result> {
   if (error) return { error: error.message }
 
   await syncJobStatus(supabase, invoice.job_id)
+
+  // The invoice is now visible (and downloadable) in the portal billing tab
+  // for links with billing enabled; tell the client — fire-and-forget after
+  // the response (the email engine skip-logs until sending is configured).
+  after(() => notifyClientInvoiceSent({ invoiceId: id }))
 
   revalidateInvoice(id, invoice.job_id)
   return {}

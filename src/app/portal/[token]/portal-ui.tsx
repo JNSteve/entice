@@ -103,6 +103,8 @@ export interface PortalApprovalsPayload {
 
 export interface PortalBillingRow {
   kind: 'invoice' | 'claim'
+  /** Row uuid — present once migration 0044 runs; invoices use it for the PDF link. */
+  id?: string | null
   number: string
   context: string | null
   date: string

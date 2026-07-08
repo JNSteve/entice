@@ -299,6 +299,80 @@ export async function notifyClientRequestStatus(input: {
 }
 
 /**
+ * Client update: an invoice was issued (marked sent). Points at the portal
+ * billing tab where the watermarked PDF can be downloaded — no attachment,
+ * the portal is the delivery surface. Office action context.
+ */
+export async function notifyClientInvoiceSent(input: {
+  invoiceId: string
+}): Promise<void> {
+  try {
+    const supabase = await createClient()
+    const { data: invoice } = await supabase
+      .from('invoices')
+      .select('id, number, client_id, jobs(site_id, number, title)')
+      .eq('id', input.invoiceId)
+      .single()
+    if (!invoice) return
+
+    const jobRel = invoice.jobs as unknown as {
+      site_id: string | null
+      number: string
+      title: string
+    } | null
+
+    const [{ data: contacts }, { data: links }, { data: settings }] =
+      await Promise.all([
+        supabase
+          .from('contacts')
+          .select('name, email')
+          .eq('client_id', invoice.client_id)
+          .order('name'),
+        supabase
+          .from('client_links')
+          .select('id, token, revoked_at, expires_at, show_financials')
+          .eq('client_id', invoice.client_id)
+          .order('created_at', { ascending: false }),
+        supabase.from('settings').select('company_name').eq('id', 1).single(),
+      ])
+
+    // Only deep-link when a live link actually shows billing.
+    const liveLinks = ((links ?? []) as (LinkRow & { show_financials?: boolean })[]).filter(
+      (l) => isClientLinkActive(l) && l.show_financials
+    )
+    const link = liveLinks[0] ?? null
+    const base = appBaseUrl()
+    const portalUrl =
+      base && link && jobRel?.site_id
+        ? `${base}/portal/${link.token}/sites/${jobRel.site_id}?tab=billing`
+        : null
+
+    await sendEmail({
+      to: primaryContactEmail((contacts ?? []) as ContactRow[]),
+      subject: `Invoice ${invoice.number} from ${settings?.company_name ?? 'Entice'}`,
+      template: 'client_invoice_sent',
+      entityKind: 'invoice',
+      entityId: invoice.id as string,
+      html: renderEmail({
+        companyName: settings?.company_name ?? 'Entice',
+        heading: 'Your invoice is ready',
+        intro: jobRel
+          ? `Invoice ${invoice.number} for ${jobRel.number} — ${jobRel.title} has been issued.`
+          : `Invoice ${invoice.number} has been issued.`,
+        cta: portalUrl
+          ? { label: 'View & download in your portal', url: portalUrl }
+          : null,
+        footnote: portalUrl
+          ? null
+          : 'Ask us for a portal link to view and download your invoices online.',
+      }),
+    })
+  } catch (err) {
+    console.error('[notify] client invoice-sent email failed:', err)
+  }
+}
+
+/**
  * Client update: the office replied on a property's message thread.
  * Office action context.
  */
