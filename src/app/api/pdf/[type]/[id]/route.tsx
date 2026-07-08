@@ -8,6 +8,7 @@ import { lineTotal, round2 } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
 import { buildQuotePdfResponse } from '@/pdf/build-quote-pdf'
 import { buildComplianceReportResponse } from '@/pdf/build-compliance-report'
+import { buildTakeoffPdfResponse } from '@/pdf/build-takeoff-pdf'
 import { buildInvoicePdfResponse } from '@/pdf/build-invoice-pdf'
 import { ensureRegisterLink } from '@/lib/client-links'
 import { buildHandoverPdfResponse } from '@/pdf/build-handover-pdf'
@@ -287,6 +288,12 @@ export async function GET(
       // money-roles default gate keeps it admin/office like the client pages).
       const supabase = await createClient()
       return buildComplianceReportResponse(supabase, id)
+    }
+    case 'takeoff': {
+      // [id] = quote id → takeoff schedule (estimating audit trail; costs +
+      // sell, so the money-roles default gate keeps it admin/office).
+      const supabase = await createClient()
+      return buildTakeoffPdfResponse(supabase, id)
     }
     case 'portal-register':
       // [id] = site id → "Asbestos register — scan to view" wall poster,
