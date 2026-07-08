@@ -183,6 +183,53 @@ export async function notifyOfficeNewRequest(input: {
   }
 }
 
+/**
+ * Office alert: a client filed a compliance document for review through the
+ * portal. Anonymous portal action context.
+ */
+export async function notifyOfficeNewUpload(input: {
+  token: string
+  siteId: string
+  title: string
+  kind: string
+}): Promise<void> {
+  try {
+    const supabase = createPublicClient()
+    const [{ data: resolved }, { data: siteName }] = await Promise.all([
+      supabase.rpc('portal_resolve_link', { p_token: input.token }),
+      supabase.rpc('portal_site_name', { p_token: input.token, p_site: input.siteId }),
+    ])
+    const branding = (resolved ?? null) as PortalBrandingLite | null
+    if (!branding) return
+
+    const base = appBaseUrl()
+    const kindLabel =
+      PROPERTY_COMPLIANCE_KIND_LABELS[input.kind as PropertyComplianceKind] ??
+      input.kind
+    await sendEmail({
+      to: branding.company_email,
+      subject: `Document awaiting review — ${branding.client_name}`,
+      template: 'office_new_upload',
+      entityKind: 'portal_upload',
+      entityId: null,
+      html: renderEmail({
+        companyName: branding.company_name,
+        heading: 'Client filed a compliance document',
+        rows: [
+          { label: 'Document', value: `${kindLabel} — ${input.title}` },
+          { label: 'Client', value: branding.client_name },
+          { label: 'Property', value: (siteName as string | null) ?? '—' },
+        ],
+        intro:
+          'It stays out of the property register until you approve it on the site compliance page.',
+        cta: base ? { label: 'Open the client', url: `${base}/clients` } : null,
+      }),
+    })
+  } catch (err) {
+    console.error('[notify] office new-upload alert failed:', err)
+  }
+}
+
 // ─── Event-driven: office → client ───────────────────────────────────────────
 
 /**

@@ -51,6 +51,7 @@ import { HANDOVER_PACK_CAPTION } from '@/lib/feedback'
 import { DocumentBrowser } from './document-browser'
 import { FeedbackCard } from './feedback-card'
 import { MessageThread, type PortalMessageDisplay } from './message-thread'
+import { UploadDocumentCard } from './upload-document'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
 export const dynamic = 'force-dynamic'
@@ -279,6 +280,26 @@ export default async function PortalSitePage({
   const detail = (detailData ?? null) as PortalSiteDetail | null
   if (!detail) notFound()
 
+  // Client-filed documents awaiting (or refused) office review — compliance
+  // tab only.
+  interface PortalUpload {
+    id: string
+    kind: string
+    title: string
+    status: 'pending' | 'rejected'
+    issue_date: string
+    review_due: string | null
+    review_note: string | null
+  }
+  let myUploads: PortalUpload[] = []
+  if (activeTab === 'compliance') {
+    const { data: uploadsData } = await supabase.rpc('portal_my_uploads', {
+      p_token: token,
+      p_site: siteId,
+    })
+    myUploads = ((uploadsData ?? []) as PortalUpload[]) ?? []
+  }
+
   const approvals = ((approvalsData ?? null) as PortalApprovalsPayload | null) ?? {
     pending: [],
     decided: [],
@@ -484,8 +505,9 @@ export default async function PortalSitePage({
       </div>
 
       {/* ── Compliance ─────────────────────────────────────────────────────── */}
-      {activeTab === 'compliance' &&
-        (detail.items.length === 0 ? (
+      {activeTab === 'compliance' && (
+        <div className="flex flex-col gap-3">
+        {detail.items.length === 0 ? (
           <EmptyState>
             No compliance documents on record for this property yet.
           </EmptyState>
@@ -572,7 +594,53 @@ export default async function PortalSitePage({
               )
             })}
           </ul>
-        ))}
+        )}
+
+        {/* Client-filed documents awaiting / refused review */}
+        {myUploads.length > 0 && (
+          <ul className="flex flex-col gap-3">
+            {myUploads.map((u) => (
+              <li key={u.id}>
+                <PortalCard className="flex flex-col gap-2 p-4">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                        {PROPERTY_COMPLIANCE_KIND_LABELS[u.kind as PropertyComplianceKind] ?? u.kind}
+                      </p>
+                      <p className="text-[15px] font-semibold text-slate-900">
+                        {u.title}
+                      </p>
+                    </div>
+                    <span
+                      className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                        u.status === 'pending'
+                          ? 'border-amber-200 bg-amber-50 text-amber-700'
+                          : 'border-red-200 bg-red-50 text-red-700'
+                      }`}
+                    >
+                      {u.status === 'pending' ? 'Awaiting review' : 'Not added'}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Issued {fmtDate(u.issue_date)}
+                    {u.review_due ? ` · review due ${fmtDate(u.review_due)}` : ''}
+                  </p>
+                  {u.status === 'rejected' && u.review_note && (
+                    <p className="text-sm text-red-700">{u.review_note}</p>
+                  )}
+                </PortalCard>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <UploadDocumentCard
+          token={token}
+          siteId={siteId}
+          companyName={branding.company_name}
+        />
+        </div>
+      )}
 
       {/* ── Documents ──────────────────────────────────────────────────────── */}
       {activeTab === 'documents' && <DocumentBrowser entries={docEntries} />}

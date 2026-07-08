@@ -23,6 +23,7 @@ import { todayAU } from '@/lib/tz'
 export const EMAIL_TEMPLATES = [
   'office_new_message',
   'office_new_request',
+  'office_new_upload',
   'client_request_status',
   'client_message_reply',
   'client_compliance_digest',
@@ -35,6 +36,7 @@ export type EmailTemplate = (typeof EMAIL_TEMPLATES)[number]
 export const EMAIL_TEMPLATE_LABELS: Record<EmailTemplate, string> = {
   office_new_message: 'Office alert — new client message',
   office_new_request: 'Office alert — new work request',
+  office_new_upload: 'Office alert — client filed a document',
   client_request_status: 'Client — request status update',
   client_message_reply: 'Client — office replied',
   client_compliance_digest: 'Client — compliance digest',

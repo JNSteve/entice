@@ -7,7 +7,11 @@ import {
   MAX_SIGNATURE_CHARS,
   SIGNATURE_DATA_URL_PREFIX,
 } from '@/lib/form-validate'
-import { notifyOfficeNewMessage, notifyOfficeNewRequest } from '@/lib/notify'
+import {
+  notifyOfficeNewMessage,
+  notifyOfficeNewRequest,
+  notifyOfficeNewUpload,
+} from '@/lib/notify'
 import {
   MAX_REQUEST_PHOTOS,
   REQUEST_URGENCIES,
@@ -141,6 +145,75 @@ export async function submitPortalRequest(input: {
         number,
         title,
         urgency: input.urgency,
+      })
+    )
+  }
+  return result
+}
+
+// ─── Compliance document uploads ─────────────────────────────────────────────
+
+const UPLOAD_KINDS = [
+  'asbestos_register',
+  'asbestos_mgmt_plan',
+  'hazmat_survey',
+  'clearance_certificate',
+  'air_monitoring',
+  'contaminated_land',
+  'other',
+] as const
+
+export async function submitPortalUpload(input: {
+  token: string
+  siteId: string
+  kind: string
+  title: string
+  issueDate: string
+  reviewDue: string | null
+  notes: string | null
+  path: string
+  filename: string
+  contentType: string | null
+  size: number | null
+}): Promise<PortalActionResult> {
+  const title = (input.title ?? '').trim()
+  if (!title) return { error: 'Give the document a title' }
+  if (title.length > 200) return { error: 'Keep the title under 200 characters' }
+  if (!(UPLOAD_KINDS as readonly string[]).includes(input.kind)) {
+    return { error: 'Pick a document type' }
+  }
+  if (!input.issueDate) return { error: 'Enter the issue date' }
+  if (!input.path) return { error: 'Attach the document file' }
+
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('portal_submit_upload', {
+    p_token: input.token,
+    p_site: input.siteId,
+    p_kind: input.kind,
+    p_title: title,
+    p_issue_date: input.issueDate,
+    p_review_due: input.reviewDue || null,
+    p_path: input.path,
+    p_filename: input.filename,
+    p_content_type: input.contentType,
+    p_size: input.size,
+    p_notes: input.notes || null,
+  })
+  if (error) return { error: GENERIC_FAILURE }
+  const result = mapRpcResult(
+    data,
+    'You have reached the daily limit for document uploads — please try again tomorrow or call us.'
+  )
+
+  // Office alert — fire-and-forget AFTER the response (never blocking; the
+  // email engine skip-logs until sending is configured).
+  if ('ok' in result) {
+    after(() =>
+      notifyOfficeNewUpload({
+        token: input.token,
+        siteId: input.siteId,
+        title,
+        kind: input.kind,
       })
     )
   }
