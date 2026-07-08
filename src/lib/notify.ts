@@ -547,10 +547,13 @@ export async function runDailyDigests(admin: SupabaseClient): Promise<DigestRunR
           intro: `Across your properties, ${items.length} compliance ${items.length === 1 ? 'item' : 'items'} ${items.length === 1 ? 'is' : 'are'} due within 30 days or overdue.`,
           listItems: lines,
           cta: base
-            ? { label: 'Open your portal', url: `${base}/portal/${enabledLink.token}` }
+            ? {
+                label: 'Review & request re-inspections',
+                url: `${base}/portal/${enabledLink.token}`,
+              }
             : null,
           footnote:
-            'You receive this daily summary while compliance reminders are enabled on your portal link — ask us to turn it off any time.',
+            'Tap "Request re-inspection" on any due item in your portal to book its renewal in one step. You receive this daily summary while compliance reminders are enabled on your portal link — ask us to turn it off any time.',
         }),
       })
       result.clients.push({ client: clientName, items: items.length, outcome: send.status })
