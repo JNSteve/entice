@@ -31,6 +31,11 @@ import {
   type ItpTemplateItemRow,
 } from './itp-section'
 import { EmailSection, type EmailLogRow } from './email-section'
+import {
+  EstimatingSection,
+  type TakeoffAssemblyRow,
+  type RateItemOption,
+} from './estimating-section'
 
 export type SettingsTab =
   | 'company'
@@ -41,6 +46,7 @@ export type SettingsTab =
   | 'checklists'
   | 'swms'
   | 'whs-forms'
+  | 'estimating'
   | 'competencies'
   | 'backup'
   | 'errors'
@@ -57,6 +63,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'checklists', label: 'Checklists' },
   { value: 'swms', label: 'SWMS' },
   { value: 'whs-forms', label: 'WHS Forms' },
+  { value: 'estimating', label: 'Estimating' },
   { value: 'competencies', label: 'Competencies' },
   { value: 'itp', label: 'ITP templates' },
   { value: 'backup', label: 'Backups' },
@@ -76,6 +83,8 @@ interface SettingsTabsProps {
   checklists: ChecklistTemplateRow[]
   swmsTemplates: SwmsTemplateRow[]
   formTemplates: FormTemplateRow[]
+  assemblies: TakeoffAssemblyRow[]
+  rateOptions: RateItemOption[]
   competencyTypes: CompetencyTypeRow[]
   roleRequirements: RoleRequirementRow[]
   backupRuns: BackupRunRow[]
@@ -100,6 +109,8 @@ export function SettingsTabs({
   checklists,
   swmsTemplates,
   formTemplates,
+  assemblies,
+  rateOptions,
   competencyTypes,
   roleRequirements,
   backupRuns,
@@ -153,6 +164,9 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="whs-forms" className="pt-4">
         <WhsFormsSection templates={formTemplates} />
+      </TabsContent>
+      <TabsContent value="estimating" className="pt-4">
+        <EstimatingSection assemblies={assemblies} rateItems={rateOptions} />
       </TabsContent>
       <TabsContent value="competencies" className="pt-4">
         <CompetencySection types={competencyTypes} requirements={roleRequirements} />

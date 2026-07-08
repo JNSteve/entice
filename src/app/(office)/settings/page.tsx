@@ -12,6 +12,7 @@ const VALID_TABS: SettingsTab[] = [
   'checklists',
   'swms',
   'whs-forms',
+  'estimating',
   'competencies',
   'backup',
   'errors',
@@ -53,6 +54,8 @@ export default async function SettingsPage({
     { data: itpTemplates },
     { data: itpTemplateItems },
     { data: emailLog },
+    { data: takeoffAssemblies },
+    { data: takeoffComponents },
   ] = await Promise.all([
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
@@ -131,6 +134,15 @@ export default async function SettingsPage({
       .select('id, to_address, subject, template, status, entity_kind, error, created_at')
       .order('created_at', { ascending: false })
       .limit(100),
+    supabase
+      .from('takeoff_assemblies')
+      .select('id, name, unit, description, active')
+      .order('name'),
+    supabase
+      .from('takeoff_assembly_components')
+      .select('id, assembly_id, description, unit, factor, fixed_qty, rate_item_id, position')
+      .order('assembly_id')
+      .order('position'),
   ])
 
   // Build per-template submission counts
@@ -160,6 +172,49 @@ export default async function SettingsPage({
     .filter((p) => p.active)
     .map((p) => ({ id: p.id, full_name: p.full_name }))
 
+  // Group takeoff components under their assembly (both already ordered).
+  const componentsByAssembly = new Map<
+    string,
+    {
+      id: string
+      description: string
+      unit: string
+      factor: number
+      fixed_qty: number | null
+      rate_item_id: string | null
+    }[]
+  >()
+  for (const c of takeoffComponents ?? []) {
+    const list = componentsByAssembly.get(c.assembly_id) ?? []
+    list.push({
+      id: c.id,
+      description: c.description,
+      unit: c.unit,
+      factor: Number(c.factor),
+      fixed_qty: c.fixed_qty == null ? null : Number(c.fixed_qty),
+      rate_item_id: c.rate_item_id,
+    })
+    componentsByAssembly.set(c.assembly_id, list)
+  }
+
+  const assemblies = (takeoffAssemblies ?? []).map((a) => ({
+    id: a.id,
+    name: a.name,
+    unit: a.unit,
+    description: a.description,
+    active: a.active,
+    components: componentsByAssembly.get(a.id) ?? [],
+  }))
+
+  const rateOptions = (rateItems ?? [])
+    .filter((r) => r.active)
+    .map((r) => ({
+      id: r.id,
+      name: r.name,
+      unit: r.unit,
+      cost: Number(r.cost),
+    }))
+
   return (
     <div className="flex flex-col gap-2">
       <PageHeader
@@ -177,6 +232,8 @@ export default async function SettingsPage({
         checklists={checklists ?? []}
         swmsTemplates={swmsTemplates ?? []}
         formTemplates={formTemplates}
+        assemblies={assemblies}
+        rateOptions={rateOptions}
         competencyTypes={competencyTypes ?? []}
         roleRequirements={roleRequirements ?? []}
         backupRuns={backupRuns ?? []}

@@ -16,6 +16,8 @@ import {
   formTemplateSchema,
   competencyTypeSchema,
   roleRequirementSchema,
+  takeoffAssemblySchema,
+  takeoffAssemblyComponentSchema,
 } from '@/lib/zod'
 import { swmsTemplateV2Schema } from '@/lib/swms'
 
@@ -570,6 +572,142 @@ export async function createAccessReview(
     ...parsed.data,
     created_by: caller.id,
   })
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+// ─── Estimating: takeoff assemblies ──────────────────────────────────────────
+
+export async function createTakeoffAssembly(
+  data: unknown
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'office')
+
+  const parsed = takeoffAssemblySchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase.from('takeoff_assemblies').insert(parsed.data)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+export async function updateTakeoffAssembly(
+  id: string,
+  data: unknown
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'office')
+
+  const parsed = takeoffAssemblySchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('takeoff_assemblies')
+    .update(parsed.data)
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+export async function setTakeoffAssemblyActive(
+  id: string,
+  active: boolean
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('takeoff_assemblies')
+    .update({ active })
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+export async function addAssemblyComponent(
+  data: unknown
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'office')
+
+  const parsed = takeoffAssemblyComponentSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+
+  // Append at the end: next position = max(position) + 1 within the assembly.
+  const { data: last } = await supabase
+    .from('takeoff_assembly_components')
+    .select('position')
+    .eq('assembly_id', parsed.data.assembly_id)
+    .order('position', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const position = (last?.position ?? -1) + 1
+
+  const { error } = await supabase
+    .from('takeoff_assembly_components')
+    .insert({ ...parsed.data, position })
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+export async function updateAssemblyComponent(
+  id: string,
+  data: unknown
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'office')
+
+  const parsed = takeoffAssemblyComponentSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { assembly_id, ...rest } = parsed.data
+  const { error } = await supabase
+    .from('takeoff_assembly_components')
+    .update(rest)
+    .eq('id', id)
+
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+export async function deleteAssemblyComponent(
+  id: string
+): Promise<{ error?: string }> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('takeoff_assembly_components')
+    .delete()
+    .eq('id', id)
 
   if (error) return { error: error.message }
 
