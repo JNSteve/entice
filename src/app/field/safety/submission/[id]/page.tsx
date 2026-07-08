@@ -13,7 +13,7 @@ import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 import { AttachmentList } from '@/components/AttachmentList'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { ShareLinkDialog } from '@/components/ShareLinkDialog'
-import { Button } from '@/components/ui/button'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { FORM_KIND_LABELS as KIND_LABELS } from '@/lib/form-kinds'
 import type { FormField, FormTemplateKind } from '@/lib/zod'
 import { SignonSection } from './signon-section'
@@ -78,7 +78,7 @@ export default async function FormSubmissionPage({
     .from('form_submissions')
     .select(
       `id, template_id, template_version, kind, project_id, job_id, plant_id,
-       data, schema_snapshot, submitted_by, submitted_at,
+       data, schema_snapshot, submitted_by, submitted_at, amends,
        form_templates(name, schema, requires_signon),
        projects(number, name), jobs(number, title), plant(name, rego),
        profiles(full_name)`
@@ -137,7 +137,7 @@ export default async function FormSubmissionPage({
       f.type === 'checkbox' && f.key.includes('exceed') && data[f.key] === true
   )
 
-  const [attachments, signons, incidentTemplate] = await Promise.all([
+  const [attachments, signons, incidentTemplate, amendedBy] = await Promise.all([
     fetchAttachmentsWithUrls(supabase, 'form_submission', id),
     requiresSignon
       ? supabase
@@ -157,6 +157,14 @@ export default async function FormSubmissionPage({
           .maybeSingle()
           .then((r) => r.data)
       : Promise.resolve(null),
+    supabase
+      .from('form_submissions')
+      .select('id, submitted_at')
+      .eq('amends', id)
+      .order('submitted_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+      .then((r) => r.data),
   ])
 
   const raiseIncidentHref = incidentTemplate
@@ -203,6 +211,38 @@ export default async function FormSubmissionPage({
             {fmtDateTime(submission.submitted_at as string)}
           </span>
         </div>
+
+        {/* Amendment chain — records are immutable; corrections link forward */}
+        {amendedBy && (
+          <Link
+            href={`/field/safety/submission/${amendedBy.id}`}
+            className="flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-200"
+          >
+            <AlertTriangleIcon className="size-4 shrink-0" />
+            <span>
+              This submission has been amended — view the current version
+            </span>
+            <ChevronRightIcon className="ml-auto size-4 shrink-0" />
+          </Link>
+        )}
+        {submission.amends && (
+          <Link
+            href={`/field/safety/submission/${submission.amends}`}
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground"
+          >
+            Amends an earlier submission
+          </Link>
+        )}
+        {(isMine || isStaff) && !amendedBy && submission.template_id && (
+          <div>
+            <Link
+              href={`/field/safety/new/${submission.template_id}?amends=${submission.id}`}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
+            >
+              Amend
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Exceedance → suggest raising an environmental incident (never auto) */}

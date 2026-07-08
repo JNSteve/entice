@@ -16,7 +16,7 @@ export default async function NewFormPage({
   searchParams,
 }: {
   params: Promise<{ templateId: string }>
-  searchParams: Promise<{ project?: string; job?: string; type?: string }>
+  searchParams: Promise<{ project?: string; job?: string; type?: string; amends?: string }>
 }) {
   const profile = await getProfile()
   if (!profile) redirect('/login')
@@ -34,6 +34,27 @@ export default async function NewFormPage({
   if (!template || !template.active) notFound()
 
   const isPrestart = template.kind === 'prestart'
+
+  // Amend mode: prefill from the original submission (?amends=<id>). RLS lets
+  // any authenticated user read submissions; the WRITE-side ownership check
+  // lives in submitForm.
+  let amendsId: string | null = null
+  let initialValues: Record<string, unknown> | null = null
+  let amendProjectId: string | null = null
+  let amendJobId: string | null = null
+  if (sp.amends) {
+    const { data: original } = await supabase
+      .from('form_submissions')
+      .select('id, kind, data, project_id, job_id')
+      .eq('id', sp.amends)
+      .maybeSingle()
+    if (original && original.kind === template.kind) {
+      amendsId = original.id as string
+      initialValues = (original.data ?? {}) as Record<string, unknown>
+      amendProjectId = original.project_id as string | null
+      amendJobId = original.job_id as string | null
+    }
+  }
 
   const [{ data: projectRows }, { data: jobRows }, plantRes] = await Promise.all([
     supabase
@@ -66,12 +87,17 @@ export default async function NewFormPage({
     })
   )
 
-  // Preselect target from ?project= / ?job= when it matches an option.
+  // Preselect target from the amend original or ?project= / ?job= when it
+  // matches an option (the amend target wins).
+  const requestedProject = amendProjectId ?? sp.project
+  const requestedJob = amendJobId ?? sp.job
   const defaultProjectId =
-    sp.project && projects.some((p) => p.id === sp.project) ? sp.project : null
+    requestedProject && projects.some((p) => p.id === requestedProject)
+      ? requestedProject
+      : null
   const defaultJobId =
-    !defaultProjectId && sp.job && jobs.some((j) => j.id === sp.job)
-      ? sp.job
+    !defaultProjectId && requestedJob && jobs.some((j) => j.id === requestedJob)
+      ? requestedJob
       : null
   // Prefill the incident type from ?type= (e.g. the monitoring-exceedance
   // "raise environmental incident" suggestion link).
@@ -111,6 +137,8 @@ export default async function NewFormPage({
         defaultProjectId={defaultProjectId}
         defaultJobId={defaultJobId}
         defaultIncidentType={defaultIncidentType}
+        amendsId={amendsId}
+        initialValues={initialValues}
       />
     </div>
   )

@@ -1181,6 +1181,11 @@ export const formSubmissionSchema = z
       .nullish()
       .transform((v) => v ?? null),
     data: z.record(z.string(), z.unknown()).default({}),
+    /** Optional id of an earlier submission this one amends (audit chain). */
+    amends: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
   })
   .refine(
     (d) => d.project_id !== null || d.job_id !== null,

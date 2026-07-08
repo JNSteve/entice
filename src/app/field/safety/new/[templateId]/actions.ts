@@ -49,6 +49,27 @@ export async function submitForm(input: unknown): Promise<Result> {
     return { error: 'Pick the plant item being inspected' }
   }
 
+  // Amendments: the original must exist, be the same kind, and be the
+  // caller's own unless they're staff. Both rows stay immutable — the new
+  // row supersedes the old one by reference.
+  if (parsed.data.amends) {
+    const { data: original } = await supabase
+      .from('form_submissions')
+      .select('id, kind, submitted_by')
+      .eq('id', parsed.data.amends)
+      .maybeSingle()
+    if (!original) {
+      return { error: 'The submission being amended no longer exists' }
+    }
+    if (original.kind !== template.kind) {
+      return { error: 'An amendment must use the same form kind as the original' }
+    }
+    const isStaff = ['admin', 'office', 'supervisor'].includes(profile.role)
+    if (!isStaff && original.submitted_by !== profile.id) {
+      return { error: 'You can only amend your own submissions' }
+    }
+  }
+
   const validated = validateSubmissionData(
     (template.schema as FormField[]) ?? [],
     parsed.data.data
@@ -72,6 +93,7 @@ export async function submitForm(input: unknown): Promise<Result> {
       plant_id: template.kind === 'prestart' ? parsed.data.plant_id : null,
       data: validated.data,
       submitted_by: profile.id,
+      amends: parsed.data.amends,
     })
     .select('id')
     .single()

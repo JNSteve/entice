@@ -42,6 +42,10 @@ interface FormRendererProps {
   defaultJobId: string | null
   /** Prefill for incident-kind templates (e.g. environmental exceedance link). */
   defaultIncidentType?: IncidentType | null
+  /** Amend mode: id of the submission this one supersedes. */
+  amendsId?: string | null
+  /** Amend mode: the original submission's answers, used as initial state. */
+  initialValues?: Record<string, unknown> | null
 }
 
 // ─── Shared bits ─────────────────────────────────────────────────────────────
@@ -379,6 +383,8 @@ export function FormRenderer({
   defaultProjectId,
   defaultJobId,
   defaultIncidentType,
+  amendsId,
+  initialValues,
 }: FormRendererProps) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -387,7 +393,7 @@ export function FormRenderer({
   const [jobId, setJobId] = useState(defaultJobId ?? '')
   const [plantId, setPlantId] = useState('')
 
-  const [values, setValues] = useState<Record<string, unknown>>({})
+  const [values, setValues] = useState<Record<string, unknown>>(initialValues ?? {})
   const [errors, setErrors] = useState<Record<string, string>>({})
 
   // Incident structured state
@@ -477,6 +483,7 @@ export function FormRenderer({
         job_id: jobId || null,
         plant_id: isPrestart ? plantId || null : null,
         data: validated.ok ? validated.data : {},
+        amends: amendsId ?? null,
       })
       if (result.error || !result.id) {
         toast.error(result.error ?? 'Could not save the form')
@@ -491,6 +498,12 @@ export function FormRenderer({
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+      {amendsId && (
+        <div className="rounded-xl border border-blue-300 bg-blue-50 px-4 py-3 text-sm dark:border-blue-800 dark:bg-blue-950">
+          Amending an earlier submission — this creates a new record and keeps
+          the original for the audit trail.
+        </div>
+      )}
       <TargetSection
         projects={projects}
         jobs={jobs}
