@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   jobPayloadFromQuote,
   projectPayloadFromQuote,
+  scopeSummaryFromQuote,
   type ConvertQuote,
   type ConvertSection,
   type ConvertLine,
@@ -197,5 +198,52 @@ describe('projectPayloadFromQuote', () => {
   test('quote_id is linked correctly', () => {
     const { project } = projectPayloadFromQuote(QUOTE, SECTIONS, LINES, OTHER_CODE_ID, TODAY)
     expect(project.quote_id).toBe(QUOTE.id)
+  })
+})
+
+// ─── scopeSummaryFromQuote ───────────────────────────────────────────────────
+
+describe('scopeSummaryFromQuote', () => {
+  test('groups line descriptions under section titles, price-free', () => {
+    const summary = scopeSummaryFromQuote(SECTIONS, LINES)!
+    expect(summary).toContain('Scope of works (from quote):')
+    expect(summary).toContain('Preparation')
+    expect(summary).toContain('- Site setup')
+    expect(summary).toContain('- Membrane')
+    // Never leaks money
+    expect(summary).not.toMatch(/\$|unit_cost|unit_sell|\d+\.\d{2}/)
+  })
+
+  test('unsectioned lines land under Other works', () => {
+    const lines: ConvertLine[] = [
+      ...LINES,
+      { section_id: null, description: 'Disposal', qty: 1, unit_cost: 0, unit_sell: 10 },
+    ]
+    const summary = scopeSummaryFromQuote(SECTIONS, lines)!
+    expect(summary).toContain('Other works')
+    expect(summary).toContain('- Disposal')
+  })
+
+  test('no lines → null', () => {
+    expect(scopeSummaryFromQuote(SECTIONS, [])).toBeNull()
+  })
+})
+
+describe('description carry-over', () => {
+  test('project description = quote description + scope summary', () => {
+    const { project } = projectPayloadFromQuote(QUOTE, SECTIONS, LINES, OTHER_CODE_ID, TODAY)
+    expect(project.description).toContain('Full roof restoration scope')
+    expect(project.description).toContain('Scope of works (from quote):')
+  })
+
+  test('job description gets the scope summary too', () => {
+    const payload = jobPayloadFromQuote(QUOTE, 'J-0001', SECTIONS, LINES)
+    expect(payload.description).toContain('Scope of works (from quote):')
+  })
+
+  test('null quote description still produces the scope block alone', () => {
+    const q = { ...QUOTE, description: null }
+    const { project } = projectPayloadFromQuote(q, SECTIONS, LINES, OTHER_CODE_ID, TODAY)
+    expect(project.description).toContain('Scope of works (from quote):')
   })
 })

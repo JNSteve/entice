@@ -33,6 +33,55 @@ export interface ConvertLine {
   unit_sell: number
 }
 
+// ─── Scope summary ────────────────────────────────────────────────────────────
+
+/**
+ * Price-free scope-of-works text for the converted job/project description —
+ * the site crew and supervisor can read WHAT was quoted without any money
+ * fields (field/supervisor roles cannot see quotes).
+ */
+export function scopeSummaryFromQuote(
+  sections: ConvertSection[],
+  lines: ConvertLine[]
+): string | null {
+  if (lines.length === 0) return null
+
+  const bySection = new Map<string | null, ConvertLine[]>()
+  for (const line of lines) {
+    const list = bySection.get(line.section_id) ?? []
+    list.push(line)
+    bySection.set(line.section_id, list)
+  }
+
+  const parts: string[] = ['Scope of works (from quote):']
+  const ordered = [...sections].sort((a, b) => a.position - b.position)
+  for (const section of ordered) {
+    const sectionLines = bySection.get(section.id)
+    if (!sectionLines?.length) continue
+    parts.push(`\n${section.title}`)
+    for (const l of sectionLines) parts.push(`- ${l.description}`)
+  }
+  const orphans = lines.filter(
+    (l) => l.section_id === null || !sections.some((s) => s.id === l.section_id)
+  )
+  if (orphans.length > 0) {
+    parts.push('\nOther works')
+    for (const l of orphans) parts.push(`- ${l.description}`)
+  }
+  return parts.join('\n')
+}
+
+/** Quote description + scope block; either may be absent. */
+function describeWithScope(
+  description: string | null,
+  sections: ConvertSection[],
+  lines: ConvertLine[]
+): string | null {
+  const scope = scopeSummaryFromQuote(sections, lines)
+  const combined = [description, scope].filter(Boolean).join('\n\n')
+  return combined || null
+}
+
 // ─── Job payload ──────────────────────────────────────────────────────────────
 
 export interface JobPayload {
@@ -47,14 +96,19 @@ export interface JobPayload {
   scheduled_end: null
 }
 
-export function jobPayloadFromQuote(quote: ConvertQuote, number: string): JobPayload {
+export function jobPayloadFromQuote(
+  quote: ConvertQuote,
+  number: string,
+  sections: ConvertSection[] = [],
+  lines: ConvertLine[] = []
+): JobPayload {
   return {
     number,
     client_id: quote.client_id,
     site_id: quote.site_id,
     quote_id: quote.id,
     title: quote.title,
-    description: quote.description,
+    description: describeWithScope(quote.description, sections, lines),
     status: 'scheduled',
     scheduled_start: null,
     scheduled_end: null,
@@ -146,7 +200,7 @@ export function projectPayloadFromQuote(
     site_id: quote.site_id,
     quote_id: quote.id,
     name: quote.title,
-    description: quote.description,
+    description: describeWithScope(quote.description, sections, lines),
     // A converted project is a live project — 'active' matches the projects
     // status CHECK (active|practical_completion|defects_liability|closed).
     // ('quote' is a JOB status; using it here rejected every project insert.)

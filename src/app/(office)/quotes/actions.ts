@@ -571,6 +571,22 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
   if (quote.status !== 'accepted') return { error: 'Only accepted quotes can be converted' }
   if (quote.converted_id) return { error: 'Quote has already been converted' }
 
+  // Sections + lines feed the price-free scope summary in the description.
+  const [{ data: sections }, { data: lines }] = await Promise.all([
+    supabase
+      .from('quote_sections')
+      .select('id, title, position')
+      .eq('quote_id', quoteId)
+      .order('position')
+      .order('id'),
+    supabase
+      .from('quote_lines')
+      .select('section_id, description, qty, unit_cost, unit_sell')
+      .eq('quote_id', quoteId)
+      .order('position')
+      .order('id'),
+  ])
+
   let number: string
   try {
     number = await nextNumber(supabase, 'job')
@@ -587,7 +603,15 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
       description: quote.description,
       gst_rate: 0, // not needed for job payload
     },
-    number
+    number,
+    sections ?? [],
+    (lines ?? []).map((l) => ({
+      section_id: l.section_id,
+      description: l.description,
+      qty: Number(l.qty),
+      unit_cost: Number(l.unit_cost),
+      unit_sell: Number(l.unit_sell),
+    }))
   )
 
   const { data: job, error: jobErr } = await supabase
