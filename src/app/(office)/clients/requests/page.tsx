@@ -1,5 +1,9 @@
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import {
+  PROPERTY_COMPLIANCE_KIND_LABELS,
+  type PropertyComplianceKind,
+} from '@/lib/portal'
 import { PageHeader } from '@/components/PageHeader'
 import { RequestsRegister, type OfficeRequestRow } from './requests-register'
 
@@ -21,6 +25,7 @@ export default async function RequestsPage() {
     .select(
       `id, number, title, description, urgency, status, photo_paths, created_at,
        client_id, site_id, quote_id, scheduled_for, scheduled_note,
+       compliance_item_id, property_compliance_items(title, kind),
        clients(name), sites(name), quotes(number)`
     )
     .order('created_at', { ascending: false })
@@ -41,7 +46,14 @@ export default async function RequestsPage() {
     const client = r.clients as unknown as { name: string } | null
     const site = r.sites as unknown as { name: string } | null
     const quote = r.quotes as unknown as { number: string } | null
+    const item = r.property_compliance_items as unknown as {
+      title: string
+      kind: string
+    } | null
     return {
+      renewal_of: item
+        ? `${PROPERTY_COMPLIANCE_KIND_LABELS[item.kind as PropertyComplianceKind] ?? item.kind} — ${item.title}`
+        : null,
       id: r.id as string,
       number: r.number as string,
       title: r.title as string,

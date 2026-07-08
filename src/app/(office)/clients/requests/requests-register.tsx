@@ -59,6 +59,8 @@ export interface OfficeRequestRow {
   quote_number: string | null
   scheduled_for: string | null
   scheduled_note: string | null
+  /** "Kind — title" of the compliance item this request renews, if any. */
+  renewal_of: string | null
   /** Signed photo URLs (admin/office only). */
   photos: string[]
 }
@@ -305,6 +307,12 @@ export function RequestsRegister({
                     </Link>
                   </p>
                 </div>
+
+                {selected.renewal_of && (
+                  <p className="w-fit rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+                    Renewal of: {selected.renewal_of}
+                  </p>
+                )}
 
                 <p className="whitespace-pre-wrap rounded-lg border bg-muted/40 p-3 text-sm">
                   {selected.description}
