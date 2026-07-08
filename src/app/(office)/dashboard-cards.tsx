@@ -71,6 +71,7 @@ const CARD_CHIP: Record<
   'SWMS outstanding': { icon: FileSignatureIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   'Hold points': { icon: FileWarningIcon, tint: 'bg-blue-100 dark:bg-blue-950', fg: 'text-blue-700 dark:text-blue-300' },
   'Diaries missing': { icon: NotebookPenIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
+  'Portal engagement': { icon: HeartHandshakeIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   'Pre-starts today': { icon: ShieldCheckIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   Safety: { icon: ShieldAlertIcon, tint: 'bg-red-100 dark:bg-red-950', fg: 'text-red-700 dark:text-red-300' },
   NCRs: { icon: HardHatIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
@@ -136,6 +137,60 @@ function MoreNote({ total }: { total: number }) {
   if (total <= MAX_ROWS) return null
   return (
     <p className="text-xs text-muted-foreground">+{total - MAX_ROWS} more</p>
+  )
+}
+
+// ─── 0a. Portal engagement (dormancy radar) ───────────────────────────────────
+
+export interface PortalEngagementRow {
+  clientId: string
+  clientName: string
+  /** Days since the client last opened their portal; null = never viewed. */
+  daysSince: number | null
+  overdueItems: number
+}
+
+export function PortalEngagementCard({
+  data,
+}: {
+  data: PortalEngagementRow[] | null
+}) {
+  return (
+    <DashboardCard title="Portal engagement" href="/clients">
+      {data === null ? (
+        <LoadError />
+      ) : data.length === 0 ? (
+        <Muted>Everyone with a live link has been in recently.</Muted>
+      ) : (
+        <>
+          {data.slice(0, MAX_ROWS).map((row) => (
+            <div
+              key={row.clientId}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <Link
+                href={`/clients/${row.clientId}`}
+                className="min-w-0 truncate hover:underline"
+              >
+                {row.clientName}
+              </Link>
+              <span
+                className={cn(
+                  'shrink-0 text-xs tabular-nums',
+                  row.overdueItems > 0
+                    ? 'font-medium text-red-600 dark:text-red-400'
+                    : 'text-muted-foreground'
+                )}
+              >
+                {row.daysSince === null ? 'never viewed' : `${row.daysSince}d quiet`}
+                {row.overdueItems > 0 ? ` · ${row.overdueItems} overdue` : ''}
+              </span>
+            </div>
+          ))}
+          <MoreNote total={data.length} />
+        </>
+      )}
+    </DashboardCard>
   )
 }
 

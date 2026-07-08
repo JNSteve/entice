@@ -31,6 +31,7 @@ import {
   HoldPointsCard,
   NcrCard,
   PortalActivityCard,
+  PortalEngagementCard,
   PrestartTodayCard,
   PropertyComplianceCard,
   QualityCard,
@@ -53,6 +54,7 @@ import {
   type NcrData,
   type NcrOverdueCapaRow,
   type PortalActivityData,
+  type PortalEngagementRow,
   type PrestartTodayRow,
   type PortalDecisionRow,
   type PropertyComplianceDueRow,
@@ -1103,6 +1105,83 @@ async function loadSystemHealth(
   }
 }
 
+// ─── Portal engagement (dormancy radar) ──────────────────────────────────────
+// PortalEngagementRow lives in dashboard-cards.tsx alongside the card.
+
+async function loadPortalEngagement(
+  supabase: Db,
+  todayStr: string
+): Promise<PortalEngagementRow[]> {
+  const [{ data: links }, { data: clients }] = await Promise.all([
+    supabase
+      .from('client_links')
+      .select('id, client_id, revoked_at, expires_at')
+      .is('revoked_at', null),
+    supabase.from('clients').select('id, name').eq('archived', false),
+  ])
+  const nowIso = new Date().toISOString()
+  const live = (links ?? []).filter((l) => !l.expires_at || l.expires_at > nowIso)
+  const clientIds = [...new Set(live.map((l) => l.client_id as string))].filter(
+    (cid) => (clients ?? []).some((c) => c.id === cid)
+  )
+  if (clientIds.length === 0) return []
+
+  const linkIds = live.map((l) => l.id as string)
+  const [{ data: views }, { data: overdue }] = await Promise.all([
+    supabase
+      .from('portal_views')
+      .select('client_link_id, viewed_at')
+      .in('client_link_id', linkIds)
+      .order('viewed_at', { ascending: false })
+      .limit(2000),
+    supabase
+      .from('property_compliance_items')
+      .select('id, sites!inner(client_id)')
+      .eq('status', 'active')
+      .not('review_due', 'is', null)
+      .lt('review_due', todayStr),
+  ])
+
+  const lastByLink = new Map<string, string>()
+  for (const v of views ?? []) {
+    const key = v.client_link_id as string
+    if (!lastByLink.has(key)) lastByLink.set(key, v.viewed_at as string)
+  }
+  const overdueByClient = new Map<string, number>()
+  for (const o of overdue ?? []) {
+    const cid = (o.sites as unknown as { client_id: string }).client_id
+    overdueByClient.set(cid, (overdueByClient.get(cid) ?? 0) + 1)
+  }
+
+  const rows: PortalEngagementRow[] = clientIds.map((cid) => {
+    const lasts = live
+      .filter((l) => l.client_id === cid)
+      .map((l) => lastByLink.get(l.id as string))
+      .filter((x): x is string => Boolean(x))
+      .sort()
+    const lastViewed = lasts.at(-1) ?? null
+    const daysSince = lastViewed
+      ? Math.floor((Date.now() - new Date(lastViewed).getTime()) / 86_400_000)
+      : null
+    return {
+      clientId: cid,
+      clientName: (clients ?? []).find((c) => c.id === cid)?.name ?? 'Unknown client',
+      daysSince,
+      overdueItems: overdueByClient.get(cid) ?? 0,
+    }
+  })
+
+  // Only stale clients (never viewed, or >30 days quiet), worst first:
+  // overdue compliance tops the list, then by staleness.
+  return rows
+    .filter((r) => r.daysSince === null || r.daysSince > 30)
+    .sort(
+      (a, b) =>
+        b.overdueItems - a.overdueItems ||
+        (b.daysSince ?? 9999) - (a.daysSince ?? 9999)
+    )
+}
+
 // ─── Pre-starts today ─────────────────────────────────────────────────────────
 
 async function loadPrestartsToday(
@@ -1187,6 +1266,7 @@ export default async function DashboardPage() {
     environment,
     systemHealth,
     portalActivity,
+    portalEngagement,
     quality,
   ] = await Promise.all([
     showMoney ? settle(() => loadClaimsDue(supabase, today)) : none,
@@ -1211,6 +1291,7 @@ export default async function DashboardPage() {
         )
       : none,
     showMoney ? settle(() => loadPortalActivity(supabase, today)) : none,
+    showMoney ? settle(() => loadPortalEngagement(supabase, todayAU())) : none,
     settle(() => loadQuality(supabase)),
   ])
 
@@ -1228,6 +1309,7 @@ export default async function DashboardPage() {
         {showMoney && (
           <>
             <PortalActivityCard data={portalActivity ?? null} />
+            <PortalEngagementCard data={portalEngagement ?? null} />
             <ClaimsDueCard data={claimsDue ?? null} />
             <QuotesAwaitingCard data={quotesAwaiting ?? null} />
             <UnpaidInvoicesCard data={unpaidInvoices ?? null} />
