@@ -70,6 +70,54 @@ export async function createClientLink(data: unknown): Promise<CreateClientLinkR
   }
 }
 
+/**
+ * Create-or-reuse the register-scope link for a site (the compliance-only
+ * portal view a printed "asbestos register" QR poster points at). One live
+ * register link per site; no expiry, no digest, no billing.
+ */
+export async function ensureRegisterLink(
+  siteId: string
+): Promise<{ token?: string; error?: string }> {
+  const profile = await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { data: site } = await supabase
+    .from('sites')
+    .select('id, name, client_id')
+    .eq('id', siteId)
+    .single()
+  if (!site) return { error: 'Site not found' }
+
+  const { data: existing } = await supabase
+    .from('client_links')
+    .select('id, token, expires_at')
+    .eq('site_id', siteId)
+    .eq('scope', 'register')
+    .is('revoked_at', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (existing && (!existing.expires_at || existing.expires_at > new Date().toISOString())) {
+    return { token: existing.token as string }
+  }
+
+  const token = crypto.randomBytes(24).toString('base64url')
+  const { error } = await supabase.from('client_links').insert({
+    client_id: site.client_id,
+    token,
+    label: `Site register — ${site.name}`,
+    scope: 'register',
+    site_id: siteId,
+    show_financials: false,
+    notifications_enabled: false,
+    created_by: profile.id,
+  })
+  if (error) return { error: error.message }
+
+  revalidatePath(`/clients/${site.client_id}`)
+  return { token }
+}
+
 /** Revokes a portal link — the portal treats it as dead immediately. */
 export async function revokeClientLink(
   id: string,

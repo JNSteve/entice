@@ -5,7 +5,7 @@ import { palette, fontSize, font, headerStyles } from './theme'
 export type QrPosterPdfProps = {
   company: DocCompany
   /** Share-link kind — drives the headline/title copy. */
-  kind: 'signon' | 'subbie_swms'
+  kind: 'signon' | 'subbie_swms' | 'register'
   /** Share-link label, e.g. "Excavation SWMS — site sign-on". */
   label: string
   /** "P-0001 — Riverbank Stabilisation" or null. */
@@ -29,6 +29,11 @@ const POSTER_COPY: Record<
     headline: 'Submit your SWMS here',
     docTitle: 'SWMS submission poster',
     cornerTitle: 'SWMS submission',
+  },
+  register: {
+    headline: 'Asbestos register',
+    docTitle: 'Site register poster',
+    cornerTitle: 'Site register',
   },
 }
 

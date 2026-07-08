@@ -6,7 +6,9 @@ import {
   PROPERTY_COMPLIANCE_KIND_LABELS,
   type PropertyComplianceKind,
 } from '@/lib/portal'
+import { redirect } from 'next/navigation'
 import {
+  isRegisterScope,
   LinkInactivePage,
   PortalShell,
   type PortalBranding,
@@ -42,6 +44,10 @@ export default async function PortalRequestPage({
   })
   const branding = (resolved ?? null) as PortalBranding | null
   if (!branding) return <LinkInactivePage />
+  // Register-scope links (site QR posters) only see their property's register.
+  if (isRegisterScope(branding)) {
+    redirect(`/portal/${token}/sites/${branding.site_id}`)
+  }
 
   const [{ data: sitesData }] = await Promise.all([
     supabase.rpc('portal_sites', { p_token: token }),

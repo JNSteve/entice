@@ -22,11 +22,13 @@ import {
 import {
   EmptyState,
   LinkInactivePage,
+  isRegisterScope,
   PortalCard,
   PortalShell,
   STATUS_DOT,
   type PortalBranding,
 } from '../portal-ui'
+import { redirect } from 'next/navigation'
 import { CalendarSubscribe } from './subscribe'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
@@ -74,6 +76,10 @@ export default async function PortalCalendarPage({
   })
   const branding = (resolved ?? null) as PortalBranding | null
   if (!branding) return <LinkInactivePage />
+  // Register-scope links (site QR posters) only see their property's register.
+  if (isRegisterScope(branding)) {
+    redirect(`/portal/${token}/sites/${branding.site_id}`)
+  }
 
   const [{ data: eventsData }] = await Promise.all([
     supabase.rpc('portal_calendar', { p_token: token, p_from: from, p_to: to }),

@@ -30,6 +30,8 @@ import {
  */
 
 export interface PortalBranding {
+  /** Present once migration 0043 runs — used by the report route + scoping. */
+  client_id?: string | null
   client_name: string
   label: string | null
   company_name: string
@@ -40,6 +42,15 @@ export interface PortalBranding {
   company_abn: string | null
   /** Billing tab gate (client_links.show_financials, default off). */
   show_financials: boolean
+  /** 'register' = compliance-only per-site view (QR poster links). */
+  scope?: 'full' | 'register' | null
+  /** The pinned property for register-scope links. */
+  site_id?: string | null
+}
+
+/** Compliance-only per-site links (the printed register QR posters). */
+export function isRegisterScope(branding: PortalBranding): boolean {
+  return branding.scope === 'register' && Boolean(branding.site_id)
 }
 
 // ─── CP2b payload shapes (portal RPCs) ───────────────────────────────────────
@@ -147,23 +158,25 @@ export function PortalShell({
         </div>
       </div>
 
-      {/* Nav */}
-      <nav className="border-b bg-white">
-        <div className="mx-auto flex w-full max-w-4xl gap-1 px-4">
-          <PortalNavLink
-            href={`/portal/${token}`}
-            label="Properties"
-            icon={<Building2Icon className="size-4" />}
-            active={active === 'properties'}
-          />
-          <PortalNavLink
-            href={`/portal/${token}/calendar`}
-            label="Calendar"
-            icon={<CalendarDaysIcon className="size-4" />}
-            active={active === 'calendar'}
-          />
-        </div>
-      </nav>
+      {/* Nav — register-scope links are a single-property register view */}
+      {!isRegisterScope(branding) && (
+        <nav className="border-b bg-white">
+          <div className="mx-auto flex w-full max-w-4xl gap-1 px-4">
+            <PortalNavLink
+              href={`/portal/${token}`}
+              label="Properties"
+              icon={<Building2Icon className="size-4" />}
+              active={active === 'properties'}
+            />
+            <PortalNavLink
+              href={`/portal/${token}/calendar`}
+              label="Calendar"
+              icon={<CalendarDaysIcon className="size-4" />}
+              active={active === 'calendar'}
+            />
+          </div>
+        </nav>
+      )}
 
       <main className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-5 px-4 py-5 pb-10">
         {children}

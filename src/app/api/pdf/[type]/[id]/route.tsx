@@ -8,6 +8,7 @@ import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
 import { buildQuotePdfResponse } from '@/pdf/build-quote-pdf'
 import { buildComplianceReportResponse } from '@/pdf/build-compliance-report'
+import { ensureRegisterLink } from '@/lib/client-links'
 import { buildHandoverPdfResponse } from '@/pdf/build-handover-pdf'
 import { InvoicePdf } from '@/pdf/InvoicePdf'
 import { PoPdf } from '@/pdf/PoPdf'
@@ -287,6 +288,11 @@ export async function GET(
       const supabase = await createClient()
       return buildComplianceReportResponse(supabase, id)
     }
+    case 'portal-register':
+      // [id] = site id → "Asbestos register — scan to view" wall poster,
+      // pointing at the site's compliance-only register portal link
+      // (create-or-reuse). Admin/office (money default).
+      return portalRegisterPosterPdf(id, request)
     default:
       return new Response('Not found', { status: 404 })
   }
@@ -1552,6 +1558,62 @@ async function auditPdf(id: string): Promise<Response> {
 }
 
 // ─── QR sign-on poster ────────────────────────────────────────────────────────
+
+/**
+ * "Asbestos register — scan to view" A4 wall poster for a site: ensures the
+ * site's register-scope portal link exists, QR-encodes its URL and renders
+ * the shared poster shell. The register must be readily accessible at the
+ * workplace — this makes the portal that accessible copy.
+ */
+async function portalRegisterPosterPdf(
+  siteId: string,
+  request: Request
+): Promise<Response> {
+  const supabase = await createClient()
+
+  const [{ data: site }, { data: settings }, link] = await Promise.all([
+    supabase
+      .from('sites')
+      .select('id, name, clients(name)')
+      .eq('id', siteId)
+      .single(),
+    supabase
+      .from('settings')
+      .select('company_name, abn, address, phone, email, logo_path')
+      .eq('id', 1)
+      .single(),
+    ensureRegisterLink(siteId),
+  ])
+  if (!site) return new Response('Not found', { status: 404 })
+  if (link.error || !link.token) {
+    return new Response(link.error ?? 'Could not issue the register link', {
+      status: 500,
+    })
+  }
+
+  const origin = process.env.NEXT_PUBLIC_APP_URL || new URL(request.url).origin
+  const url = `${origin.replace(/\/$/, '')}/portal/${link.token}`
+  const qrDataUrl = await QRCode.toDataURL(url, { width: 600, margin: 1 })
+
+  const clientRel = site.clients as unknown as { name: string } | null
+  const buffer = await renderToBuffer(
+    <QrPosterPdf
+      company={toCompany(settings)}
+      kind="register"
+      label={site.name as string}
+      projectName={clientRel?.name ?? null}
+      qrDataUrl={qrDataUrl}
+      url={url}
+    />
+  )
+
+  return new Response(new Uint8Array(buffer), {
+    headers: {
+      'Content-Type': 'application/pdf',
+      'Content-Disposition': 'inline; filename="site-register-poster.pdf"',
+    },
+  })
+}
 
 async function qrPosterPdf(id: string, request: Request): Promise<Response> {
   const supabase = await createClient()

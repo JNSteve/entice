@@ -4,6 +4,8 @@ import { requireRole } from '@/lib/auth'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
 import { StatusBadge } from '@/components/StatusBadge'
+import { buttonVariants } from '@/components/ui/button'
+import { QrCodeIcon } from 'lucide-react'
 import { fmtDate } from '@/lib/format'
 import {
   Table,
@@ -207,6 +209,19 @@ export default async function SiteDetailPage({
         <PageHeader
           title={site.name}
           description={address || 'Property compliance register'}
+          actions={
+            canEdit ? (
+              <a
+                href={`/api/pdf/portal-register/${siteId}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={buttonVariants({ variant: 'outline', size: 'sm' })}
+              >
+                <QrCodeIcon className="size-4" />
+                Register QR poster
+              </a>
+            ) : undefined
+          }
         />
       </div>
 

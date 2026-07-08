@@ -20,7 +20,9 @@ import {
   propertyStatusPhrase,
   summarisePortfolio,
 } from '@/lib/portal-experience'
+import { redirect } from 'next/navigation'
 import {
+  isRegisterScope,
   LinkInactivePage,
   PortalCard,
   PortalLight,
@@ -66,6 +68,10 @@ export default async function PortalHomePage({
   })
   const branding = (resolved ?? null) as PortalBranding | null
   if (!branding) return <LinkInactivePage />
+  // Register-scope links (site QR posters) only see their property's register.
+  if (isRegisterScope(branding)) {
+    redirect(`/portal/${token}/sites/${branding.site_id}`)
+  }
 
   const [{ data: sitesData }, { data: approvalsData }, { data: requestsData }] =
     await Promise.all([

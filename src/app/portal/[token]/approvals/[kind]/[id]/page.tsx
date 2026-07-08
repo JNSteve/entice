@@ -1,10 +1,11 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import { ArrowLeftIcon, CircleCheckIcon, FileTextIcon, XCircleIcon } from 'lucide-react'
 import { createPublicClient } from '@/lib/supabase/public'
 import { aud, fmtDate } from '@/lib/format'
 import {
   LinkInactivePage,
+  isRegisterScope,
   PortalCard,
   PortalShell,
   type PortalApprovalsPayload,
@@ -39,6 +40,10 @@ export default async function PortalApprovalDetailPage({
   })
   const branding = (resolved ?? null) as PortalBranding | null
   if (!branding) return <LinkInactivePage />
+  // Register-scope links (site QR posters) only see their property's register.
+  if (isRegisterScope(branding)) {
+    redirect(`/portal/${token}/sites/${branding.site_id}`)
+  }
 
   const [{ data: approvalsData }] = await Promise.all([
     supabase.rpc('portal_approvals', { p_token: token }),

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import {
   ArrowLeftIcon,
   CalendarClockIcon,
@@ -42,6 +42,7 @@ import {
   StatusRing,
   WorkStatusBadge,
   type PortalApprovalsPayload,
+  isRegisterScope,
   type PortalBillingRow,
   type PortalBranding,
   type PortalMessageRow,
@@ -261,10 +262,20 @@ export default async function PortalSitePage({
   const branding = (resolved ?? null) as PortalBranding | null
   if (!branding) return <LinkInactivePage />
 
+  // Register-scope links (site QR posters): pinned to ONE property, register
+  // view only — no requests/messages/approvals/billing/uploads.
+  const registerOnly = isRegisterScope(branding)
+  if (registerOnly && siteId !== branding.site_id) {
+    redirect(`/portal/${token}/sites/${branding.site_id}`)
+  }
+
   let activeTab: SiteTab = SITE_TABS.includes(tab as SiteTab)
     ? (tab as SiteTab)
     : 'compliance'
   if (activeTab === 'billing' && !branding.show_financials) {
+    activeTab = 'compliance'
+  }
+  if (registerOnly && activeTab !== 'compliance' && activeTab !== 'documents') {
     activeTab = 'compliance'
   }
 
@@ -436,28 +447,35 @@ export default async function PortalSitePage({
         : 'text-slate-500 hover:text-slate-800'
     }`
 
-  const tabs: { key: SiteTab; label: string; href: string }[] = [
-    { key: 'compliance', label: 'Compliance', href: `/portal/${token}/sites/${siteId}` },
-    { key: 'documents', label: 'Documents', href: `/portal/${token}/sites/${siteId}?tab=documents` },
-    { key: 'works', label: 'Works', href: `/portal/${token}/sites/${siteId}?tab=works` },
-    { key: 'messages', label: 'Messages', href: `/portal/${token}/sites/${siteId}?tab=messages` },
-    { key: 'requests', label: 'Requests', href: `/portal/${token}/sites/${siteId}?tab=requests` },
-    ...(branding.show_financials
-      ? [{ key: 'billing' as SiteTab, label: 'Billing', href: `/portal/${token}/sites/${siteId}?tab=billing` }]
-      : []),
-  ]
+  const tabs: { key: SiteTab; label: string; href: string }[] = registerOnly
+    ? [
+        { key: 'compliance', label: 'Compliance', href: `/portal/${token}/sites/${siteId}` },
+        { key: 'documents', label: 'Documents', href: `/portal/${token}/sites/${siteId}?tab=documents` },
+      ]
+    : [
+        { key: 'compliance', label: 'Compliance', href: `/portal/${token}/sites/${siteId}` },
+        { key: 'documents', label: 'Documents', href: `/portal/${token}/sites/${siteId}?tab=documents` },
+        { key: 'works', label: 'Works', href: `/portal/${token}/sites/${siteId}?tab=works` },
+        { key: 'messages', label: 'Messages', href: `/portal/${token}/sites/${siteId}?tab=messages` },
+        { key: 'requests', label: 'Requests', href: `/portal/${token}/sites/${siteId}?tab=requests` },
+        ...(branding.show_financials
+          ? [{ key: 'billing' as SiteTab, label: 'Billing', href: `/portal/${token}/sites/${siteId}?tab=billing` }]
+          : []),
+      ]
 
   return (
     <PortalShell branding={branding} token={token} active="properties">
       {/* Property header */}
       <div className="flex flex-col gap-3">
-        <Link
-          href={`/portal/${token}`}
-          className="flex min-h-6 w-fit items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900"
-        >
-          <ArrowLeftIcon className="size-3.5" />
-          All properties
-        </Link>
+        {!registerOnly && (
+          <Link
+            href={`/portal/${token}`}
+            className="flex min-h-6 w-fit items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900"
+          >
+            <ArrowLeftIcon className="size-3.5" />
+            All properties
+          </Link>
+        )}
         <div className="flex items-center gap-3.5">
           <StatusRing status={siteStatus} />
           <div className="min-w-0 flex-1">
@@ -478,7 +496,7 @@ export default async function PortalSitePage({
       </div>
 
       {/* Awaiting approvals banner */}
-      {approvals.pending.length > 0 && (
+      {!registerOnly && approvals.pending.length > 0 && (
         <Link
           href={`/portal/${token}/approvals`}
           className="flex items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm transition-colors hover:bg-amber-100/70"
@@ -578,7 +596,7 @@ export default async function PortalSitePage({
                             </span>
                           </a>
                         )}
-                        {itemStatus !== 'green' && (
+                        {itemStatus !== 'green' && !registerOnly && (
                           <Link
                             href={`/portal/${token}/request?site=${siteId}&item=${item.id}`}
                             className="flex min-h-11 w-fit items-center gap-2 rounded-xl bg-[#162040] px-3.5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90"
@@ -634,11 +652,13 @@ export default async function PortalSitePage({
           </ul>
         )}
 
-        <UploadDocumentCard
-          token={token}
-          siteId={siteId}
-          companyName={branding.company_name}
-        />
+        {!registerOnly && (
+          <UploadDocumentCard
+            token={token}
+            siteId={siteId}
+            companyName={branding.company_name}
+          />
+        )}
         </div>
       )}
 
