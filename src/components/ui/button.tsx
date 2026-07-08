@@ -46,9 +46,17 @@ function Button({
   size = "default",
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
+  // Base UI assumes the rendered element is a native <button> and warns when a
+  // `render` prop swaps in something else (this app renders <Link>s). Only
+  // claim native semantics when nothing is swapped in or the swap IS a button.
+  const nativeButton =
+    props.render === undefined ||
+    (typeof props.render !== "function" && props.render.type === "button")
+
   return (
     <ButtonPrimitive
       data-slot="button"
+      nativeButton={nativeButton}
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     />
