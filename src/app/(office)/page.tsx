@@ -31,6 +31,7 @@ import {
   HoldPointsCard,
   NcrCard,
   PortalActivityCard,
+  PrestartTodayCard,
   PropertyComplianceCard,
   QualityCard,
   QuotesAwaitingCard,
@@ -52,6 +53,7 @@ import {
   type NcrData,
   type NcrOverdueCapaRow,
   type PortalActivityData,
+  type PrestartTodayRow,
   type PortalDecisionRow,
   type PropertyComplianceDueRow,
   type QualityData,
@@ -1101,6 +1103,58 @@ async function loadSystemHealth(
   }
 }
 
+// ─── Pre-starts today ─────────────────────────────────────────────────────────
+
+async function loadPrestartsToday(
+  supabase: Db,
+  todayStr: string
+): Promise<PrestartTodayRow[]> {
+  // Brisbane is fixed +10 — the AU day starts at T00:00:00+10:00.
+  const dayStartIso = new Date(`${todayStr}T00:00:00+10:00`).toISOString()
+  const [{ data: assignments }, { data: meetings }] = await Promise.all([
+    supabase
+      .from('assignments')
+      .select('project_id, job_id, projects(number, name), jobs(number, title)')
+      .eq('date', todayStr),
+    supabase
+      .from('form_submissions')
+      .select('id, project_id, job_id')
+      .eq('kind', 'prestart_meeting')
+      .gte('submitted_at', dayStartIso),
+  ])
+
+  const byTarget = new Map<string, PrestartTodayRow>()
+  for (const a of assignments ?? []) {
+    const key = (a.project_id ?? a.job_id) as string | null
+    if (!key) continue
+    const existing = byTarget.get(key)
+    if (existing) {
+      existing.crew += 1
+      continue
+    }
+    const project = a.projects as unknown as { number: string; name: string } | null
+    const job = a.jobs as unknown as { number: string; title: string } | null
+    const meeting = (meetings ?? []).find((m) =>
+      a.project_id ? m.project_id === a.project_id : m.job_id === a.job_id
+    )
+    byTarget.set(key, {
+      key,
+      label: project
+        ? `${project.number} — ${project.name}`
+        : job
+          ? `${job.number} — ${job.title}`
+          : 'Unknown',
+      crew: 1,
+      done: Boolean(meeting),
+      href: meeting ? `/field/safety/submission/${meeting.id}` : '/whs/forms',
+    })
+  }
+  // Missing pre-starts first, then by label.
+  return [...byTarget.values()].sort(
+    (a, b) => Number(a.done) - Number(b.done) || a.label.localeCompare(b.label)
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage() {
@@ -1123,6 +1177,7 @@ export default async function DashboardPage() {
     propertyCompliance,
     retentionDue,
     activeWork,
+    prestartsToday,
     todayOnSite,
     swmsOutstanding,
     holdPoints,
@@ -1142,6 +1197,7 @@ export default async function DashboardPage() {
     showMoney ? settle(() => loadPropertyComplianceDue(supabase, today)) : none,
     showMoney ? settle(() => loadRetentionDue(supabase, today)) : none,
     showMoney ? settle(() => loadActiveWork(supabase)) : none,
+    settle(() => loadPrestartsToday(supabase, todayAU())),
     settle(() => loadTodayOnSite(supabase, today)),
     settle(() => loadSwmsOutstanding(supabase, showMoney ? null : profile.id)),
     settle(() => loadHoldPoints(supabase, today)),
@@ -1183,6 +1239,7 @@ export default async function DashboardPage() {
             <SystemHealthCard data={systemHealth ?? null} />
           </>
         )}
+        <PrestartTodayCard data={prestartsToday ?? null} />
         <TodayOnSiteCard data={todayOnSite ?? null} />
         <SwmsOutstandingCard data={swmsOutstanding ?? null} />
         <HoldPointsCard data={holdPoints ?? null} />

@@ -17,6 +17,7 @@ import {
   ReceiptIcon,
   ServerIcon,
   ShieldAlertIcon,
+  ShieldCheckIcon,
   TimerIcon,
 } from 'lucide-react'
 import {
@@ -70,6 +71,7 @@ const CARD_CHIP: Record<
   'SWMS outstanding': { icon: FileSignatureIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   'Hold points': { icon: FileWarningIcon, tint: 'bg-blue-100 dark:bg-blue-950', fg: 'text-blue-700 dark:text-blue-300' },
   'Diaries missing': { icon: NotebookPenIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
+  'Pre-starts today': { icon: ShieldCheckIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   Safety: { icon: ShieldAlertIcon, tint: 'bg-red-100 dark:bg-red-950', fg: 'text-red-700 dark:text-red-300' },
   NCRs: { icon: HardHatIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   Environment: { icon: LeafIcon, tint: 'bg-green-100 dark:bg-green-950', fg: 'text-green-700 dark:text-green-300' },
@@ -134,6 +136,57 @@ function MoreNote({ total }: { total: number }) {
   if (total <= MAX_ROWS) return null
   return (
     <p className="text-xs text-muted-foreground">+{total - MAX_ROWS} more</p>
+  )
+}
+
+// ─── 0. Pre-starts today ──────────────────────────────────────────────────────
+
+export interface PrestartTodayRow {
+  key: string
+  label: string
+  crew: number
+  done: boolean
+  href: string
+}
+
+export function PrestartTodayCard({ data }: { data: PrestartTodayRow[] | null }) {
+  return (
+    <DashboardCard title="Pre-starts today" href="/whs/forms">
+      {data === null ? (
+        <LoadError />
+      ) : data.length === 0 ? (
+        <Muted>No crew assigned today.</Muted>
+      ) : (
+        <>
+          {data.slice(0, MAX_ROWS).map((row) => (
+            <div
+              key={row.key}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <Link
+                href={row.href}
+                className="min-w-0 truncate hover:underline"
+              >
+                {row.label}
+              </Link>
+              <span
+                className={cn(
+                  'shrink-0 text-xs font-medium',
+                  row.done
+                    ? 'text-green-700 dark:text-green-400'
+                    : 'text-red-600 dark:text-red-400'
+                )}
+              >
+                {row.done
+                  ? 'Done'
+                  : `${row.crew} on site — none`}
+              </span>
+            </div>
+          ))}
+          <MoreNote total={data.length} />
+        </>
+      )}
+    </DashboardCard>
   )
 }
 
