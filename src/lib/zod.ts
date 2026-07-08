@@ -406,6 +406,13 @@ export const checklistItemSchema = z.object({
 
 export type ChecklistItemInput = z.infer<typeof checklistItemSchema>
 
+export const projectChecklistItemSchema = z.object({
+  project_id: z.uuid(),
+  text: z.string().min(1, 'Item text is required'),
+})
+
+export type ProjectChecklistItemInput = z.infer<typeof projectChecklistItemSchema>
+
 export const workLogSchema = z.object({
   job_id: z.uuid(),
   date: z.string().min(1, 'Date is required'),

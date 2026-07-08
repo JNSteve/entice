@@ -14,6 +14,7 @@ import {
   projectUpdateSchema,
   budgetLineSchema,
   budgetLineUpdateSchema,
+  projectChecklistItemSchema,
   projectCostSchema,
 } from '@/lib/zod'
 
@@ -263,5 +264,78 @@ export async function addProjectCost(data: unknown): Promise<Result> {
   if (error) return { error: error.message }
 
   revalidateProject(parsed.data.project_id)
+  return {}
+}
+
+// ─── Mobilisation checklist ───────────────────────────────────────────────────
+
+export async function addProjectChecklistItem(data: unknown): Promise<Result> {
+  await requireRole('admin', 'office', 'supervisor')
+
+  const parsed = projectChecklistItemSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createClient()
+
+  const { data: last } = await supabase
+    .from('project_checklist_items')
+    .select('position')
+    .eq('project_id', parsed.data.project_id)
+    .order('position', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const { error } = await supabase.from('project_checklist_items').insert({
+    project_id: parsed.data.project_id,
+    text: parsed.data.text,
+    position: (last?.position ?? -1) + 1,
+    done: false,
+  })
+  if (error) return { error: error.message }
+
+  revalidateProject(parsed.data.project_id)
+  return {}
+}
+
+export async function toggleProjectChecklistItem(
+  itemId: string,
+  projectId: string,
+  done: boolean
+): Promise<Result> {
+  const profile = await requireRole('admin', 'office', 'supervisor')
+  const supabase = await createClient()
+
+  const update = done
+    ? { done: true, done_by: profile.id, done_at: new Date().toISOString() }
+    : { done: false, done_by: null, done_at: null }
+
+  const { error } = await supabase
+    .from('project_checklist_items')
+    .update(update)
+    .eq('id', itemId)
+    .eq('project_id', projectId)
+  if (error) return { error: error.message }
+
+  revalidateProject(projectId)
+  return {}
+}
+
+export async function deleteProjectChecklistItem(
+  itemId: string,
+  projectId: string
+): Promise<Result> {
+  await requireRole('admin', 'office', 'supervisor')
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('project_checklist_items')
+    .delete()
+    .eq('id', itemId)
+    .eq('project_id', projectId)
+  if (error) return { error: error.message }
+
+  revalidateProject(projectId)
   return {}
 }
