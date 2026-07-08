@@ -12,6 +12,7 @@ import {
 import { round2, lineTotal } from '@/lib/money'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { nowAU } from '@/lib/tz'
+import { MobilisationCard, type MobilisationItem } from './mobilisation-card'
 import { RetentionCard, type RetentionEntry } from './retention-card'
 
 /** Claim day of the current month if not yet passed, otherwise next month. */
@@ -44,6 +45,7 @@ export default async function ProjectOverviewPage({
     { count: incidentsCount },
     { data: programmeTasks },
     { data: holdPoints },
+    { data: checklistItems },
   ] = await Promise.all([
     supabase
       .from('projects')
@@ -79,6 +81,11 @@ export default async function ProjectOverviewPage({
       .select('date, status')
       .eq('project_id', id)
       .neq('status', 'released'),
+    supabase
+      .from('project_checklist_items')
+      .select('id, text, done')
+      .eq('project_id', id)
+      .order('position'),
   ])
 
   if (!project) notFound()
@@ -235,9 +242,17 @@ export default async function ProjectOverviewPage({
     { label: 'Actual', value: actualTotal, className: 'bg-green-600' },
   ]
 
+  const mobilisationItems: MobilisationItem[] = (checklistItems ?? []).map((i) => ({
+    id: i.id as string,
+    text: i.text as string,
+    done: Boolean(i.done),
+  }))
+
   return (
     <div className="flex flex-col gap-8">
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {/* Mobilisation — first thing seen on a fresh project (supervisor-visible) */}
+      <MobilisationCard projectId={id} items={mobilisationItems} />
       {showMoney && (
         <>
           {/* Adjusted contract sum */}
