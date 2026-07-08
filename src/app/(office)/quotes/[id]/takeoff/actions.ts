@@ -541,7 +541,6 @@ export async function pushTakeoffToQuote(
       unit_cost: cost,
       markup_pct: markup,
       unit_sell: sell,
-      sell_overridden: false,
       position,
       takeoff_item_id: item.id,
     })
