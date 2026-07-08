@@ -1,5 +1,8 @@
+import Link from 'next/link'
 import { notFound } from 'next/navigation'
+import { RulerIcon } from 'lucide-react'
 import { requireRole } from '@/lib/auth'
+import { buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
 import {
   QuoteBuilder,
@@ -135,11 +138,22 @@ export default async function QuoteBuilderPage({
   }))
 
   return (
-    <QuoteBuilder
-      quote={quoteData}
-      sections={sectionData}
-      lines={lineData}
-      rateItems={rateItemData}
-    />
+    <div className="flex flex-col gap-3">
+      <div className="flex justify-end">
+        <Link
+          href={`/quotes/${quoteData.id}/takeoff`}
+          className={buttonVariants({ variant: 'outline', size: 'sm' })}
+        >
+          <RulerIcon className="size-4" />
+          Takeoff
+        </Link>
+      </div>
+      <QuoteBuilder
+        quote={quoteData}
+        sections={sectionData}
+        lines={lineData}
+        rateItems={rateItemData}
+      />
+    </div>
   )
 }
