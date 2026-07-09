@@ -34,6 +34,7 @@ export default async function ProjectsPage({
   let projectsQuery = supabase
     .from('projects')
     .select(projectSelect)
+    .eq('archived', false)
     .order('created_at', { ascending: false })
 
   if (mine) projectsQuery = projectsQuery.eq('pm_id', profile.id)

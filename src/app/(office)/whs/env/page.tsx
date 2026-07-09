@@ -53,11 +53,13 @@ export default async function WhsEnvPage() {
     supabase
       .from('projects')
       .select('id, number, name')
+      .eq('archived', false)
       .neq('status', 'closed')
       .order('number'),
     supabase
       .from('jobs')
       .select('id, number, title')
+      .eq('archived', false)
       .not('status', 'in', '("invoiced","paid","lost")')
       .order('number'),
     supabase

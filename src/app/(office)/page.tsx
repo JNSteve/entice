@@ -107,6 +107,7 @@ async function loadClaimsDue(supabase: Db, today: Date): Promise<ClaimsDueData> 
     supabase
       .from('projects')
       .select('id, number, name, claim_day')
+      .eq('archived', false)
       .eq('status', 'active'),
     // Claims from the start of this month onward — covers the month-wrap case
     // where the next claim day falls early next month.
@@ -171,6 +172,7 @@ async function loadQuotesAwaiting(
   const { data, error } = await supabase
     .from('quotes')
     .select('id, number, title, sent_at, created_at, quote_lines(qty, unit_sell)')
+    .eq('archived', false)
     .eq('status', 'sent')
     .order('sent_at', { ascending: true })
   if (error) throw error
@@ -324,6 +326,7 @@ async function loadRetentionDue(
   const { data: projects, error } = await supabase
     .from('projects')
     .select('id, number, name, practical_completion_date, pc_release_fraction, dlp_months')
+    .eq('archived', false)
     .not('practical_completion_date', 'is', null)
   if (error) throw error
   if (!projects || projects.length === 0) return []
@@ -386,11 +389,13 @@ async function loadActiveWork(supabase: Db): Promise<ActiveWorkData> {
          claims(status, total_claimed_to_date),
          budget_lines(budget_amount)`
       )
+      .eq('archived', false)
       .eq('status', 'active')
       .order('number'),
     supabase
       .from('jobs')
       .select('status')
+      .eq('archived', false)
       .in('status', ['scheduled', 'in_progress', 'completed']),
   ])
   if (projectsRes.error) throw projectsRes.error
@@ -791,7 +796,7 @@ async function loadDiariesMissing(
   const targetStr = dateStr(target)
 
   const [projectsRes, diariesRes, assignmentsRes] = await Promise.all([
-    supabase.from('projects').select('id, number, name').eq('status', 'active'),
+    supabase.from('projects').select('id, number, name').eq('archived', false).eq('status', 'active'),
     supabase.from('diaries').select('project_id').eq('date', targetStr),
     supabase
       .from('assignments')

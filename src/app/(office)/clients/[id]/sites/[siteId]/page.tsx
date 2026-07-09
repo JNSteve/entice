@@ -71,11 +71,13 @@ export default async function SiteDetailPage({
       .from('jobs')
       .select('id, number, title, status, created_at')
       .eq('site_id', siteId)
+      .eq('archived', false)
       .order('created_at', { ascending: false }),
     supabase
       .from('projects')
       .select('id, number, name, status, created_at')
       .eq('site_id', siteId)
+      .eq('archived', false)
       .order('created_at', { ascending: false }),
   ])
 

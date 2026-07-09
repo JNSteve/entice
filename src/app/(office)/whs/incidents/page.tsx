@@ -33,11 +33,13 @@ export default async function WhsIncidentsPage() {
       supabase
         .from('projects')
         .select('id, number, name')
+        .eq('archived', false)
         .eq('status', 'active')
         .order('number'),
       supabase
         .from('jobs')
         .select('id, number, title')
+        .eq('archived', false)
         .in('status', ['scheduled', 'in_progress'])
         .order('number'),
       supabase

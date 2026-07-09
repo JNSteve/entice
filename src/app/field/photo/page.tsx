@@ -64,11 +64,13 @@ export default async function FieldPhotoPage() {
     supabase
       .from('jobs')
       .select('id, number, title, status')
+      .eq('archived', false)
       .not('status', 'in', '("invoiced","paid","lost")')
       .order('number'),
     supabase
       .from('projects')
       .select('id, number, name, status')
+      .eq('archived', false)
       .neq('status', 'closed')
       .order('number'),
   ])

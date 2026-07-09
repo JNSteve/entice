@@ -55,6 +55,7 @@ export default async function WhsFormsPage({
   const { data: projects } = await supabase
     .from('projects')
     .select('id, number, name')
+    .eq('archived', false)
     .in('status', ['active', 'practical_completion', 'defects_liability'])
     .order('number')
 

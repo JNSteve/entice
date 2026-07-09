@@ -45,6 +45,7 @@ export default async function JobsPage({
        pm:profiles!jobs_pm_id_fkey(id, full_name),
        quotes(id, gst_rate, quote_lines(qty, unit_sell))`
     )
+    .eq('archived', false)
     .order('created_at', { ascending: false })
 
   if (filter !== 'all') jobsQuery = jobsQuery.eq('status', filter)

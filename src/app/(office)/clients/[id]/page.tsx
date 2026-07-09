@@ -64,9 +64,9 @@ export default async function ClientDetailPage({
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase.from('contacts').select('*').eq('client_id', id).order('name'),
     supabase.from('sites').select('*').eq('client_id', id).order('name'),
-    supabase.from('quotes').select('id, number, title, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
-    supabase.from('jobs').select('id, number, title, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
-    supabase.from('projects').select('id, number, name, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
+    supabase.from('quotes').select('id, number, title, status, created_at').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
+    supabase.from('jobs').select('id, number, title, status, created_at').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
+    supabase.from('projects').select('id, number, name, status, created_at').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
     supabase.from('invoices').select('id, number, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('client_links').select('id, token, label, created_at, expires_at, revoked_at, show_financials, notifications_enabled').eq('client_id', id).order('created_at', { ascending: false }),
   ])

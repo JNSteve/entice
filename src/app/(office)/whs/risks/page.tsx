@@ -32,6 +32,7 @@ export default async function WhsRisksPage() {
       supabase
         .from('projects')
         .select('id, number, name')
+        .eq('archived', false)
         .eq('status', 'active')
         .order('number'),
       supabase

@@ -39,11 +39,13 @@ export default async function WhsNcrPage() {
     supabase
       .from('projects')
       .select('id, number, name')
+      .eq('archived', false)
       .eq('status', 'active')
       .order('number'),
     supabase
       .from('jobs')
       .select('id, number, title')
+      .eq('archived', false)
       .in('status', ['scheduled', 'in_progress'])
       .order('number'),
     supabase.from('vendors').select('id, name').order('name'),

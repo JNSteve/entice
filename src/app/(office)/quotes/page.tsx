@@ -52,6 +52,7 @@ export default async function QuotesPage({
     .select(
       'id, number, title, status, gst_rate, sent_at, created_at, clients(name), profiles!quotes_pm_id_fkey(id, full_name), quote_lines(qty, unit_cost, unit_sell)'
     )
+    .eq('archived', false)
     .order('created_at', { ascending: false })
   if (filter !== 'all') quotesQuery = quotesQuery.eq('status', filter)
   if (mine) quotesQuery = quotesQuery.eq('pm_id', profile.id)

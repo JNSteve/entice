@@ -22,6 +22,7 @@ export default async function DiaryProjectPickerPage() {
     supabase
       .from('projects')
       .select('id, number, name, status')
+      .eq('archived', false)
       .neq('status', 'closed')
       .order('number'),
   ])

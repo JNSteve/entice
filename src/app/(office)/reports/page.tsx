@@ -59,6 +59,7 @@ async function loadProfitability(supabase: Supabase): Promise<ProfitabilityRow[]
   const { data: projects } = await supabase
     .from('projects')
     .select('id, number, name, status, contract_sum')
+    .eq('archived', false)
     .in('status', OPEN_PROJECT_STATUSES)
     .order('number')
 
@@ -210,6 +211,7 @@ async function loadWip(
     supabase
       .from('projects')
       .select('id, number, name')
+      .eq('archived', false)
       .in('status', OPEN_PROJECT_STATUSES)
       .order('number'),
     supabase
@@ -221,6 +223,7 @@ async function loadWip(
       .select(
         'id, number, title, completed_at, clients(name), quotes(gst_rate, quote_lines(qty, unit_sell)), invoices(status)'
       )
+      .eq('archived', false)
       .eq('status', 'completed')
       .order('completed_at', { ascending: true }),
   ])
@@ -324,6 +327,7 @@ async function loadQuoteConversion(
   let query = supabase
     .from('quotes')
     .select('id, status, gst_rate, sent_at, clients(name), quote_lines(qty, unit_sell)')
+    .eq('archived', false)
     .not('sent_at', 'is', null)
 
   const range = periodRange(period, nowAU())

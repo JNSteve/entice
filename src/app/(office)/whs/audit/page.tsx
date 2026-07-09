@@ -86,6 +86,7 @@ export default async function WhsAuditPage({
     supabase
       .from('projects')
       .select('id, number, name')
+      .eq('archived', false)
       .order('number'),
   ])
 

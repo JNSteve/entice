@@ -83,6 +83,7 @@ export default async function SchedulePage({
   const { data: jobs } = await supabase
     .from('jobs')
     .select('id, number, title')
+    .eq('archived', false)
     .in('status', ['scheduled', 'in_progress'])
     .order('number')
 
@@ -90,6 +91,7 @@ export default async function SchedulePage({
   const { data: projects } = await supabase
     .from('projects')
     .select('id, number, name')
+    .eq('archived', false)
     .in('status', ['active', 'practical_completion', 'defects_liability'])
     .order('number')
 
