@@ -16,6 +16,7 @@ export interface JobRow {
   site_name: string | null
   status: string
   supervisor_name: string | null
+  pm_name: string | null
   scheduled_start: string | null
   scheduled_end: string | null
   quoted_value: number | null
@@ -67,6 +68,13 @@ export function JobsTable({
       header: 'Supervisor',
       render: (r: JobRow) => (
         <span className="text-muted-foreground">{r.supervisor_name ?? '—'}</span>
+      ),
+    },
+    {
+      key: 'pm',
+      header: 'PM',
+      render: (r: JobRow) => (
+        <span className="text-muted-foreground">{r.pm_name ?? '—'}</span>
       ),
     },
     {

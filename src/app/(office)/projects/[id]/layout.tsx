@@ -24,7 +24,8 @@ export default async function ProjectLayout({
       `id, number, name, status,
        clients(id, name),
        sites(id, name),
-       profiles!projects_supervisor_id_fkey(id, full_name)`
+       supervisor:profiles!projects_supervisor_id_fkey(id, full_name),
+       pm:profiles!projects_pm_id_fkey(id, full_name)`
     )
     .eq('id', id)
     .single()
@@ -33,7 +34,11 @@ export default async function ProjectLayout({
 
   const clientRel = project.clients as unknown as { id: string; name: string } | null
   const siteRel = project.sites as unknown as { id: string; name: string } | null
-  const supervisorRel = project.profiles as unknown as {
+  const supervisorRel = project.supervisor as unknown as {
+    id: string
+    full_name: string
+  } | null
+  const pmRel = project.pm as unknown as {
     id: string
     full_name: string
   } | null
@@ -64,6 +69,9 @@ export default async function ProjectLayout({
           {siteRel && <span className="text-muted-foreground">{siteRel.name}</span>}
           {supervisorRel && (
             <span className="text-muted-foreground">{supervisorRel.full_name}</span>
+          )}
+          {pmRel && (
+            <span className="text-muted-foreground">PM: {pmRel.full_name}</span>
           )}
         </div>
       </div>

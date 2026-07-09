@@ -39,6 +39,7 @@ export default async function JobDetailPage({
     { data: costs },
     { data: sites },
     { data: supervisors },
+    { data: pms },
     { data: templates },
     { data: costCodes },
     attachments,
@@ -51,7 +52,8 @@ export default async function JobDetailPage({
         `*,
          clients(id, name),
          sites(id, name),
-         profiles!jobs_supervisor_id_fkey(id, full_name),
+         supervisor:profiles!jobs_supervisor_id_fkey(id, full_name),
+         pm:profiles!jobs_pm_id_fkey(id, full_name),
          quotes(id, number, status)`
       )
       .eq('id', id)
@@ -79,6 +81,12 @@ export default async function JobDetailPage({
       .in('role', ['admin', 'office', 'supervisor'])
       .eq('active', true)
       .order('full_name'),
+    supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('role', ['admin', 'office'])
+      .eq('active', true)
+      .order('full_name'),
     supabase.from('checklist_templates').select('id, title').order('title'),
     supabase
       .from('cost_codes')
@@ -98,7 +106,8 @@ export default async function JobDetailPage({
 
   const clientRel = job.clients as unknown as { id: string; name: string } | null
   const siteRel = job.sites as unknown as { id: string; name: string } | null
-  const supervisorRel = job.profiles as unknown as { id: string; full_name: string } | null
+  const supervisorRel = job.supervisor as unknown as { id: string; full_name: string } | null
+  const pmRel = job.pm as unknown as { id: string; full_name: string } | null
   const quoteRel = job.quotes as unknown as { id: string; number: string; status: string } | null
 
   const checklistData = (checklistItems ?? []).map((item) => {
@@ -209,10 +218,12 @@ export default async function JobDetailPage({
                   description={job.description ?? null}
                   siteId={job.site_id ?? null}
                   supervisorId={job.supervisor_id ?? null}
+                  pmId={job.pm_id ?? null}
                   scheduledStart={job.scheduled_start ?? null}
                   scheduledEnd={job.scheduled_end ?? null}
                   sites={(sites ?? []).map((s) => ({ id: s.id, name: s.name, client_id: s.client_id }))}
                   supervisors={supervisors ?? []}
+                  pms={pms ?? []}
                 />
               )}
             </div>
@@ -232,6 +243,9 @@ export default async function JobDetailPage({
           )}
           {supervisorRel && (
             <span className="text-muted-foreground">{supervisorRel.full_name}</span>
+          )}
+          {pmRel && (
+            <span className="text-muted-foreground">PM: {pmRel.full_name}</span>
           )}
           {dateRange && (
             <span className="text-muted-foreground tabular-nums">{dateRange}</span>

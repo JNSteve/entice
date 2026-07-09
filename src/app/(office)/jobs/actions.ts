@@ -62,6 +62,7 @@ export async function createJob(
       title: parsed.data.title,
       description: parsed.data.description,
       supervisor_id: parsed.data.supervisor_id,
+      pm_id: parsed.data.pm_id,
       status: 'quote',
     })
     .select('id')

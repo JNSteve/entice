@@ -44,10 +44,12 @@ export function NewProjectDialog({
   clients,
   sites,
   supervisors,
+  pms,
 }: {
   clients: Option[]
   sites: ClientScopedOption[]
   supervisors: ProfileOption[]
+  pms: ProfileOption[]
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -63,6 +65,7 @@ export function NewProjectDialog({
   const [claimDay, setClaimDay] = useState('25')
   const [startDate, setStartDate] = useState('')
   const [supervisorId, setSupervisorId] = useState(NONE)
+  const [pmId, setPmId] = useState(NONE)
 
   const clientSites = sites.filter((s) => s.client_id === clientId)
 
@@ -82,6 +85,7 @@ export function NewProjectDialog({
     setClaimDay('25')
     setStartDate('')
     setSupervisorId(NONE)
+    setPmId(NONE)
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -102,6 +106,7 @@ export function NewProjectDialog({
         claim_day: claimDay,
         start_date: startDate || null,
         supervisor_id: supervisorId === NONE ? null : supervisorId,
+        pm_id: pmId === NONE ? null : pmId,
       })
       if (result.error) {
         toast.error(result.error)
@@ -255,6 +260,25 @@ export function NewProjectDialog({
                 <SelectContent>
                   <SelectItem value={NONE}>No supervisor</SelectItem>
                   {supervisors.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="np-pm">PM (optional)</Label>
+              <Select
+                value={pmId}
+                onValueChange={(v) => setPmId(v ?? NONE)}
+              >
+                <SelectTrigger id="np-pm" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No PM</SelectItem>
+                  {pms.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.full_name}
                     </SelectItem>

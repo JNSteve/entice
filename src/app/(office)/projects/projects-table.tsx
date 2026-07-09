@@ -12,6 +12,7 @@ export interface ProjectRow {
   name: string
   client_name: string
   status: string
+  pm_name: string | null
   /** contract_sum + Σ approved variation sell. Null when money is hidden. */
   adjusted_sum: number | null
   /** Latest non-draft claim's total claimed to date. Null when money is hidden. */
@@ -51,6 +52,13 @@ export function ProjectsTable({
       key: 'status',
       header: 'Status',
       render: (r: ProjectRow) => <StatusBadge status={r.status} />,
+    },
+    {
+      key: 'pm',
+      header: 'PM',
+      render: (r: ProjectRow) => (
+        <span className="text-muted-foreground">{r.pm_name ?? '—'}</span>
+      ),
     },
     ...(showMoney
       ? [

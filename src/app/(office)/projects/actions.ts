@@ -73,6 +73,7 @@ export async function createProject(
       claim_day: parsed.data.claim_day,
       start_date: parsed.data.start_date,
       supervisor_id: parsed.data.supervisor_id,
+      pm_id: parsed.data.pm_id,
       status: 'active',
     })
     .select('id')

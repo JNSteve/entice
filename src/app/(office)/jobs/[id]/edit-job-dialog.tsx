@@ -43,10 +43,12 @@ interface EditJobDialogProps {
   description: string | null
   siteId: string | null
   supervisorId: string | null
+  pmId: string | null
   scheduledStart: string | null
   scheduledEnd: string | null
   sites: SiteOption[]
   supervisors: SupervisorOption[]
+  pms: SupervisorOption[]
 }
 
 export function EditJobDialog({
@@ -56,10 +58,12 @@ export function EditJobDialog({
   description: initialDescription,
   siteId: initialSiteId,
   supervisorId: initialSupervisorId,
+  pmId: initialPmId,
   scheduledStart: initialStart,
   scheduledEnd: initialEnd,
   sites,
   supervisors,
+  pms,
 }: EditJobDialogProps) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
@@ -68,6 +72,7 @@ export function EditJobDialog({
   const [description, setDescription] = useState(initialDescription ?? '')
   const [siteId, setSiteId] = useState(initialSiteId ?? NONE)
   const [supervisorId, setSupervisorId] = useState(initialSupervisorId ?? NONE)
+  const [pmId, setPmId] = useState(initialPmId ?? NONE)
   const [scheduledStart, setScheduledStart] = useState(initialStart ?? '')
   const [scheduledEnd, setScheduledEnd] = useState(initialEnd ?? '')
 
@@ -81,6 +86,7 @@ export function EditJobDialog({
         description: description || null,
         site_id: siteId === NONE ? null : siteId,
         supervisor_id: supervisorId === NONE ? null : supervisorId,
+        pm_id: pmId === NONE ? null : pmId,
         scheduled_start: scheduledStart || null,
         scheduled_end: scheduledEnd || null,
       })
@@ -148,6 +154,22 @@ export function EditJobDialog({
                 <SelectContent>
                   <SelectItem value={NONE}>No supervisor</SelectItem>
                   {supervisors.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.full_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ej-pm">PM</Label>
+              <Select value={pmId} onValueChange={(v) => setPmId(v ?? NONE)}>
+                <SelectTrigger id="ej-pm" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>No PM</SelectItem>
+                  {pms.map((p) => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.full_name}
                     </SelectItem>

@@ -1,13 +1,22 @@
+import Link from 'next/link'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
 import { round2 } from '@/lib/money'
+import { cn } from '@/lib/utils'
 import { ProjectsTable, type ProjectRow } from './projects-table'
 import { NewProjectDialog } from './new-project-dialog'
 
-export default async function ProjectsPage() {
+export default async function ProjectsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ pm?: string }>
+}) {
   const profile = await requireRole('admin', 'office', 'supervisor')
   const showMoney = profile.role === 'admin' || profile.role === 'office'
+
+  const { pm } = await searchParams
+  const mine = pm === 'me'
 
   const supabase = await createClient()
 
@@ -16,16 +25,20 @@ export default async function ProjectsPage() {
   const projectSelect = showMoney
     ? `id, number, name, status, contract_sum,
        clients(id, name),
+       pm:profiles!projects_pm_id_fkey(id, full_name),
        variations(status, sell_amount),
        claims(status, total_claimed_to_date)`
-    : `id, number, name, status, clients(id, name)`
+    : `id, number, name, status, clients(id, name),
+       pm:profiles!projects_pm_id_fkey(id, full_name)`
 
-  const projectsQuery = supabase
+  let projectsQuery = supabase
     .from('projects')
     .select(projectSelect)
     .order('created_at', { ascending: false })
 
-  const [{ data: projects }, { data: clients }, { data: sites }, { data: supervisors }] =
+  if (mine) projectsQuery = projectsQuery.eq('pm_id', profile.id)
+
+  const [{ data: projects }, { data: clients }, { data: sites }, { data: supervisors }, { data: pms }] =
     await Promise.all([
       projectsQuery,
       showMoney
@@ -42,6 +55,14 @@ export default async function ProjectsPage() {
             .eq('active', true)
             .order('full_name')
         : Promise.resolve({ data: null }),
+      showMoney
+        ? supabase
+            .from('profiles')
+            .select('id, full_name')
+            .in('role', ['admin', 'office'])
+            .eq('active', true)
+            .order('full_name')
+        : Promise.resolve({ data: null }),
     ])
 
   type ProjectRecord = {
@@ -51,6 +72,7 @@ export default async function ProjectsPage() {
     status: string
     contract_sum?: number
     clients: { id: string; name: string } | null
+    pm: { id: string; full_name: string } | null
     variations?: { status: string; sell_amount: number }[]
     claims?: { status: string; total_claimed_to_date: number | null }[]
   }
@@ -78,6 +100,7 @@ export default async function ProjectsPage() {
         name: p.name,
         client_name: p.clients?.name ?? '—',
         status: p.status,
+        pm_name: p.pm?.full_name ?? null,
         adjusted_sum: adjustedSum,
         claimed_to_date: claimedToDate,
       }
@@ -99,10 +122,35 @@ export default async function ProjectsPage() {
                 client_id: s.client_id,
               }))}
               supervisors={supervisors ?? []}
+              pms={pms ?? []}
             />
           ) : undefined
         }
       />
+      <div className="flex w-fit items-center gap-1 rounded-lg bg-muted p-1 flex-wrap">
+        <Link
+          href="/projects"
+          className={cn(
+            'rounded-md px-3 py-1 text-sm transition-colors',
+            !mine
+              ? 'bg-background font-medium text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          All
+        </Link>
+        <Link
+          href="/projects?pm=me"
+          className={cn(
+            'rounded-md px-3 py-1 text-sm transition-colors',
+            mine
+              ? 'bg-background font-medium text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          Mine
+        </Link>
+      </div>
       <ProjectsTable rows={rows} showMoney={showMoney} canCreate={showMoney} />
     </div>
   )
