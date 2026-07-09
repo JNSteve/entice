@@ -36,6 +36,7 @@ import {
   type TakeoffAssemblyRow,
   type RateItemOption,
 } from './estimating-section'
+import { ArchiveSection, type ArchivedRecordRow } from './archive-section'
 
 export type SettingsTab =
   | 'company'
@@ -53,6 +54,7 @@ export type SettingsTab =
   | 'security'
   | 'itp'
   | 'email'
+  | 'archive'
 
 const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'company', label: 'Company' },
@@ -64,6 +66,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'swms', label: 'SWMS' },
   { value: 'whs-forms', label: 'WHS Forms' },
   { value: 'estimating', label: 'Estimating' },
+  { value: 'archive', label: 'Archive' },
   { value: 'competencies', label: 'Competencies' },
   { value: 'itp', label: 'ITP templates' },
   { value: 'backup', label: 'Backups' },
@@ -96,6 +99,9 @@ interface SettingsTabsProps {
   emailLog: EmailLogRow[]
   emailKeyPresent: boolean
   emailFromPresent: boolean
+  archivedQuotes: ArchivedRecordRow[]
+  archivedJobs: ArchivedRecordRow[]
+  archivedProjects: ArchivedRecordRow[]
 }
 
 export function SettingsTabs({
@@ -122,6 +128,9 @@ export function SettingsTabs({
   emailLog,
   emailKeyPresent,
   emailFromPresent,
+  archivedQuotes,
+  archivedJobs,
+  archivedProjects,
 }: SettingsTabsProps) {
   const [tab, setTab] = useState<SettingsTab>(initialTab)
 
@@ -167,6 +176,13 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="estimating" className="pt-4">
         <EstimatingSection assemblies={assemblies} rateItems={rateOptions} />
+      </TabsContent>
+      <TabsContent value="archive" className="pt-4">
+        <ArchiveSection
+          quotes={archivedQuotes}
+          jobs={archivedJobs}
+          projects={archivedProjects}
+        />
       </TabsContent>
       <TabsContent value="competencies" className="pt-4">
         <CompetencySection types={competencyTypes} requirements={roleRequirements} />

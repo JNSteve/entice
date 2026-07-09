@@ -18,6 +18,7 @@ import {
 } from '@/components/ui/select'
 import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
+import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -91,6 +92,7 @@ export interface QuoteData {
   converted_to: 'job' | 'project' | null
   converted_id: string | null
   converted_number: string | null
+  archived: boolean
   portal_published: boolean
   portal_acceptance: QuotePortalAcceptance | null
 }
@@ -135,6 +137,8 @@ export function QuoteBuilder({
 
   return (
     <div className="flex flex-col gap-6">
+      {quote.archived && <ArchiveBanner kind="quote" id={quote.id} />}
+
       <HeaderCard quote={quote} editable={editable} pmOptions={pmOptions} />
 
       {sections.map((section, i) => (
@@ -375,6 +379,7 @@ function HeaderCard({
               <FileDownIcon />
               PDF
             </a>
+            {!quote.archived && <ArchiveButton kind="quote" id={quote.id} />}
           </div>
         </div>
 

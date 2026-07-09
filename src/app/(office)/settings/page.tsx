@@ -19,6 +19,7 @@ const VALID_TABS: SettingsTab[] = [
   'security',
   'itp',
   'email',
+  'archive',
 ]
 
 export default async function SettingsPage({
@@ -56,6 +57,9 @@ export default async function SettingsPage({
     { data: emailLog },
     { data: takeoffAssemblies },
     { data: takeoffComponents },
+    { data: archivedQuotes },
+    { data: archivedJobs },
+    { data: archivedProjects },
   ] = await Promise.all([
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
@@ -143,6 +147,21 @@ export default async function SettingsPage({
       .select('id, assembly_id, description, unit, factor, fixed_qty, rate_item_id, position')
       .order('assembly_id')
       .order('position'),
+    supabase
+      .from('quotes')
+      .select('id, number, title, archived_at, clients(name)')
+      .eq('archived', true)
+      .order('archived_at', { ascending: false }),
+    supabase
+      .from('jobs')
+      .select('id, number, title, archived_at, clients(name)')
+      .eq('archived', true)
+      .order('archived_at', { ascending: false }),
+    supabase
+      .from('projects')
+      .select('id, number, name, archived_at, clients(name)')
+      .eq('archived', true)
+      .order('archived_at', { ascending: false }),
   ])
 
   // Build per-template submission counts
@@ -215,6 +234,33 @@ export default async function SettingsPage({
       cost: Number(r.cost),
     }))
 
+  const clientName = (row: { clients: unknown }) =>
+    (row.clients as { name: string } | null)?.name ?? null
+
+  const archivedQuoteRows = (archivedQuotes ?? []).map((r) => ({
+    id: r.id as string,
+    number: r.number as string,
+    title: r.title as string,
+    client_name: clientName(r),
+    archived_at: (r.archived_at as string | null) ?? null,
+  }))
+
+  const archivedJobRows = (archivedJobs ?? []).map((r) => ({
+    id: r.id as string,
+    number: r.number as string,
+    title: r.title as string,
+    client_name: clientName(r),
+    archived_at: (r.archived_at as string | null) ?? null,
+  }))
+
+  const archivedProjectRows = (archivedProjects ?? []).map((r) => ({
+    id: r.id as string,
+    number: r.number as string,
+    title: r.name as string,
+    client_name: clientName(r),
+    archived_at: (r.archived_at as string | null) ?? null,
+  }))
+
   return (
     <div className="flex flex-col gap-2">
       <PageHeader
@@ -245,6 +291,9 @@ export default async function SettingsPage({
         emailLog={emailLog ?? []}
         emailKeyPresent={Boolean(process.env.RESEND_API_KEY?.trim())}
         emailFromPresent={Boolean(process.env.EMAIL_FROM?.trim())}
+        archivedQuotes={archivedQuoteRows}
+        archivedJobs={archivedJobRows}
+        archivedProjects={archivedProjectRows}
       />
     </div>
   )

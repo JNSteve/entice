@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { StatusBadge } from '@/components/StatusBadge'
 import { ProjectTabs } from './project-tabs'
 import { ProjectStatusSelect } from './project-status-select'
+import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 
 export default async function ProjectLayout({
   children,
@@ -21,7 +22,7 @@ export default async function ProjectLayout({
   const { data: project } = await supabase
     .from('projects')
     .select(
-      `id, number, name, status,
+      `id, number, name, status, archived,
        clients(id, name),
        sites(id, name),
        supervisor:profiles!projects_supervisor_id_fkey(id, full_name),
@@ -49,9 +50,15 @@ export default async function ProjectLayout({
     <div className="flex flex-col gap-6">
       {/* Header */}
       <div className="flex flex-col gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight">
-          {project.number} — {project.name}
-        </h1>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <h1 className="text-2xl font-semibold tracking-tight">
+            {project.number} — {project.name}
+          </h1>
+          {canMutate && !project.archived && (
+            <ArchiveButton kind="project" id={project.id} />
+          )}
+        </div>
+        {project.archived && <ArchiveBanner kind="project" id={project.id} />}
         <div className="flex flex-wrap items-center gap-3 text-sm">
           {canMutate ? (
             <ProjectStatusSelect projectId={project.id} status={project.status} />

@@ -106,6 +106,7 @@ export default async function QuoteBuilderPage({
     converted_to: quote.converted_to ?? null,
     converted_id: quote.converted_id ?? null,
     converted_number: convertedNumber,
+    archived: Boolean(quote.archived),
     portal_published: Boolean(quote.portal_published),
     portal_acceptance: acceptanceRow
       ? {

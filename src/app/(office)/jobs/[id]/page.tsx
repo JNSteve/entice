@@ -21,6 +21,7 @@ import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 import { fetchSwmsInstances } from '@/lib/swms-queries'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
+import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 
 export default async function JobDetailPage({
   params,
@@ -226,9 +227,14 @@ export default async function JobDetailPage({
                   pms={pms ?? []}
                 />
               )}
+              {canMutate && !job.archived && (
+                <ArchiveButton kind="job" id={job.id} />
+              )}
             </div>
           }
         />
+
+        {job.archived && <ArchiveBanner kind="job" id={job.id} />}
 
         {/* Meta row */}
         <div className="flex flex-wrap items-center gap-3 text-sm">
