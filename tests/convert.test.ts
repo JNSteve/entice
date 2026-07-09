@@ -17,6 +17,7 @@ const QUOTE: ConvertQuote = {
   title: 'Roof Restoration',
   description: 'Full roof restoration scope',
   gst_rate: 10,
+  pm_id: 'pm-001',
 }
 
 const SECTIONS: ConvertSection[] = [
@@ -49,6 +50,13 @@ describe('jobPayloadFromQuote', () => {
     expect(payload.status).toBe('scheduled')
     expect(payload.scheduled_start).toBeNull()
     expect(payload.scheduled_end).toBeNull()
+    expect(payload.pm_id).toBe('pm-001')
+  })
+
+  test('null pm_id is preserved', () => {
+    const q = { ...QUOTE, pm_id: null }
+    const payload = jobPayloadFromQuote(q, 'J-0004')
+    expect(payload.pm_id).toBeNull()
   })
 
   test('null site_id is preserved', () => {
@@ -198,6 +206,15 @@ describe('projectPayloadFromQuote', () => {
   test('quote_id is linked correctly', () => {
     const { project } = projectPayloadFromQuote(QUOTE, SECTIONS, LINES, OTHER_CODE_ID, TODAY)
     expect(project.quote_id).toBe(QUOTE.id)
+  })
+
+  test('pm_id carries onto the project (null preserved)', () => {
+    const { project } = projectPayloadFromQuote(QUOTE, SECTIONS, LINES, OTHER_CODE_ID, TODAY)
+    expect(project.pm_id).toBe('pm-001')
+    const { project: noPm } = projectPayloadFromQuote(
+      { ...QUOTE, pm_id: null }, SECTIONS, LINES, OTHER_CODE_ID, TODAY
+    )
+    expect(noPm.pm_id).toBeNull()
   })
 })
 

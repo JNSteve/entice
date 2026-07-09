@@ -17,6 +17,8 @@ export interface ConvertQuote {
   title: string
   description: string | null
   gst_rate: number
+  /** Office-side owner — carried onto the job/project. */
+  pm_id: string | null
 }
 
 export interface ConvertSection {
@@ -94,6 +96,7 @@ export interface JobPayload {
   status: 'scheduled'
   scheduled_start: null
   scheduled_end: null
+  pm_id: string | null
 }
 
 export function jobPayloadFromQuote(
@@ -112,6 +115,7 @@ export function jobPayloadFromQuote(
     status: 'scheduled',
     scheduled_start: null,
     scheduled_end: null,
+    pm_id: quote.pm_id ?? null,
   }
 }
 
@@ -132,6 +136,7 @@ export interface ProjectPayload {
   dlp_months: number
   claim_day: number
   start_date: string
+  pm_id: string | null
 }
 
 export interface BudgetLinePayload {
@@ -212,6 +217,7 @@ export function projectPayloadFromQuote(
     dlp_months: 12,
     claim_day: 25,
     start_date: today,
+    pm_id: quote.pm_id ?? null,
   }
 
   return { project, budgetLines }

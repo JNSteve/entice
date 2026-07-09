@@ -224,6 +224,11 @@ export const quoteCreateSchema = z.object({
     .nullish()
     .transform((v) => v ?? null),
   title: z.string().min(1, 'Title is required'),
+  /** Office-side owner; createQuote defaults it to the creator when null. */
+  pm_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
 })
 
 export type QuoteCreateInput = z.infer<typeof quoteCreateSchema>
@@ -233,6 +238,11 @@ export const quoteHeaderSchema = z.object({
   description: optionalText.optional(),
   valid_days: z.coerce.number().int().min(1).max(365).optional(),
   notes: optionalText.optional(),
+  pm_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
 })
 
 export type QuoteHeaderInput = z.infer<typeof quoteHeaderSchema>
@@ -418,6 +428,10 @@ export const jobCreateSchema = z.object({
     .uuid()
     .nullish()
     .transform((v) => v ?? null),
+  pm_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
 })
 
 export type JobCreateInput = z.infer<typeof jobCreateSchema>
@@ -435,6 +449,11 @@ export const jobUpdateSchema = z.object({
     .transform((v) => v ?? null)
     .optional(),
   supervisor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  pm_id: z
     .uuid()
     .nullish()
     .transform((v) => v ?? null)
@@ -539,6 +558,10 @@ export const projectCreateSchema = z.object({
     .uuid()
     .nullish()
     .transform((v) => v ?? null),
+  pm_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
 })
 
 export type ProjectCreateInput = z.infer<typeof projectCreateSchema>
@@ -558,6 +581,11 @@ export const projectUpdateSchema = z.object({
     .transform((v) => v ?? null)
     .optional(),
   supervisor_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
+  pm_id: z
     .uuid()
     .nullish()
     .transform((v) => v ?? null)

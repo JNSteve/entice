@@ -96,6 +96,8 @@ export async function createQuote(
       site_id: parsed.data.site_id,
       contact_id: parsed.data.contact_id,
       title: parsed.data.title,
+      // PM defaults to whoever raised the quote — always assigned from day one.
+      pm_id: parsed.data.pm_id ?? profile.id,
       gst_rate: settings?.gst_rate ?? 10,
       created_by: profile.id,
     })
@@ -564,7 +566,7 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
   // Re-fetch the quote — server-side guard against double conversion.
   const { data: quote, error: qErr } = await supabase
     .from('quotes')
-    .select('id, status, converted_id, client_id, site_id, title, description')
+    .select('id, status, converted_id, client_id, site_id, title, description, pm_id')
     .eq('id', quoteId)
     .single()
 
@@ -603,6 +605,7 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
       title: quote.title,
       description: quote.description,
       gst_rate: 0, // not needed for job payload
+      pm_id: quote.pm_id ?? null,
     },
     number,
     sections ?? [],
@@ -651,7 +654,7 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
   // Re-fetch the quote — server-side guard against double conversion.
   const { data: quote, error: qErr } = await supabase
     .from('quotes')
-    .select('id, status, converted_id, client_id, site_id, title, description, gst_rate')
+    .select('id, status, converted_id, client_id, site_id, title, description, gst_rate, pm_id')
     .eq('id', quoteId)
     .single()
 
@@ -699,6 +702,7 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
       title: quote.title,
       description: quote.description,
       gst_rate: Number(quote.gst_rate),
+      pm_id: quote.pm_id ?? null,
     },
     sections ?? [],
     (lines ?? []).map((l) => ({
