@@ -25,6 +25,28 @@ function revalidateJob(jobId: string) {
 
 // ─── Job CRUD ─────────────────────────────────────────────────────────────────
 
+/**
+ * Reversible archive — hides the job from lists/pickers/reports without
+ * touching any data. Restore lives in Settings → Archive.
+ */
+export async function setJobArchived(
+  id: string,
+  archived: boolean
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('jobs')
+    .update({ archived, archived_at: archived ? new Date().toISOString() : null })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidateJob(id)
+  revalidatePath('/settings')
+  return {}
+}
+
 export async function createJob(
   data: unknown
 ): Promise<{ error?: string; id?: string }> {

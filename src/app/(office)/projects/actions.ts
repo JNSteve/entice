@@ -28,6 +28,28 @@ function revalidateProject(projectId: string) {
 
 // ─── Project CRUD ─────────────────────────────────────────────────────────────
 
+/**
+ * Reversible archive — hides the project from lists/pickers/reports without
+ * touching any data. Restore lives in Settings → Archive.
+ */
+export async function setProjectArchived(
+  id: string,
+  archived: boolean
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('projects')
+    .update({ archived, archived_at: archived ? new Date().toISOString() : null })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidateProject(id)
+  revalidatePath('/settings')
+  return {}
+}
+
 export async function createProject(
   data: unknown
 ): Promise<{ error?: string; id?: string }> {

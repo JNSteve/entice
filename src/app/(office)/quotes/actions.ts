@@ -110,6 +110,29 @@ export async function createQuote(
   return { id: row.id }
 }
 
+/**
+ * Reversible archive — hides the quote from lists/pickers/reports without
+ * touching any data. Works on any status (frozen/converted included); restore
+ * lives in Settings → Archive. Independent of the converted job/project.
+ */
+export async function setQuoteArchived(
+  id: string,
+  archived: boolean
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('quotes')
+    .update({ archived, archived_at: archived ? new Date().toISOString() : null })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidateQuote(id)
+  revalidatePath('/settings')
+  return {}
+}
+
 export async function updateQuoteHeader(
   id: string,
   data: unknown
