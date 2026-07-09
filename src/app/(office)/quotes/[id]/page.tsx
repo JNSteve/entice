@@ -22,11 +22,18 @@ export default async function QuoteBuilderPage({
   const { id } = await params
   const supabase = await createClient()
 
-  const [{ data: quote }, { data: sections }, { data: lines }, { data: rateItems }] =
-    await Promise.all([
+  const [
+    { data: quote },
+    { data: sections },
+    { data: lines },
+    { data: rateItems },
+    { data: pmOptions },
+  ] = await Promise.all([
       supabase
         .from('quotes')
-        .select('*, clients(name), sites(name), contacts(name)')
+        .select(
+          '*, clients(name), sites(name), contacts(name), profiles!quotes_pm_id_fkey(id, full_name)'
+        )
         .eq('id', id)
         .single(),
       supabase
@@ -46,6 +53,12 @@ export default async function QuoteBuilderPage({
         .select('id, kind, name, unit, cost, default_markup_pct')
         .eq('active', true)
         .order('name'),
+      supabase
+        .from('profiles')
+        .select('id, full_name')
+        .in('role', ['admin', 'office'])
+        .eq('active', true)
+        .order('full_name'),
     ])
 
   if (!quote) notFound()
@@ -88,6 +101,8 @@ export default async function QuoteBuilderPage({
     client_name: (quote.clients as { name: string } | null)?.name ?? '—',
     site_name: (quote.sites as { name: string } | null)?.name ?? null,
     contact_name: (quote.contacts as { name: string } | null)?.name ?? null,
+    pm_id: (quote.profiles as { id: string } | null)?.id ?? null,
+    pm_name: (quote.profiles as { full_name: string } | null)?.full_name ?? null,
     converted_to: quote.converted_to ?? null,
     converted_id: quote.converted_id ?? null,
     converted_number: convertedNumber,
@@ -153,6 +168,7 @@ export default async function QuoteBuilderPage({
         sections={sectionData}
         lines={lineData}
         rateItems={rateItemData}
+        pmOptions={pmOptions ?? []}
       />
     </div>
   )

@@ -9,6 +9,13 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { EmptyState } from '@/components/EmptyState'
 import { StatusBadge } from '@/components/StatusBadge'
 import { aud, fmtDate, pct } from '@/lib/format'
@@ -51,6 +58,8 @@ import {
   XIcon,
 } from 'lucide-react'
 
+const NONE = 'none'
+
 /** Sign-on-the-glass evidence recorded by the client portal. */
 export interface QuotePortalAcceptance {
   action: 'accepted' | 'declined'
@@ -77,6 +86,8 @@ export interface QuoteData {
   client_name: string
   site_name: string | null
   contact_name: string | null
+  pm_id: string | null
+  pm_name: string | null
   converted_to: 'job' | 'project' | null
   converted_id: string | null
   converted_number: string | null
@@ -99,16 +110,23 @@ export interface RateItemData {
   default_markup_pct: number
 }
 
+export interface PmOption {
+  id: string
+  full_name: string
+}
+
 export function QuoteBuilder({
   quote,
   sections,
   lines,
   rateItems,
+  pmOptions,
 }: {
   quote: QuoteData
   sections: SectionData[]
   lines: LineData[]
   rateItems: RateItemData[]
+  pmOptions: PmOption[]
 }) {
   const editable = quote.status === 'draft' || quote.status === 'sent'
 
@@ -117,7 +135,7 @@ export function QuoteBuilder({
 
   return (
     <div className="flex flex-col gap-6">
-      <HeaderCard quote={quote} editable={editable} />
+      <HeaderCard quote={quote} editable={editable} pmOptions={pmOptions} />
 
       {sections.map((section, i) => (
         <SectionCard
@@ -167,13 +185,38 @@ export function QuoteBuilder({
 
 // ─── Header ──────────────────────────────────────────────────────────────────
 
-function HeaderCard({ quote, editable }: { quote: QuoteData; editable: boolean }) {
+function HeaderCard({
+  quote,
+  editable,
+  pmOptions,
+}: {
+  quote: QuoteData
+  editable: boolean
+  pmOptions: PmOption[]
+}) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
   const [title, setTitle] = useState(quote.title)
   const [validDays, setValidDays] = useState(String(quote.valid_days))
   const [description, setDescription] = useState(quote.description ?? '')
+  const [pmId, setPmId] = useState(quote.pm_id ?? NONE)
+
+  function savePm(value: string) {
+    setPmId(value)
+    startTransition(async () => {
+      const result = await updateQuoteHeader(quote.id, {
+        pm_id: value === NONE ? null : value,
+      })
+      if (result.error) {
+        toast.error(result.error)
+        setPmId(quote.pm_id ?? NONE)
+        return
+      }
+      toast.success('PM updated')
+      router.refresh()
+    })
+  }
 
   function saveHeader(data: { title?: string; valid_days?: number; description?: string }) {
     startTransition(async () => {
@@ -349,6 +392,28 @@ function HeaderCard({ quote, editable }: { quote: QuoteData; editable: boolean }
           <div>
             <dt className="text-muted-foreground">Contact</dt>
             <dd className="font-medium">{quote.contact_name ?? '—'}</dd>
+          </div>
+          <div>
+            <dt className="text-muted-foreground">PM</dt>
+            <dd>
+              {editable ? (
+                <Select value={pmId} onValueChange={(v) => savePm(v ?? NONE)}>
+                  <SelectTrigger className="mt-0.5 h-7 w-full" size="sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={NONE}>No PM</SelectItem>
+                    {pmOptions.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.full_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span className="font-medium">{quote.pm_name ?? '—'}</span>
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">

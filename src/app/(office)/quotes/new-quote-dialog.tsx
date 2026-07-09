@@ -34,14 +34,23 @@ interface ClientScopedOption extends Option {
   client_id: string
 }
 
+interface ProfileOption {
+  id: string
+  full_name: string
+}
+
 export function NewQuoteDialog({
   clients,
   sites,
   contacts,
+  pmOptions,
+  currentProfileId,
 }: {
   clients: Option[]
   sites: ClientScopedOption[]
   contacts: ClientScopedOption[]
+  pmOptions: ProfileOption[]
+  currentProfileId: string
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -50,6 +59,7 @@ export function NewQuoteDialog({
   const [clientId, setClientId] = useState('')
   const [siteId, setSiteId] = useState(NONE)
   const [contactId, setContactId] = useState(NONE)
+  const [pmId, setPmId] = useState(currentProfileId)
   const [title, setTitle] = useState('')
 
   const clientSites = sites.filter((s) => s.client_id === clientId)
@@ -66,6 +76,7 @@ export function NewQuoteDialog({
     setClientId('')
     setSiteId(NONE)
     setContactId(NONE)
+    setPmId(currentProfileId)
     setTitle('')
   }
 
@@ -80,6 +91,7 @@ export function NewQuoteDialog({
         client_id: clientId,
         site_id: siteId === NONE ? null : siteId,
         contact_id: contactId === NONE ? null : contactId,
+        pm_id: pmId,
         title,
       })
       if (result.error) {
@@ -158,6 +170,24 @@ export function NewQuoteDialog({
                   {clientContacts.map((c) => (
                     <SelectItem key={c.id} value={c.id}>
                       {c.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="nq-pm">PM</Label>
+              <Select
+                value={pmId}
+                onValueChange={(v) => v && setPmId(v)}
+              >
+                <SelectTrigger id="nq-pm" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {pmOptions.map((p) => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.full_name}
                     </SelectItem>
                   ))}
                 </SelectContent>

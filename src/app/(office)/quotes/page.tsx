@@ -24,35 +24,56 @@ function ageInDays(createdAt: string): number {
   )
 }
 
+function buildHref(status: StatusFilter, mine: boolean): string {
+  const params = new URLSearchParams()
+  if (status !== 'all') params.set('status', status)
+  if (mine) params.set('pm', 'me')
+  const qs = params.toString()
+  return qs ? `/quotes?${qs}` : '/quotes'
+}
+
 export default async function QuotesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ status?: string }>
+  searchParams: Promise<{ status?: string; pm?: string }>
 }) {
-  await requireRole('admin', 'office')
+  const profile = await requireRole('admin', 'office')
 
-  const { status } = await searchParams
+  const { status, pm } = await searchParams
   const filter: StatusFilter = STATUS_TABS.some((t) => t.value === status)
     ? (status as StatusFilter)
     : 'all'
+  const mine = pm === 'me'
 
   const supabase = await createClient()
 
   let quotesQuery = supabase
     .from('quotes')
     .select(
-      'id, number, title, status, gst_rate, sent_at, created_at, clients(name), quote_lines(qty, unit_cost, unit_sell)'
+      'id, number, title, status, gst_rate, sent_at, created_at, clients(name), profiles!quotes_pm_id_fkey(id, full_name), quote_lines(qty, unit_cost, unit_sell)'
     )
     .order('created_at', { ascending: false })
   if (filter !== 'all') quotesQuery = quotesQuery.eq('status', filter)
+  if (mine) quotesQuery = quotesQuery.eq('pm_id', profile.id)
 
-  const [{ data: quotes }, { data: clients }, { data: sites }, { data: contacts }] =
-    await Promise.all([
-      quotesQuery,
-      supabase.from('clients').select('id, name').eq('archived', false).order('name'),
-      supabase.from('sites').select('id, client_id, name').order('name'),
-      supabase.from('contacts').select('id, client_id, name').order('name'),
-    ])
+  const [
+    { data: quotes },
+    { data: clients },
+    { data: sites },
+    { data: contacts },
+    { data: pmOptions },
+  ] = await Promise.all([
+    quotesQuery,
+    supabase.from('clients').select('id, name').eq('archived', false).order('name'),
+    supabase.from('sites').select('id, client_id, name').order('name'),
+    supabase.from('contacts').select('id, client_id, name').order('name'),
+    supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('role', ['admin', 'office'])
+      .eq('active', true)
+      .order('full_name'),
+  ])
 
   const rows: QuoteRow[] = (quotes ?? []).map((q) => {
     const lines = (q.quote_lines ?? []).map((l) => ({
@@ -68,6 +89,8 @@ export default async function QuotesPage({
       id: q.id,
       number: q.number,
       client_name: (q.clients as unknown as { name: string } | null)?.name ?? '—',
+      pm_name:
+        (q.profiles as unknown as { full_name: string } | null)?.full_name ?? null,
       title: q.title,
       status: q.status,
       total_sell: subtotal,
@@ -87,6 +110,8 @@ export default async function QuotesPage({
             clients={clients ?? []}
             sites={sites ?? []}
             contacts={contacts ?? []}
+            pmOptions={pmOptions ?? []}
+            currentProfileId={profile.id}
           />
         }
       />
@@ -94,7 +119,7 @@ export default async function QuotesPage({
         {STATUS_TABS.map((t) => (
           <Link
             key={t.value}
-            href={t.value === 'all' ? '/quotes' : `/quotes?status=${t.value}`}
+            href={buildHref(t.value, mine)}
             className={cn(
               'rounded-md px-3 py-1 text-sm transition-colors',
               filter === t.value
@@ -105,8 +130,19 @@ export default async function QuotesPage({
             {t.label}
           </Link>
         ))}
+        <Link
+          href={buildHref(filter, !mine)}
+          className={cn(
+            'rounded-md px-3 py-1 text-sm transition-colors',
+            mine
+              ? 'bg-background font-medium text-foreground shadow-sm'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          Mine
+        </Link>
       </div>
-      <QuotesTable rows={rows} filtered={filter !== 'all'} />
+      <QuotesTable rows={rows} filtered={filter !== 'all' || mine} />
     </div>
   )
 }

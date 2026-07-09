@@ -10,6 +10,7 @@ export interface QuoteRow {
   id: string
   number: string
   client_name: string
+  pm_name: string | null
   title: string
   status: string
   total_sell: number
@@ -37,6 +38,13 @@ export function QuotesTable({
       key: 'client',
       header: 'Client',
       render: (r: QuoteRow) => r.client_name,
+    },
+    {
+      key: 'pm',
+      header: 'PM',
+      render: (r: QuoteRow) => (
+        <span className="text-muted-foreground">{r.pm_name ?? '—'}</span>
+      ),
     },
     {
       key: 'title',
