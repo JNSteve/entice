@@ -113,8 +113,7 @@ export function ArchiveBanner({ kind, id }: { kind: ArchiveKind; id: string }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2.5 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
       <span>
-        This {noun} is archived — it&rsquo;s hidden from lists. Restore it from
-        Settings → Archive.
+        {`This ${noun} is archived — it's hidden from lists. Restore it from Settings → Archive.`}
       </span>
       <Button
         variant="outline"
