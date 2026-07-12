@@ -13,6 +13,7 @@ import {
   type Pt,
 } from '@/lib/takeoff'
 import {
+  CameraIcon,
   CrosshairIcon,
   HashIcon,
   MinusIcon,
@@ -82,6 +83,7 @@ export function TakeoffCanvas({
   onCalibrated,
   onShapeComplete,
   onGeometryEdited,
+  onSnapshot,
 }: {
   pdfUrl: string
   page: number
@@ -98,8 +100,12 @@ export function TakeoffCanvas({
   ) => void
   /** Fired when a vertex drag (Select tool) commits. Absent = not editable. */
   onGeometryEdited?: (itemId: string, geometry: Pt[]) => void
+  /** Receives the composited plan+shapes PNG. Absent = no snapshot button. */
+  onSnapshot?: (blob: Blob) => Promise<void>
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const svgRef = useRef<SVGSVGElement>(null)
+  const [snapshotting, setSnapshotting] = useState(false)
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null)
   const [renderError, setRenderError] = useState<string | null>(null)
   const [zoom, setZoom] = useState(1)
@@ -250,6 +256,36 @@ export function TakeoffCanvas({
     setDragGeom(null)
   }
 
+  /** Composite the rendered PDF canvas + shape overlay into one PNG. */
+  async function handleSnapshot() {
+    const canvas = canvasRef.current
+    const svg = svgRef.current
+    if (!canvas || !svg || !onSnapshot) return
+    setSnapshotting(true)
+    try {
+      const out = document.createElement('canvas')
+      out.width = canvas.width
+      out.height = canvas.height
+      const ctx = out.getContext('2d')
+      if (!ctx) return
+      ctx.drawImage(canvas, 0, 0)
+      const xml = new XMLSerializer().serializeToString(svg)
+      const img = new Image()
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve()
+        img.onerror = () => reject(new Error('Overlay render failed'))
+        img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(xml)}`
+      })
+      ctx.drawImage(img, 0, 0, out.width, out.height)
+      const blob = await new Promise<Blob | null>((resolve) =>
+        out.toBlob(resolve, 'image/png')
+      )
+      if (blob) await onSnapshot(blob)
+    } finally {
+      setSnapshotting(false)
+    }
+  }
+
   function handleCalibrationSubmit(e: React.FormEvent) {
     e.preventDefault()
     const metres = parseFloat(calibrationMetres)
@@ -315,6 +351,20 @@ export function TakeoffCanvas({
           <PlusIcon className="size-4" />
           <span className="sr-only">Zoom in</span>
         </Button>
+        {onSnapshot && (
+          <>
+            <span className="mx-1 h-5 w-px bg-border" />
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={snapshotting || !pageSize}
+              onClick={() => void handleSnapshot()}
+            >
+              <CameraIcon className="size-4" />
+              {snapshotting ? 'Saving…' : 'Snapshot'}
+            </Button>
+          </>
+        )}
         {draft.length > 0 && (
           <span className="ml-2 rounded-md bg-muted px-2 py-1 text-xs font-medium tabular-nums">
             {draftQty ?? '…'} — Enter to finish, Esc to cancel
@@ -395,6 +445,7 @@ export function TakeoffCanvas({
             <canvas ref={canvasRef} className="block" />
             {pageSize && (
               <svg
+                ref={svgRef}
                 viewBox={`0 0 ${pageSize.w} ${pageSize.h}`}
                 style={{
                   position: 'absolute',

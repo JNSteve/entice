@@ -144,6 +144,50 @@ export async function deleteTakeoffSheet(
   return {}
 }
 
+/**
+ * Records a freshly uploaded plan snapshot (canvas + shapes composited to PNG
+ * by the browser, uploaded client-side like PhotoUpload) against the sheet,
+ * and best-effort removes the previous snapshot object.
+ */
+export async function saveSheetSnapshot(
+  sheetId: string,
+  quoteId: string,
+  path: string
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  if (!path.startsWith('takeoff-snapshots/')) {
+    return { error: 'Invalid snapshot path' }
+  }
+
+  const supabase = await createClient()
+  const editable = await assertQuoteEditable(supabase, quoteId)
+  if (editable.error) return editable
+
+  const { data: sheet } = await supabase
+    .from('takeoff_sheets')
+    .select('id, snapshot_path')
+    .eq('id', sheetId)
+    .eq('quote_id', quoteId)
+    .maybeSingle()
+  if (!sheet) return { error: 'Sheet not found' }
+
+  const { error } = await supabase
+    .from('takeoff_sheets')
+    .update({ snapshot_path: path })
+    .eq('id', sheetId)
+  if (error) return { error: error.message }
+
+  // Old snapshot object is now orphaned — best-effort cleanup.
+  const oldPath = sheet.snapshot_path as string | null
+  if (oldPath && oldPath !== path) {
+    await supabase.storage.from('attachments').remove([oldPath])
+  }
+
+  revalidateTakeoff(quoteId)
+  return {}
+}
+
 // ─── Items ────────────────────────────────────────────────────────────────────
 
 /** Resolve cost/markup from the rate library when the item doesn't carry them. */
@@ -463,7 +507,7 @@ export async function pushTakeoffToQuote(
     await Promise.all([
       supabase
         .from('takeoff_items')
-        .select('id, description, qty, unit, unit_cost, markup_pct, section_title, deduction')
+        .select('id, description, qty, unit, unit_cost, markup_pct, section_title, deduction, rate_item_id')
         .eq('quote_id', quoteId)
         .order('position'),
       supabase
@@ -484,6 +528,23 @@ export async function pushTakeoffToQuote(
   const pending = (items ?? []).filter((i) => !alreadyPushed.has(i.id as string))
   if (pending.length === 0) {
     return { pushed: 0, skipped: (items ?? []).length }
+  }
+
+  // Cost category flows from the linked rate item onto the quote line.
+  const rateIds = [
+    ...new Set(
+      pending
+        .map((i) => i.rate_item_id as string | null)
+        .filter((id): id is string => Boolean(id))
+    ),
+  ]
+  const kindByRate = new Map<string, string>()
+  if (rateIds.length > 0) {
+    const { data: rates } = await supabase
+      .from('rate_items')
+      .select('id, kind')
+      .in('id', rateIds)
+    for (const r of rates ?? []) kindByRate.set(r.id as string, r.kind as string)
   }
 
   // Section find-or-create by title.
@@ -543,6 +604,9 @@ export async function pushTakeoffToQuote(
       unit_sell: sell,
       position,
       takeoff_item_id: item.id,
+      kind: item.rate_item_id
+        ? kindByRate.get(item.rate_item_id as string) ?? null
+        : null,
     })
     if (error) return { error: error.message }
     pushed++

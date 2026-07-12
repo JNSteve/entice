@@ -30,6 +30,7 @@ import {
 } from '@/components/ui/table'
 import { Textarea } from '@/components/ui/textarea'
 import { PhotoUpload } from '@/components/PhotoUpload'
+import { createClient } from '@/lib/supabase/client'
 import { aud } from '@/lib/format'
 import { round2 } from '@/lib/money'
 import { areaM2, lengthM, wasteTonnes, WASTE_PRESETS, type Pt } from '@/lib/takeoff'
@@ -54,6 +55,7 @@ import {
   deleteTakeoffSheet,
   ingestReportTakeoff,
   pushTakeoffToQuote,
+  saveSheetSnapshot,
   updateTakeoffItem,
 } from './actions'
 
@@ -381,6 +383,26 @@ export function TakeoffWorkspace({
     })
   }
 
+  /** Composited PNG from the canvas → storage upload → record on the sheet. */
+  async function handleSnapshot(blob: Blob) {
+    if (!activeSheetId) return
+    const supabase = createClient()
+    const path = `takeoff-snapshots/${activeSheetId}-${Date.now()}.png`
+    const { error: uploadError } = await supabase.storage
+      .from('attachments')
+      .upload(path, blob, { contentType: 'image/png', upsert: false })
+    if (uploadError) {
+      toast.error(uploadError.message)
+      return
+    }
+    const result = await saveSheetSnapshot(activeSheetId, quoteId, path)
+    if (result.error) {
+      toast.error(result.error)
+      return
+    }
+    toast.success('Snapshot saved — it prints in the Schedule PDF')
+  }
+
   function handleCalibrated(mPerPt: number) {
     if (!activeSheetId) return
     startTransition(async () => {
@@ -675,6 +697,7 @@ export function TakeoffWorkspace({
             onCalibrated={handleCalibrated}
             onShapeComplete={editable ? handleShapeComplete : () => undefined}
             onGeometryEdited={editable ? handleGeometryEdited : undefined}
+            onSnapshot={editable ? handleSnapshot : undefined}
           />
         ) : (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-4 py-10 text-center">

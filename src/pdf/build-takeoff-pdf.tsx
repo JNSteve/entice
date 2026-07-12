@@ -8,6 +8,7 @@ import {
   type TakeoffGroup,
   type TakeoffItemRow,
   type TakeoffPdfData,
+  type TakeoffPdfSheet,
 } from './TakeoffPdf'
 import { toDocCompany, type SettingsRow } from './build-quote-pdf'
 
@@ -49,7 +50,11 @@ export async function buildTakeoffPdfResponse(
         )
         .eq('quote_id', quoteId)
         .order('position'),
-      supabase.from('takeoff_sheets').select('id, name').eq('quote_id', quoteId),
+      supabase
+        .from('takeoff_sheets')
+        .select('id, name, snapshot_path')
+        .eq('quote_id', quoteId)
+        .order('created_at'),
       supabase
         .from('settings')
         .select('company_name, abn, address, phone, email, logo_path')
@@ -62,6 +67,20 @@ export async function buildTakeoffPdfResponse(
   const sheetName = new Map(
     (sheets ?? []).map((s) => [s.id as string, s.name as string])
   )
+
+  // Marked-up plan snapshots (saved from the takeoff canvas) print above the
+  // schedule — best-effort: a missing/unreadable object just skips the image.
+  const pdfSheets: TakeoffPdfSheet[] = []
+  for (const s of sheets ?? []) {
+    const path = s.snapshot_path as string | null
+    if (!path) continue
+    const { data: blob } = await supabase.storage.from('attachments').download(path)
+    if (!blob) continue
+    pdfSheets.push({
+      name: s.name as string,
+      image: Buffer.from(await blob.arrayBuffer()),
+    })
+  }
 
   let totalCost = 0
   let totalSell = 0
@@ -123,6 +142,7 @@ export async function buildTakeoffPdfResponse(
     quoteNumber: quote.number as string,
     title: (quote.title as string | null) ?? null,
     generatedDisplay: fmtDate(todayAU()),
+    sheets: pdfSheets,
     groups,
     totalCostDisplay: aud(totalCost),
     totalSellDisplay: aud(totalSell),

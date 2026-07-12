@@ -777,6 +777,15 @@ function AddSectionButton({ quoteId, count }: { quoteId: string; count: number }
 
 // ─── Totals ──────────────────────────────────────────────────────────────────
 
+const KIND_LABELS: Record<string, string> = {
+  labour: 'Labour',
+  plant: 'Plant',
+  material: 'Materials',
+  subbie: 'Subcontract',
+  other: 'Other',
+}
+const KIND_ORDER = ['labour', 'plant', 'material', 'subbie', 'other', 'untagged']
+
 function TotalsCard({ lines, gstRate }: { lines: LineData[]; gstRate: number }) {
   const { subtotal, gst, total } = docTotals(
     lines.map((l) => ({ qty: l.qty, unitSell: l.unit_sell })),
@@ -788,10 +797,61 @@ function TotalsCard({ lines, gstRate }: { lines: LineData[]; gstRate: number }) 
   const marginDollars = round2(subtotal - costTotal)
   const marginPct = subtotal > 0 ? round2((marginDollars / subtotal) * 100) : 0
 
+  // Internal margin lens: where the money sits by cost category. Lines from
+  // the rate library / takeoff carry their kind; hand-typed lines show as
+  // Untagged. Only shown once at least one line is categorised.
+  const byKind = new Map<string, { cost: number; sell: number }>()
+  for (const l of lines) {
+    const key = l.kind ?? 'untagged'
+    const entry = byKind.get(key) ?? { cost: 0, sell: 0 }
+    entry.cost += lineTotal(l.qty, l.unit_cost)
+    entry.sell += lineTotal(l.qty, l.unit_sell)
+    byKind.set(key, entry)
+  }
+  const breakdown = KIND_ORDER.filter(
+    (k) => byKind.has(k) && k !== 'untagged'
+  ).length
+    ? KIND_ORDER.filter((k) => byKind.has(k)).map((k) => {
+        const entry = byKind.get(k)!
+        const cost = round2(entry.cost)
+        const sell = round2(entry.sell)
+        return {
+          kind: k,
+          label: KIND_LABELS[k] ?? 'Untagged',
+          cost,
+          sell,
+          marginPct: sell > 0 ? round2(((sell - cost) / sell) * 100) : null,
+        }
+      })
+    : []
+
   return (
     <Card>
-      <CardContent>
-        <dl className="ml-auto flex max-w-sm flex-col gap-1.5 text-sm">
+      <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        {breakdown.length > 0 && (
+          <div className="flex flex-col gap-1 text-sm">
+            <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Cost breakdown
+            </p>
+            <div className="grid grid-cols-[auto_1fr_1fr_3.5rem] gap-x-5 gap-y-1 tabular-nums">
+              <span className="text-xs text-muted-foreground">Category</span>
+              <span className="text-right text-xs text-muted-foreground">Cost</span>
+              <span className="text-right text-xs text-muted-foreground">Sell</span>
+              <span className="text-right text-xs text-muted-foreground">Margin</span>
+              {breakdown.map((b) => (
+                <React.Fragment key={b.kind}>
+                  <span>{b.label}</span>
+                  <span className="text-right">{aud(b.cost)}</span>
+                  <span className="text-right">{aud(b.sell)}</span>
+                  <span className="text-right text-muted-foreground">
+                    {b.marginPct === null ? '—' : pct(b.marginPct)}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+          </div>
+        )}
+        <dl className="ml-auto flex w-full max-w-sm flex-col gap-1.5 text-sm">
           <div className="flex items-center justify-between gap-8">
             <dt className="text-muted-foreground">Cost total</dt>
             <dd className="tabular-nums">{aud(costTotal)}</dd>

@@ -518,12 +518,13 @@ export async function addLine(data: unknown): Promise<Result> {
     markup_pct: 0,
     unit_sell: 0,
     rate_item_id: null as string | null,
+    kind: null as string | null,
   }
 
   if (parsed.data.rate_item_id) {
     const { data: rateItem } = await supabase
       .from('rate_items')
-      .select('id, name, unit, cost, default_markup_pct')
+      .select('id, kind, name, unit, cost, default_markup_pct')
       .eq('id', parsed.data.rate_item_id)
       .single()
     if (!rateItem) return { error: 'Rate item not found' }
@@ -535,6 +536,7 @@ export async function addLine(data: unknown): Promise<Result> {
       markup_pct: Number(rateItem.default_markup_pct),
       unit_sell: lineSell(Number(rateItem.cost), Number(rateItem.default_markup_pct)),
       rate_item_id: rateItem.id,
+      kind: (rateItem.kind as string | null) ?? null,
     }
   }
 

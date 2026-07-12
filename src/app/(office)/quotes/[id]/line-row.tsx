@@ -22,6 +22,8 @@ export interface LineData {
   unit_cost: number
   markup_pct: number
   unit_sell: number
+  /** Cost category from the source rate item; null for untagged manual lines. */
+  kind: string | null
 }
 
 export const LINE_GRID_COLS_EDITABLE =
