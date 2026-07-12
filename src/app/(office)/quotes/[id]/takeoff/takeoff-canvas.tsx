@@ -68,6 +68,11 @@ function centroid(points: Pt[]): Pt {
   ]
 }
 
+/** 1 PDF point = 1/72 inch = 0.352778mm of paper; × the plan ratio = real m. */
+const M_PER_PT_PAPER = 0.00035277778
+
+const SCALE_PRESETS = [20, 50, 100, 200, 250, 500]
+
 export function TakeoffCanvas({
   pdfUrl,
   page,
@@ -76,6 +81,7 @@ export function TakeoffCanvas({
   deduction,
   onCalibrated,
   onShapeComplete,
+  onGeometryEdited,
 }: {
   pdfUrl: string
   page: number
@@ -90,6 +96,8 @@ export function TakeoffCanvas({
     qty: number,
     unit: string
   ) => void
+  /** Fired when a vertex drag (Select tool) commits. Absent = not editable. */
+  onGeometryEdited?: (itemId: string, geometry: Pt[]) => void
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const [pageSize, setPageSize] = useState<{ w: number; h: number } | null>(null)
@@ -101,6 +109,12 @@ export function TakeoffCanvas({
   // Calibration: two captured points → ask for the real distance.
   const [calibrationPts, setCalibrationPts] = useState<Pt[]>([])
   const [calibrationMetres, setCalibrationMetres] = useState('')
+  // Select tool: pick a shape, drag its vertex handles.
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [dragVertex, setDragVertex] = useState<number | null>(null)
+  const [dragGeom, setDragGeom] = useState<Pt[] | null>(null)
+  // A completed drag fires a click on the svg — swallow that one click.
+  const justDraggedRef = useRef(false)
 
   // ── Render the PDF page ─────────────────────────────────────────────────────
   useEffect(() => {
@@ -171,23 +185,43 @@ export function TakeoffCanvas({
     setDraft([])
   }, [tool, draft, scaleMPerPt, onShapeComplete])
 
-  // Enter finishes, Escape cancels the in-progress shape.
+  // Enter finishes, Escape cancels, Backspace undoes the last point.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
+      const target = e.target as HTMLElement | null
+      if (target && ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)) return
       if (e.key === 'Escape') {
         setDraft([])
         setCalibrationPts([])
+        setSelectedId(null)
       } else if (e.key === 'Enter' && draft.length > 0) {
         e.preventDefault()
         finishDraft()
+      } else if (e.key === 'Backspace') {
+        if (draft.length > 0) {
+          e.preventDefault()
+          setDraft((prev) => prev.slice(0, -1))
+        } else if (calibrationPts.length > 0) {
+          e.preventDefault()
+          setCalibrationPts((prev) => prev.slice(0, -1))
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [draft, finishDraft])
+  }, [draft, calibrationPts.length, finishDraft])
 
   function handleClick(e: React.MouseEvent<SVGSVGElement>) {
+    // The click that ends a vertex drag must not deselect.
+    if (justDraggedRef.current) {
+      justDraggedRef.current = false
+      return
+    }
     const pt = toPt(e)
+    if (tool === 'select') {
+      setSelectedId(null)
+      return
+    }
     if (tool === 'calibrate') {
       setCalibrationPts((prev) => (prev.length >= 2 ? [pt] : [...prev, pt]))
       return
@@ -195,6 +229,25 @@ export function TakeoffCanvas({
     if (tool === 'area' || tool === 'line' || tool === 'count') {
       setDraft((prev) => [...prev, pt])
     }
+  }
+
+  function handlePointerMove(e: React.PointerEvent<SVGSVGElement>) {
+    setCursor(toPt(e))
+    if (dragVertex !== null && dragGeom) {
+      const pt = toPt(e)
+      setDragGeom((prev) =>
+        prev ? prev.map((p, i) => (i === dragVertex ? pt : p)) : prev
+      )
+    }
+  }
+
+  function handlePointerUp() {
+    if (dragVertex !== null && dragGeom && selectedId) {
+      onGeometryEdited?.(selectedId, dragGeom)
+      justDraggedRef.current = true
+    }
+    setDragVertex(null)
+    setDragGeom(null)
   }
 
   function handleCalibrationSubmit(e: React.FormEvent) {
@@ -274,10 +327,39 @@ export function TakeoffCanvas({
         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900 dark:border-blue-800 dark:bg-blue-950 dark:text-blue-200">
           <CrosshairIcon className="size-4 shrink-0" />
           {calibrationPts.length < 2 ? (
-            <span>
-              Click both ends of a known dimension on the drawing (
-              {calibrationPts.length}/2)
-            </span>
+            <>
+              <span>
+                Click both ends of a known dimension on the drawing (
+                {calibrationPts.length}/2)
+              </span>
+              <span
+                className="ml-auto flex items-center gap-1.5"
+                title="Uses the scale printed in the title block — only accurate when the PDF is at true paper size, not a scan or crop."
+              >
+                <span className="text-xs">or stated scale:</span>
+                <select
+                  className="h-7 rounded-md border border-blue-300 bg-background px-1.5 text-xs dark:border-blue-800"
+                  defaultValue=""
+                  onChange={(e) => {
+                    const ratio = Number(e.target.value)
+                    if (ratio > 0) {
+                      onCalibrated(ratio * M_PER_PT_PAPER)
+                      setCalibrationPts([])
+                      setTool('area')
+                    }
+                  }}
+                >
+                  <option value="" disabled>
+                    1:…
+                  </option>
+                  {SCALE_PRESETS.map((r) => (
+                    <option key={r} value={r}>
+                      1:{r}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            </>
           ) : (
             <form onSubmit={handleCalibrationSubmit} className="flex items-center gap-2">
               <span>That distance is</span>
@@ -322,7 +404,8 @@ export function TakeoffCanvas({
                   cursor: tool === 'select' ? 'default' : 'crosshair',
                 }}
                 onClick={handleClick}
-                onMouseMove={(e) => setCursor(toPt(e))}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
                 onDoubleClick={(e) => {
                   e.preventDefault()
                   finishDraft()
@@ -332,16 +415,29 @@ export function TakeoffCanvas({
                 {items.map((item) => {
                   const color = item.color ?? SHAPE_COLORS[0]
                   const label = `${item.description} — ${item.qty}${item.unit === 'm2' ? ' m²' : ` ${item.unit}`}`
-                  if (item.shape === 'area' && item.geometry.length >= 3) {
-                    const [cx, cy] = centroid(item.geometry)
+                  // Mid-drag the selected item renders its working geometry.
+                  const geometry =
+                    item.id === selectedId && dragGeom ? dragGeom : item.geometry
+                  const selectable = tool === 'select' && Boolean(onGeometryEdited)
+                  const gProps = selectable
+                    ? {
+                        onClick: (e: React.MouseEvent) => {
+                          e.stopPropagation()
+                          setSelectedId(item.id)
+                        },
+                        style: { cursor: 'pointer' } as React.CSSProperties,
+                      }
+                    : {}
+                  if (item.shape === 'area' && geometry.length >= 3) {
+                    const [cx, cy] = centroid(geometry)
                     return (
-                      <g key={item.id}>
+                      <g key={item.id} {...gProps}>
                         <polygon
-                          points={item.geometry.map((p) => p.join(',')).join(' ')}
+                          points={geometry.map((p) => p.join(',')).join(' ')}
                           fill={item.deduction ? '#dc2626' : color}
                           fillOpacity={0.22}
                           stroke={item.deduction ? '#dc2626' : color}
-                          strokeWidth={1.5}
+                          strokeWidth={item.id === selectedId ? 2.5 : 1.5}
                           strokeDasharray={item.deduction ? '6 4' : undefined}
                         />
                         <text x={cx} y={cy} fontSize={11} fill={item.deduction ? '#dc2626' : color} textAnchor="middle" fontWeight={700}>
@@ -350,15 +446,15 @@ export function TakeoffCanvas({
                       </g>
                     )
                   }
-                  if (item.shape === 'line' && item.geometry.length >= 2) {
-                    const mid = item.geometry[Math.floor(item.geometry.length / 2)]
+                  if (item.shape === 'line' && geometry.length >= 2) {
+                    const mid = geometry[Math.floor(geometry.length / 2)]
                     return (
-                      <g key={item.id}>
+                      <g key={item.id} {...gProps}>
                         <polyline
-                          points={item.geometry.map((p) => p.join(',')).join(' ')}
+                          points={geometry.map((p) => p.join(',')).join(' ')}
                           fill="none"
                           stroke={item.deduction ? '#dc2626' : color}
-                          strokeWidth={2.5}
+                          strokeWidth={item.id === selectedId ? 3.5 : 2.5}
                           strokeDasharray={item.deduction ? '6 4' : undefined}
                         />
                         <text x={mid[0]} y={mid[1] - 5} fontSize={11} fill={color} textAnchor="middle" fontWeight={700}>
@@ -369,8 +465,8 @@ export function TakeoffCanvas({
                   }
                   if (item.shape === 'count') {
                     return (
-                      <g key={item.id}>
-                        {item.geometry.map((p, i) => (
+                      <g key={item.id} {...gProps}>
+                        {geometry.map((p, i) => (
                           <g key={i}>
                             <circle cx={p[0]} cy={p[1]} r={7} fill={color} fillOpacity={0.85} />
                             <text x={p[0]} y={p[1] + 3.5} fontSize={9} fill="#fff" textAnchor="middle" fontWeight={700}>
@@ -378,8 +474,8 @@ export function TakeoffCanvas({
                             </text>
                           </g>
                         ))}
-                        {item.geometry[0] && (
-                          <text x={item.geometry[0][0] + 12} y={item.geometry[0][1] - 8} fontSize={11} fill={color} fontWeight={700}>
+                        {geometry[0] && (
+                          <text x={geometry[0][0] + 12} y={geometry[0][1] - 8} fontSize={11} fill={color} fontWeight={700}>
                             {label}
                           </text>
                         )}
@@ -388,6 +484,35 @@ export function TakeoffCanvas({
                   }
                   return null
                 })}
+
+                {/* Vertex handles for the selected shape (Select tool) */}
+                {tool === 'select' &&
+                  onGeometryEdited &&
+                  selectedId &&
+                  (() => {
+                    const sel = items.find((i) => i.id === selectedId)
+                    if (!sel) return null
+                    const geometry = dragGeom ?? sel.geometry
+                    const color = sel.color ?? SHAPE_COLORS[0]
+                    return geometry.map((p, i) => (
+                      <circle
+                        key={`handle-${i}`}
+                        cx={p[0]}
+                        cy={p[1]}
+                        r={6}
+                        fill="#fff"
+                        stroke={color}
+                        strokeWidth={2}
+                        style={{ cursor: dragVertex === i ? 'grabbing' : 'grab' }}
+                        onPointerDown={(e) => {
+                          e.stopPropagation()
+                          e.preventDefault()
+                          setDragVertex(i)
+                          setDragGeom(geometry)
+                        }}
+                      />
+                    ))
+                  })()}
 
                 {/* Draft shape */}
                 {draft.length > 0 && (
@@ -446,8 +571,8 @@ export function TakeoffCanvas({
 
       <p className={cn('text-xs text-muted-foreground', !scaleMPerPt && 'text-amber-700 dark:text-amber-400')}>
         {scaleMPerPt
-          ? `Calibrated: 1pt = ${(scaleMPerPt * 1000).toFixed(2)}mm · click to add points, Enter/double-click to finish`
-          : 'Not calibrated yet — use the Calibrate tool on a known dimension.'}
+          ? `Calibrated: 1pt = ${(scaleMPerPt * 1000).toFixed(2)}mm · click to add points, Enter/double-click to finish, Backspace undoes a point · Select tool: click a shape, drag its handles`
+          : 'Not calibrated yet — use the Calibrate tool on a known dimension, or pick the stated plan scale.'}
       </p>
     </div>
   )

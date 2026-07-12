@@ -32,7 +32,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { aud } from '@/lib/format'
 import { round2 } from '@/lib/money'
-import { wasteTonnes, WASTE_PRESETS, type Pt } from '@/lib/takeoff'
+import { areaM2, lengthM, wasteTonnes, WASTE_PRESETS, type Pt } from '@/lib/takeoff'
 import { cn } from '@/lib/utils'
 import {
   BlocksIcon,
@@ -133,6 +133,10 @@ interface ItemDraft {
   markup_pct: string
   section_title: string
   notes: string
+  /** Transient multipliers for NEW measured shapes — never stored as-is. */
+  depth: string
+  pitch: string
+  height: string
 }
 
 function emptyDraft(): ItemDraft {
@@ -151,6 +155,56 @@ function emptyDraft(): ItemDraft {
     markup_pct: '',
     section_title: '',
     notes: '',
+    depth: '',
+    pitch: '',
+    height: '',
+  }
+}
+
+/**
+ * Applies the transient depth/pitch/height multipliers to a NEW measured
+ * shape: area × pitch stays m², area × depth becomes m³, line × height
+ * becomes m². Returns the adjusted qty/unit and a derivation note.
+ */
+function applyMultipliers(draft: ItemDraft): {
+  qty: string
+  unit: string
+  note: string | null
+} {
+  const base = parseFloat(draft.qty)
+  if (draft.id || !Number.isFinite(base)) {
+    return { qty: draft.qty, unit: draft.unit, note: null }
+  }
+  const depth = parseFloat(draft.depth)
+  const pitch = parseFloat(draft.pitch)
+  const height = parseFloat(draft.height)
+  let qty = base
+  let unit = draft.unit
+  const parts: string[] = []
+  if (draft.shape === 'area') {
+    if (Number.isFinite(pitch) && pitch > 0 && pitch !== 1) {
+      qty *= pitch
+      parts.push(`× ${pitch} pitch`)
+    }
+    if (Number.isFinite(depth) && depth > 0) {
+      qty *= depth
+      unit = 'm3'
+      parts.push(`× ${depth}m depth`)
+    }
+  } else if (draft.shape === 'line') {
+    if (Number.isFinite(height) && height > 0) {
+      qty *= height
+      unit = 'm2'
+      parts.push(`× ${height}m height`)
+    }
+  }
+  if (parts.length === 0) {
+    return { qty: draft.qty, unit: draft.unit, note: null }
+  }
+  return {
+    qty: String(Math.round(qty * 1000) / 1000),
+    unit,
+    note: `Measured ${base} ${draft.unit} ${parts.join(' ')}`,
   }
 }
 
@@ -197,14 +251,34 @@ export function TakeoffWorkspace({
   const [extractAttachment, setExtractAttachment] = useState<string | null>(null)
   const [extracting, setExtracting] = useState(false)
 
+  const [hiddenColors, setHiddenColors] = useState<Set<string>>(new Set())
+
   const activeSheet = sheets.find((s) => s.id === activeSheetId) ?? null
+  const allSheetItems = useMemo(
+    () =>
+      items.filter(
+        (i): i is TakeoffItemRow & { shape: NonNullable<TakeoffItemRow['shape']>; geometry: Pt[] } =>
+          i.sheet_id === activeSheetId && i.shape !== null && !!i.geometry
+      ),
+    [items, activeSheetId]
+  )
+
+  // Colour legend: one chip per distinct colour on the active sheet.
+  const legend = useMemo(() => {
+    const byColor = new Map<string, { label: string; count: number }>()
+    for (const i of allSheetItems) {
+      const color = i.color ?? SHAPE_COLORS[0]
+      const entry = byColor.get(color)
+      if (entry) entry.count++
+      else byColor.set(color, { label: i.description, count: 1 })
+    }
+    return [...byColor.entries()].map(([color, v]) => ({ color, ...v }))
+  }, [allSheetItems])
+
   const sheetItems: CanvasItem[] = useMemo(
     () =>
-      items
-        .filter(
-          (i): i is TakeoffItemRow & { shape: NonNullable<TakeoffItemRow['shape']>; geometry: Pt[] } =>
-            i.sheet_id === activeSheetId && i.shape !== null && !!i.geometry
-        )
+      allSheetItems
+        .filter((i) => !hiddenColors.has(i.color ?? SHAPE_COLORS[0]))
         .map((i) => ({
           id: i.id,
           shape: i.shape,
@@ -215,7 +289,7 @@ export function TakeoffWorkspace({
           qty: i.qty,
           unit: i.unit,
         })),
-    [items, activeSheetId]
+    [allSheetItems, hiddenColors]
   )
 
   const totals = useMemo(() => {
@@ -251,6 +325,62 @@ export function TakeoffWorkspace({
     })
   }
 
+  /**
+   * Vertex drag committed on the canvas — persist and re-derive the qty.
+   * Items whose unit was converted away from the shape's natural unit (e.g.
+   * area × depth → m³) keep their qty: the multiplier isn't stored, so a
+   * recompute would silently produce the wrong unit.
+   */
+  function handleGeometryEdited(itemId: string, geometry: Pt[]) {
+    const item = items.find((i) => i.id === itemId)
+    if (!item || !item.shape) return
+    const naturalUnit =
+      item.shape === 'area' ? 'm2' : item.shape === 'line' ? 'm' : 'ea'
+    let qty = item.qty
+    let qtyKept = false
+    if (item.shape === 'count') {
+      qty = geometry.length
+    } else if (item.source === 'measured' && activeSheet?.scale_m_per_pt) {
+      if (item.unit === naturalUnit) {
+        qty =
+          item.shape === 'area'
+            ? areaM2(geometry, activeSheet.scale_m_per_pt)
+            : lengthM(geometry, activeSheet.scale_m_per_pt)
+      } else {
+        qtyKept = true
+      }
+    }
+    startTransition(async () => {
+      const result = await updateTakeoffItem(item.id, quoteId, {
+        quote_id: quoteId,
+        sheet_id: item.sheet_id,
+        source: item.source,
+        shape: item.shape,
+        geometry,
+        deduction: item.deduction,
+        color: item.color,
+        description: item.description,
+        qty: String(qty),
+        unit: item.unit,
+        rate_item_id: item.rate_item_id,
+        unit_cost: item.unit_cost === null ? null : String(item.unit_cost),
+        markup_pct: item.markup_pct === null ? null : String(item.markup_pct),
+        section_title: item.section_title || undefined,
+        notes: item.notes || undefined,
+      })
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      toast.success(
+        qtyKept
+          ? 'Shape updated — converted quantity kept, adjust it if the new size changes it'
+          : 'Shape updated'
+      )
+      router.refresh()
+    })
+  }
+
   function handleCalibrated(mPerPt: number) {
     if (!activeSheetId) return
     startTransition(async () => {
@@ -270,6 +400,7 @@ export function TakeoffWorkspace({
 
   function saveItemDraft() {
     if (!itemDraft) return
+    const derived = applyMultipliers(itemDraft)
     const payload = {
       quote_id: quoteId,
       sheet_id: itemDraft.sheet_id,
@@ -279,13 +410,14 @@ export function TakeoffWorkspace({
       deduction: itemDraft.deduction,
       color: itemDraft.color,
       description: itemDraft.description,
-      qty: itemDraft.qty,
-      unit: itemDraft.unit,
+      qty: derived.qty,
+      unit: derived.unit,
       rate_item_id: itemDraft.rate_item_id,
       unit_cost: itemDraft.unit_cost === '' ? null : itemDraft.unit_cost,
       markup_pct: itemDraft.markup_pct === '' ? null : itemDraft.markup_pct,
       section_title: itemDraft.section_title || undefined,
-      notes: itemDraft.notes || undefined,
+      notes:
+        [derived.note, itemDraft.notes].filter(Boolean).join('. ') || undefined,
     }
     startTransition(async () => {
       const result = itemDraft.id
@@ -494,6 +626,44 @@ export function TakeoffWorkspace({
           )}
         </div>
 
+        {legend.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {legend.map((entry) => {
+              const hidden = hiddenColors.has(entry.color)
+              return (
+                <button
+                  key={entry.color}
+                  type="button"
+                  onClick={() =>
+                    setHiddenColors((prev) => {
+                      const next = new Set(prev)
+                      if (next.has(entry.color)) next.delete(entry.color)
+                      else next.add(entry.color)
+                      return next
+                    })
+                  }
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-opacity',
+                    hidden && 'opacity-40 line-through'
+                  )}
+                  title={hidden ? 'Show on plan' : 'Hide on plan'}
+                >
+                  <span
+                    className="size-2.5 rounded-full"
+                    style={{ backgroundColor: entry.color }}
+                  />
+                  {entry.label.length > 30
+                    ? `${entry.label.slice(0, 30)}…`
+                    : entry.label}
+                  {entry.count > 1 && (
+                    <span className="text-muted-foreground">×{entry.count}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         {activeSheet?.signedUrl ? (
           <TakeoffCanvas
             key={activeSheet.id}
@@ -504,6 +674,7 @@ export function TakeoffWorkspace({
             deduction={deduction}
             onCalibrated={handleCalibrated}
             onShapeComplete={editable ? handleShapeComplete : () => undefined}
+            onGeometryEdited={editable ? handleGeometryEdited : undefined}
           />
         ) : (
           <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed px-4 py-10 text-center">
@@ -631,6 +802,9 @@ export function TakeoffWorkspace({
                           markup_pct: item.markup_pct === null ? '' : String(item.markup_pct),
                           section_title: item.section_title ?? '',
                           notes: item.notes ?? '',
+                          depth: '',
+                          pitch: '',
+                          height: '',
                         })
                       }
                     >
@@ -754,6 +928,70 @@ export function TakeoffWorkspace({
                   </datalist>
                 </div>
               </div>
+
+              {!itemDraft.id &&
+                itemDraft.source === 'measured' &&
+                (itemDraft.shape === 'area' || itemDraft.shape === 'line') && (
+                  <div className="flex flex-col gap-2 rounded-lg border bg-muted/40 p-3">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      Convert the measurement (optional)
+                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      {itemDraft.shape === 'area' ? (
+                        <>
+                          <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="ti-depth">Depth (m) → m³</Label>
+                            <Input
+                              id="ti-depth"
+                              value={itemDraft.depth}
+                              onChange={(e) =>
+                                setItemDraft({ ...itemDraft, depth: e.target.value })
+                              }
+                              inputMode="decimal"
+                              placeholder="0.3"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1.5">
+                            <Label htmlFor="ti-pitch">Roof pitch factor</Label>
+                            <Input
+                              id="ti-pitch"
+                              value={itemDraft.pitch}
+                              onChange={(e) =>
+                                setItemDraft({ ...itemDraft, pitch: e.target.value })
+                              }
+                              inputMode="decimal"
+                              placeholder="1.08 (22.5°)"
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex flex-col gap-1.5">
+                          <Label htmlFor="ti-height">Height (m) → m²</Label>
+                          <Input
+                            id="ti-height"
+                            value={itemDraft.height}
+                            onChange={(e) =>
+                              setItemDraft({ ...itemDraft, height: e.target.value })
+                            }
+                            inputMode="decimal"
+                            placeholder="2.4"
+                          />
+                        </div>
+                      )}
+                    </div>
+                    {(() => {
+                      const preview = applyMultipliers(itemDraft)
+                      return preview.note ? (
+                        <p className="text-xs font-medium">
+                          = {preview.qty} {preview.unit === 'm2' ? 'm²' : preview.unit === 'm3' ? 'm³' : preview.unit}
+                          <span className="ml-1.5 font-normal text-muted-foreground">
+                            ({preview.note})
+                          </span>
+                        </p>
+                      ) : null
+                    })()}
+                  </div>
+                )}
 
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="ti-rate">Rate item</Label>
