@@ -41,6 +41,7 @@ import {
   type LineData,
 } from './line-row'
 import { RatePickerDialog } from './rate-picker-dialog'
+import { DuplicateQuoteButton } from './duplicate-quote-button'
 
 export type { LineData }
 import {
@@ -379,6 +380,7 @@ function HeaderCard({
               <FileDownIcon />
               PDF
             </a>
+            <DuplicateQuoteButton id={quote.id} />
             {!quote.archived && <ArchiveButton kind="quote" id={quote.id} />}
           </div>
         </div>

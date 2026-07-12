@@ -111,6 +111,109 @@ export async function createQuote(
 }
 
 /**
+ * Clone a quote into a fresh draft — any status is fair game (the main use is
+ * re-quoting from an accepted job). Copies the header, sections and lines but
+ * drops all lifecycle state (sent/decided/lost/portal/converted/archived) and
+ * the takeoff provenance link; the new quote is owned by whoever duplicated it.
+ */
+export async function duplicateQuote(
+  quoteId: string
+): Promise<{ error?: string; id?: string }> {
+  const profile = await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+
+  const { data: source, error: srcErr } = await supabase
+    .from('quotes')
+    .select(
+      'id, client_id, site_id, contact_id, title, description, notes, valid_days, gst_rate'
+    )
+    .eq('id', quoteId)
+    .single()
+  if (srcErr || !source) return { error: 'Quote not found' }
+
+  let number: string
+  try {
+    number = await nextNumber(supabase, 'quote')
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to allocate quote number' }
+  }
+
+  const { data: newQuote, error: insErr } = await supabase
+    .from('quotes')
+    .insert({
+      number,
+      client_id: source.client_id,
+      site_id: source.site_id,
+      contact_id: source.contact_id,
+      title: `${source.title} (copy)`,
+      description: source.description,
+      notes: source.notes,
+      valid_days: source.valid_days,
+      gst_rate: source.gst_rate,
+      status: 'draft',
+      pm_id: profile.id,
+      created_by: profile.id,
+    })
+    .select('id')
+    .single()
+  if (insErr || !newQuote) return { error: insErr?.message ?? 'Failed to create quote' }
+
+  // Copy sections, building an old→new id map for line remapping.
+  const { data: sections } = await supabase
+    .from('quote_sections')
+    .select('id, title, position')
+    .eq('quote_id', quoteId)
+    .order('position')
+    .order('id')
+
+  const sectionMap = new Map<string, string>()
+  for (const section of sections ?? []) {
+    const { data: newSection, error: secErr } = await supabase
+      .from('quote_sections')
+      .insert({
+        quote_id: newQuote.id,
+        title: section.title,
+        position: section.position,
+      })
+      .select('id')
+      .single()
+    if (secErr || !newSection) return { error: secErr?.message ?? 'Failed to copy section' }
+    sectionMap.set(section.id, newSection.id)
+  }
+
+  // Copy lines, remapping section ids (null / orphaned → null; takeoff link dropped).
+  const { data: lines } = await supabase
+    .from('quote_lines')
+    .select(
+      'section_id, description, qty, unit, unit_cost, markup_pct, unit_sell, position'
+    )
+    .eq('quote_id', quoteId)
+    .order('position')
+    .order('id')
+
+  if (lines?.length) {
+    const { error: linesErr } = await supabase.from('quote_lines').insert(
+      lines.map((l) => ({
+        quote_id: newQuote.id,
+        section_id: l.section_id ? sectionMap.get(l.section_id) ?? null : null,
+        description: l.description,
+        qty: l.qty,
+        unit: l.unit,
+        unit_cost: l.unit_cost,
+        markup_pct: l.markup_pct,
+        unit_sell: l.unit_sell,
+        position: l.position,
+      }))
+    )
+    if (linesErr) return { error: linesErr.message }
+  }
+
+  revalidatePath('/quotes')
+  return { id: newQuote.id }
+}
+
+/**
  * Reversible archive — hides the quote from lists/pickers/reports without
  * touching any data. Works on any status (frozen/converted included); restore
  * lives in Settings → Archive. Independent of the converted job/project.
