@@ -391,10 +391,10 @@ export async function applyAssembly(
 // ─── Report extraction ────────────────────────────────────────────────────────
 
 /**
- * Sends a quote-attached PDF (asbestos register / survey report) to Claude and
+ * Sends a quote-attached PDF (asbestos register / survey report) to OpenAI and
  * inserts the extracted rows as takeoff items with source 'report'. Never
  * auto-pushes to the quote — the estimator reviews, rates and pushes manually.
- * Dormant until ANTHROPIC_API_KEY is set.
+ * Dormant until OPENAI_API_KEY is set.
  */
 export async function ingestReportTakeoff(
   quoteId: string,
@@ -403,7 +403,7 @@ export async function ingestReportTakeoff(
   const profile = await requireRole('admin', 'office')
 
   if (!extractionEnabled()) {
-    return { error: 'Add ANTHROPIC_API_KEY to the environment to enable report extraction' }
+    return { error: 'Add OPENAI_API_KEY to the environment to enable report extraction' }
   }
 
   const supabase = await createClient()

@@ -1269,10 +1269,10 @@ export function TakeoffWorkspace({
               </Select>
             </div>
             <p className="rounded-lg border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
-              Sends this document to Anthropic (Claude) to read the asbestos
-              register / findings and turn them into takeoff items. Items land
-              as “Report” rows for you to review and rate — nothing is pushed
-              to the quote automatically.
+              Sends this document to OpenAI to read the asbestos register /
+              findings and turn them into takeoff items. Items land as
+              “Report” rows for you to review and rate — nothing is pushed to
+              the quote automatically.
             </p>
             <DialogFooter>
               <Button
