@@ -10,6 +10,7 @@ import {
   userCreateSchema,
   profileUpdateSchema,
   rateItemSchema,
+  rateImportSchema,
   costCodeSchema,
   plantSchema,
   checklistTemplateSchema,
@@ -148,6 +149,67 @@ export async function setRateItemActive(
 
   revalidatePath('/settings')
   return {}
+}
+
+export async function importRateItems(
+  data: unknown
+): Promise<{ error?: string; added?: number; updated?: number }> {
+  await requireRole('admin', 'office')
+
+  const parsed = rateImportSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+
+  // Fetch all active rows once and match in JS (case-insensitive name).
+  const { data: existing, error: fetchError } = await supabase
+    .from('rate_items')
+    .select('id, kind, name')
+    .eq('active', true)
+
+  if (fetchError) return { error: fetchError.message }
+
+  const key = (kind: string, name: string) =>
+    `${kind}|${name.trim().toLowerCase()}`
+  const byKey = new Map<string, string>()
+  for (const row of existing ?? []) {
+    byKey.set(key(row.kind, row.name), row.id as string)
+  }
+
+  let added = 0
+  let updated = 0
+
+  for (const row of parsed.data) {
+    const id = byKey.get(key(row.kind, row.name))
+    if (id) {
+      const { error } = await supabase
+        .from('rate_items')
+        .update({
+          cost: row.cost,
+          default_markup_pct: row.default_markup_pct,
+          unit: row.unit,
+        })
+        .eq('id', id)
+      if (error) return { error: error.message }
+      updated++
+    } else {
+      const { error } = await supabase.from('rate_items').insert({
+        kind: row.kind,
+        name: row.name,
+        unit: row.unit,
+        cost: row.cost,
+        default_markup_pct: row.default_markup_pct,
+        active: true,
+      })
+      if (error) return { error: error.message }
+      added++
+    }
+  }
+
+  revalidatePath('/settings')
+  return { added, updated }
 }
 
 // ─── Cost codes ──────────────────────────────────────────────────────────────

@@ -170,6 +170,21 @@ export const rateItemSchema = z.object({
 
 export type RateItemInput = z.infer<typeof rateItemSchema>
 
+export const rateImportSchema = z
+  .array(
+    z.object({
+      kind: z.enum(RATE_KINDS),
+      name: z.string().min(1),
+      unit: z.string().min(1),
+      cost: z.coerce.number().min(0),
+      default_markup_pct: z.coerce.number().min(0).max(1000),
+    })
+  )
+  .min(1)
+  .max(500)
+
+export type RateImportInput = z.infer<typeof rateImportSchema>
+
 // ─── Cost codes ──────────────────────────────────────────────────────────────
 
 export const COST_CODE_CATEGORIES = [
