@@ -25,6 +25,7 @@ export interface SettingsRow {
   email: string | null
   logo_path: string | null
   gst_rate: number
+  quote_footer: string | null
   invoice_footer: string | null
   claim_footer: string | null
 }
@@ -38,6 +39,7 @@ export function CompanyForm({ settings }: { settings: SettingsRow | null }) {
   const [phone, setPhone] = useState(settings?.phone ?? '')
   const [email, setEmail] = useState(settings?.email ?? '')
   const [gstRate, setGstRate] = useState(String(settings?.gst_rate ?? 10))
+  const [quoteFooter, setQuoteFooter] = useState(settings?.quote_footer ?? '')
   const [invoiceFooter, setInvoiceFooter] = useState(
     settings?.invoice_footer ?? ''
   )
@@ -85,6 +87,7 @@ export function CompanyForm({ settings }: { settings: SettingsRow | null }) {
         phone,
         email,
         gst_rate: gstRate,
+        quote_footer: quoteFooter,
         invoice_footer: invoiceFooter,
         claim_footer: claimFooter,
         ...(newLogoPath !== undefined ? { logo_path: newLogoPath } : {}),
@@ -220,6 +223,19 @@ export function CompanyForm({ settings }: { settings: SettingsRow | null }) {
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="cs-quote-footer">Quote footer</Label>
+            <Textarea
+              id="cs-quote-footer"
+              value={quoteFooter}
+              onChange={(e) => setQuoteFooter(e.target.value)}
+              rows={3}
+              placeholder="Exclusions, payment terms, site access assumptions…"
+            />
+            <p className="text-xs text-muted-foreground">
+              Prints on quote PDFs under the validity line.
+            </p>
+          </div>
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="cs-invoice-footer">Invoice footer</Label>
             <Textarea

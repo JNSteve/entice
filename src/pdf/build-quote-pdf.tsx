@@ -46,7 +46,7 @@ export async function buildQuotePdfResponse(
       .order('id'),
     supabase
       .from('settings')
-      .select('company_name, abn, address, phone, email, logo_path')
+      .select('company_name, abn, address, phone, email, logo_path, quote_footer')
       .eq('id', 1)
       .single(),
     supabase
@@ -131,6 +131,7 @@ export async function buildQuotePdfResponse(
       totals={{ ...totals, gstRate: Number(quote.gst_rate) }}
       validDays={quote.valid_days}
       description={quote.description}
+      quoteFooter={(settings?.quote_footer as string | null) ?? null}
       acceptance={acceptance}
       watermark={opts.watermark ?? null}
     />

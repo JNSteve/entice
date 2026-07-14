@@ -116,6 +116,7 @@ export const settingsSchema = z.object({
     'Invalid email address'
   ),
   gst_rate: z.coerce.number().min(0).max(100),
+  quote_footer: optionalText,
   invoice_footer: optionalText,
   claim_footer: optionalText,
   logo_path: optionalText.optional(),

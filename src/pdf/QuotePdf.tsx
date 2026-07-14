@@ -41,6 +41,8 @@ export type QuotePdfProps = {
   totals: { subtotal: number; gst: number; gstRate: number; total: number }
   validDays: number
   description?: string | null
+  /** Settings → Quote footer: fine print printed under the validity line. */
+  quoteFooter?: string | null
   footerText?: string | null
   acceptance?: QuotePdfAcceptance | null
   /** "Issued to {client} — {date}" banner for portal-issued copies. */
@@ -86,6 +88,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: palette.slate500,
     marginTop: 16,
+  },
+  quoteFooter: {
+    fontSize: fontSize.sm,
+    color: palette.slate500,
+    lineHeight: 1.5,
+    marginTop: 6,
   },
   acceptanceBlock: {
     marginTop: 18,
@@ -178,6 +186,7 @@ export function QuotePdf({
   totals,
   validDays,
   description,
+  quoteFooter,
   footerText,
   acceptance,
   watermark,
@@ -227,6 +236,10 @@ export function QuotePdf({
       <Text style={styles.validity}>
         This quotation is valid for {validDays} days from the date above.
       </Text>
+
+      {quoteFooter ? (
+        <Text style={styles.quoteFooter}>{quoteFooter}</Text>
+      ) : null}
 
       {acceptance ? (
         <View style={styles.acceptanceBlock} wrap={false}>
