@@ -11,6 +11,7 @@ import {
   FileTextIcon,
   MapPinIcon,
   PlusIcon,
+  TriangleAlertIcon,
 } from 'lucide-react'
 import { createPublicClient } from '@/lib/supabase/public'
 import { todayAU } from '@/lib/tz'
@@ -70,6 +71,38 @@ interface PortalAttachment {
   created_on: string | null
 }
 
+/** Minimal shape the thumbnail row + doc links need — satisfied by both the
+ * works PortalAttachment and the leaner maintenance attachment payload. */
+interface PortalFileRef {
+  id: string
+  filename: string
+  content_type: string | null
+  caption: string | null
+}
+
+/** Maintenance evidence: parent_type 'maintenance' attachments, portal-visible
+ * off the ENTRY's client_visible (no size/timestamps in this payload). */
+interface PortalMaintenanceAttachment {
+  id: string
+  filename: string
+  kind: string
+  content_type: string | null
+  caption: string | null
+}
+
+interface PortalMaintenanceEntry {
+  id: string
+  kind: string
+  title: string
+  description: string | null
+  done_at: string
+  status: 'open' | 'resolved'
+  follow_up: string | null
+  job_number: string | null
+  project_number: string | null
+  attachments: PortalMaintenanceAttachment[]
+}
+
 interface PortalItem {
   id: string
   kind: PropertyComplianceKind
@@ -115,6 +148,8 @@ interface PortalSiteDetail {
   items: PortalItem[]
   jobs: PortalJob[]
   projects: PortalProject[]
+  /** scope='full' links only — always [] for register-scope links. */
+  maintenance: PortalMaintenanceEntry[]
 }
 
 /** One shape for job + project works, grouped live/history. */
@@ -147,7 +182,7 @@ function PhotoGallery({
   photos,
 }: {
   token: string
-  photos: PortalAttachment[]
+  photos: PortalFileRef[]
 }) {
   if (photos.length === 0) return null
   return (
@@ -179,7 +214,7 @@ function DocRows({
   docs,
 }: {
   token: string
-  docs: PortalAttachment[]
+  docs: PortalFileRef[]
 }) {
   if (docs.length === 0) return null
   return (
@@ -203,7 +238,14 @@ function DocRows({
   )
 }
 
-const isPhoto = (a: PortalAttachment) => a.content_type?.startsWith('image/')
+const isPhoto = (a: PortalFileRef) => a.content_type?.startsWith('image/')
+
+const MAINTENANCE_KIND_LABELS: Record<string, string> = {
+  make_safe: 'Make-safe',
+  repair: 'Repair',
+  maintenance: 'Maintenance',
+  inspection: 'Inspection',
+}
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 
@@ -220,6 +262,7 @@ const SITE_TABS = [
   'compliance',
   'documents',
   'works',
+  'maintenance',
   'messages',
   'requests',
   'billing',
@@ -440,6 +483,10 @@ export default async function PortalSitePage({
     ),
   ]
 
+  // ── Maintenance log (RPC returns [] for register-scope links) ──────────────
+  const maintenance = detail.maintenance ?? []
+  const hasOpenMaintenance = maintenance.some((m) => m.status === 'open')
+
   const tabClass = (active: boolean) =>
     `flex min-h-11 flex-1 items-center justify-center whitespace-nowrap rounded-lg px-3 py-2 text-center text-sm font-medium transition-colors ${
       active
@@ -456,6 +503,7 @@ export default async function PortalSitePage({
         { key: 'compliance', label: 'Compliance', href: `/portal/${token}/sites/${siteId}` },
         { key: 'documents', label: 'Documents', href: `/portal/${token}/sites/${siteId}?tab=documents` },
         { key: 'works', label: 'Works', href: `/portal/${token}/sites/${siteId}?tab=works` },
+        { key: 'maintenance', label: 'Maintenance', href: `/portal/${token}/sites/${siteId}?tab=maintenance` },
         { key: 'messages', label: 'Messages', href: `/portal/${token}/sites/${siteId}?tab=messages` },
         { key: 'requests', label: 'Requests', href: `/portal/${token}/sites/${siteId}?tab=requests` },
         ...(branding.show_financials
@@ -518,6 +566,12 @@ export default async function PortalSitePage({
         {tabs.map((t) => (
           <Link key={t.key} href={t.href} className={tabClass(activeTab === t.key)}>
             {t.label}
+            {t.key === 'maintenance' && hasOpenMaintenance && (
+              <span
+                className="ml-1.5 inline-block size-2 shrink-0 rounded-full bg-amber-500"
+                aria-label="Open items"
+              />
+            )}
           </Link>
         ))}
       </div>
@@ -788,6 +842,74 @@ export default async function PortalSitePage({
                 </ol>
               </PortalCard>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Maintenance ────────────────────────────────────────────────────── */}
+      {activeTab === 'maintenance' && (
+        <div className="flex flex-col gap-3">
+          {maintenance.length === 0 ? (
+            <EmptyState>
+              No maintenance recorded for this property yet.
+            </EmptyState>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {maintenance.map((m) => {
+                const photos = m.attachments.filter(isPhoto)
+                const docs = m.attachments.filter((a) => !isPhoto(a))
+                const openLabel =
+                  m.follow_up?.trim() ||
+                  'Make-safe in place — permanent repair recommended'
+                const linked = m.job_number
+                  ? `Job ${m.job_number}`
+                  : m.project_number
+                    ? `Project ${m.project_number}`
+                    : null
+                return (
+                  <li key={m.id}>
+                    <PortalCard className="flex flex-col gap-2.5 p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 flex-col gap-0.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                            {MAINTENANCE_KIND_LABELS[m.kind] ?? m.kind}
+                          </p>
+                          <p className="text-[15px] font-semibold text-slate-900">
+                            {m.title}
+                          </p>
+                        </div>
+                        <span className="flex shrink-0 items-center gap-1.5 text-xs text-slate-500">
+                          <CalendarIcon className="size-3.5 text-slate-400" />
+                          {fmtDate(m.done_at)}
+                        </span>
+                      </div>
+
+                      {m.description && (
+                        <p className="whitespace-pre-wrap text-sm text-slate-600">
+                          {m.description}
+                        </p>
+                      )}
+
+                      {m.status === 'open' && (
+                        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2">
+                          <TriangleAlertIcon className="mt-0.5 size-4 shrink-0 text-amber-600" />
+                          <p className="text-sm font-semibold text-amber-900">
+                            {openLabel}
+                          </p>
+                        </div>
+                      )}
+
+                      <PhotoGallery token={token} photos={photos} />
+                      <DocRows token={token} docs={docs} />
+
+                      {linked && (
+                        <p className="text-xs text-slate-400">{linked}</p>
+                      )}
+                    </PortalCard>
+                  </li>
+                )
+              })}
+            </ul>
           )}
         </div>
       )}

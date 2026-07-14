@@ -7,6 +7,7 @@ import {
   HardHatIcon,
   NotebookPenIcon,
   SunIcon,
+  WrenchIcon,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -15,6 +16,7 @@ const TABS = [
   { label: 'Diary', href: '/field/diary', icon: NotebookPenIcon },
   { label: 'Safety', href: '/field/safety', icon: HardHatIcon },
   { label: 'Photos', href: '/field/photo', icon: CameraIcon },
+  { label: 'Maintenance', href: '/field/maintenance', icon: WrenchIcon },
 ]
 
 export function FieldTabs() {
@@ -22,7 +24,7 @@ export function FieldTabs() {
 
   return (
     <nav className="sticky bottom-0 z-30 mx-auto w-full max-w-md border-t bg-background">
-      <div className="grid grid-cols-4">
+      <div className="grid grid-cols-5">
         {TABS.map((tab) => {
           const active =
             tab.href === '/field'
