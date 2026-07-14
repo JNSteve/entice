@@ -360,6 +360,48 @@ export const takeoffAssemblyComponentSchema = z.object({
 
 export type TakeoffAssemblyComponentInput = z.infer<typeof takeoffAssemblyComponentSchema>
 
+// ─── Maintenance log ─────────────────────────────────────────────────────────
+
+export const MAINTENANCE_KINDS = [
+  'make_safe',
+  'repair',
+  'maintenance',
+  'inspection',
+] as const
+export type MaintenanceKind = (typeof MAINTENANCE_KINDS)[number]
+
+export const maintenanceEntrySchema = z.object({
+  site_id: z.uuid('Pick a property'),
+  kind: z.enum(MAINTENANCE_KINDS),
+  title: z.string().min(1, 'Title is required'),
+  description: optionalText,
+  done_at: z.string().min(1, 'When was it done?'),
+  /** 'open' = temporary measure in place, needs a permanent fix. */
+  status: z.enum(['open', 'resolved']).default('resolved'),
+  follow_up: optionalText,
+  job_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  project_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  client_visible: z.boolean().default(true),
+})
+
+export type MaintenanceEntryInput = z.infer<typeof maintenanceEntrySchema>
+
+export const maintenanceEntryUpdateSchema = maintenanceEntrySchema
+  .partial()
+  .extend({
+    flagged: z.boolean().optional(),
+    flag_note: optionalText.optional(),
+  })
+  .omit({ site_id: true })
+
+export type MaintenanceEntryUpdateInput = z.infer<typeof maintenanceEntryUpdateSchema>
+
 // ─── Invoices ────────────────────────────────────────────────────────────────
 
 export const INVOICE_STATUSES = ['draft', 'sent', 'paid', 'void'] as const

@@ -23,6 +23,7 @@ const PARENT_TYPES = [
   'ncr',
   'waste_load',
   'lot',
+  'maintenance',
 ] as const
 
 const KINDS = ['photo', 'docket', 'document', 'pdf'] as const
@@ -47,6 +48,7 @@ const PARENT_TABLE: Record<(typeof PARENT_TYPES)[number], string> = {
   ncr: 'ncrs',
   waste_load: 'waste_loads',
   lot: 'lots',
+  maintenance: 'maintenance_entries',
 }
 
 const attachmentInputSchema = z.object({
