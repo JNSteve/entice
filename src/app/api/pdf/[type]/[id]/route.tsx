@@ -193,6 +193,17 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ type: string; id: string }> }
 ) {
+  const response = await dispatch(request, params)
+  // PDFs regenerate from live data — a cached copy silently hides edits
+  // (e.g. a footer saved after the browser first opened the PDF tab).
+  response.headers.set('Cache-Control', 'no-store')
+  return response
+}
+
+async function dispatch(
+  request: Request,
+  params: Promise<{ type: string; id: string }>
+) {
   const profile = await getProfile()
   if (!profile) return new Response('Unauthorized', { status: 401 })
 
