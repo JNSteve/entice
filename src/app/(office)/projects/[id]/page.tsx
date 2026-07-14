@@ -9,6 +9,10 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
+import {
+  MaintenanceLogList,
+  type MaintenanceLogListEntry,
+} from '@/components/MaintenanceLog'
 import { round2, lineTotal } from '@/lib/money'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { nowAU } from '@/lib/tz'
@@ -46,6 +50,7 @@ export default async function ProjectOverviewPage({
     { data: programmeTasks },
     { data: holdPoints },
     { data: checklistItems },
+    { data: maintenanceRows },
   ] = await Promise.all([
     supabase
       .from('projects')
@@ -86,6 +91,12 @@ export default async function ProjectOverviewPage({
       .select('id, text, done')
       .eq('project_id', id)
       .order('position'),
+    supabase
+      .from('maintenance_entries')
+      .select('id, kind, title, done_at, status, site_id, sites(client_id)')
+      .eq('project_id', id)
+      .order('done_at', { ascending: false })
+      .order('created_at', { ascending: false }),
   ])
 
   if (!project) notFound()
@@ -247,6 +258,21 @@ export default async function ProjectOverviewPage({
     text: i.text as string,
     done: Boolean(i.done),
   }))
+
+  const maintenanceEntries: MaintenanceLogListEntry[] = (maintenanceRows ?? []).map(
+    (m) => {
+      const siteRel = m.sites as unknown as { client_id: string | null } | null
+      return {
+        id: m.id as string,
+        kind: m.kind as MaintenanceLogListEntry['kind'],
+        title: m.title as string,
+        done_at: m.done_at as string,
+        status: m.status as MaintenanceLogListEntry['status'],
+        clientId: siteRel?.client_id ?? '',
+        siteId: m.site_id as string,
+      }
+    }
+  )
 
   return (
     <div className="flex flex-col gap-8">
@@ -473,6 +499,20 @@ export default async function ProjectOverviewPage({
           )}
         </CardContent>
       </Card>
+
+      {/* Maintenance log — read-only; managed on the property page */}
+      {maintenanceEntries.length > 0 && (
+        <Card size="sm">
+          <CardHeader>
+            <CardTitle className="text-sm text-muted-foreground">
+              Maintenance log
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <MaintenanceLogList entries={maintenanceEntries} />
+          </CardContent>
+        </Card>
+      )}
       </div>
     </div>
   )

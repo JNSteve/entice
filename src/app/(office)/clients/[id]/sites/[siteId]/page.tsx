@@ -7,6 +7,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { buttonVariants } from '@/components/ui/button'
 import { QrCodeIcon } from 'lucide-react'
 import { fmtDate } from '@/lib/format'
+import { fetchAttachmentsForParents } from '@/lib/attachment-queries'
 import {
   Table,
   TableBody,
@@ -22,6 +23,10 @@ import {
 } from './compliance-items'
 import { OfficeThread, type OfficeMessageRow } from './office-thread'
 import { PendingUploads, type PendingUploadRow } from './pending-uploads'
+import {
+  MaintenanceSection,
+  type MaintenanceEntryRow,
+} from './maintenance-section'
 
 /**
  * Office view of one property (site): its compliance register (the portal's
@@ -45,6 +50,7 @@ export default async function SiteDetailPage({
     { data: docs },
     { data: jobs },
     { data: projects },
+    { data: maintenanceRows },
   ] = await Promise.all([
     supabase.from('clients').select('id, name').eq('id', clientId).single(),
     supabase
@@ -78,6 +84,12 @@ export default async function SiteDetailPage({
       .select('id, number, name, status, created_at')
       .eq('site_id', siteId)
       .eq('archived', false)
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('maintenance_entries')
+      .select('*, jobs(number), projects(number)')
+      .eq('site_id', siteId)
+      .order('done_at', { ascending: false })
       .order('created_at', { ascending: false }),
   ])
 
@@ -195,6 +207,53 @@ export default async function SiteDetailPage({
     label: [d.doc_number as string | null, d.title as string].filter(Boolean).join(' — '),
   }))
 
+  // Maintenance log — entries newest-first + their evidence (batched signing).
+  const maintenanceEntryIds = (maintenanceRows ?? []).map((m) => m.id as string)
+  const maintenanceEvidence = await fetchAttachmentsForParents(
+    supabase,
+    'maintenance',
+    maintenanceEntryIds
+  )
+
+  const maintenanceEntries: MaintenanceEntryRow[] = (maintenanceRows ?? []).map((m) => {
+    const jobRel = m.jobs as unknown as { number: string } | null
+    const projectRel = m.projects as unknown as { number: string } | null
+    return {
+      id: m.id as string,
+      kind: m.kind as MaintenanceEntryRow['kind'],
+      title: m.title as string,
+      description: (m.description as string | null) ?? null,
+      done_at: m.done_at as string,
+      status: m.status as MaintenanceEntryRow['status'],
+      follow_up: (m.follow_up as string | null) ?? null,
+      flagged: Boolean(m.flagged),
+      flag_note: (m.flag_note as string | null) ?? null,
+      client_visible: Boolean(m.client_visible),
+      job_id: (m.job_id as string | null) ?? null,
+      project_id: (m.project_id as string | null) ?? null,
+      job_number: jobRel?.number ?? null,
+      project_number: projectRel?.number ?? null,
+      evidence: (maintenanceEvidence[m.id as string] ?? []).map((a) => ({
+        id: a.id,
+        filename: a.filename,
+        content_type: a.content_type,
+        kind: a.kind,
+        signedUrl: a.signedUrl,
+      })),
+    }
+  })
+
+  const maintenanceJobOptions = (jobs ?? []).map((j) => ({
+    id: j.id as string,
+    number: j.number as string,
+    label: j.title as string,
+  }))
+  const maintenanceProjectOptions = (projects ?? []).map((p) => ({
+    id: p.id as string,
+    number: p.number as string,
+    label: p.name as string,
+  }))
+
   const address = [site.address, site.suburb, site.state, site.postcode]
     .filter(Boolean)
     .join(', ')
@@ -236,6 +295,15 @@ export default async function SiteDetailPage({
         documents={documentOptions}
         canEdit={canEdit}
         canDelete={profile.role === 'admin'}
+      />
+
+      {/* Maintenance log — make-safes/repairs/inspections with photo evidence */}
+      <MaintenanceSection
+        siteId={siteId}
+        entries={maintenanceEntries}
+        jobs={maintenanceJobOptions}
+        projects={maintenanceProjectOptions}
+        canEdit={canEdit}
       />
 
       {/* Portal correspondence — the client side lives on their Messages tab */}

@@ -18,6 +18,10 @@ import { AttachmentList } from '@/components/AttachmentList'
 import { HandoverPackButton } from '@/components/HandoverPackButton'
 import { handoverEligible } from '@/lib/feedback'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
+import {
+  MaintenanceLogList,
+  type MaintenanceLogListEntry,
+} from '@/components/MaintenanceLog'
 import { fetchSwmsInstances } from '@/lib/swms-queries'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
@@ -46,6 +50,7 @@ export default async function JobDetailPage({
     attachments,
     swmsInstances,
     { data: swmsTemplates },
+    { data: maintenanceRows },
   ] = await Promise.all([
     supabase
       .from('jobs')
@@ -101,6 +106,12 @@ export default async function JobDetailPage({
       .select('id, title, version, hrcw_items')
       .eq('active', true)
       .order('title'),
+    supabase
+      .from('maintenance_entries')
+      .select('id, kind, title, done_at, status, site_id, sites(client_id)')
+      .eq('job_id', id)
+      .order('done_at', { ascending: false })
+      .order('created_at', { ascending: false }),
   ])
 
   if (!job) notFound()
@@ -190,6 +201,21 @@ export default async function JobDetailPage({
   const photoItems = attachments.filter((a) => a.kind === 'photo')
   const docketItems = attachments.filter((a) => a.kind === 'docket')
   const docItems = attachments.filter((a) => a.kind !== 'photo' && a.kind !== 'docket')
+
+  const maintenanceEntries: MaintenanceLogListEntry[] = (maintenanceRows ?? []).map(
+    (m) => {
+      const siteRel = m.sites as unknown as { client_id: string | null } | null
+      return {
+        id: m.id as string,
+        kind: m.kind as MaintenanceLogListEntry['kind'],
+        title: m.title as string,
+        done_at: m.done_at as string,
+        status: m.status as MaintenanceLogListEntry['status'],
+        clientId: siteRel?.client_id ?? '',
+        siteId: m.site_id as string,
+      }
+    }
+  )
 
   const dateRange = job.scheduled_start
     ? `${fmtDate(job.scheduled_start)}${job.scheduled_end ? ` – ${fmtDate(job.scheduled_end)}` : ''}`
@@ -296,6 +322,17 @@ export default async function JobDetailPage({
 
       {/* Work log */}
       <WorkLogSection jobId={job.id} entries={workLogData} />
+
+      {/* Maintenance log — read-only; managed on the property page */}
+      {maintenanceEntries.length > 0 && (
+        <>
+          <div className="border-t" />
+          <section className="flex flex-col gap-4">
+            <h2 className="text-base font-semibold">Maintenance log</h2>
+            <MaintenanceLogList entries={maintenanceEntries} />
+          </section>
+        </>
+      )}
 
       {/* SWMS */}
       <div className="border-t" />
