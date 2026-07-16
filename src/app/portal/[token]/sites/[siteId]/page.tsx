@@ -98,6 +98,7 @@ interface PortalMaintenanceEntry {
   done_at: string
   status: 'open' | 'resolved'
   follow_up: string | null
+  follow_up_due: string | null
   job_number: string | null
   project_number: string | null
   attachments: PortalMaintenanceAttachment[]
@@ -858,9 +859,10 @@ export default async function PortalSitePage({
               {maintenance.map((m) => {
                 const photos = m.attachments.filter(isPhoto)
                 const docs = m.attachments.filter((a) => !isPhoto(a))
-                const openLabel =
+                const openLabel = `${
                   m.follow_up?.trim() ||
                   'Make-safe in place — permanent repair recommended'
+                }${m.follow_up_due ? ` — due ${fmtDate(m.follow_up_due)}` : ''}`
                 const linked = m.job_number
                   ? `Job ${m.job_number}`
                   : m.project_number

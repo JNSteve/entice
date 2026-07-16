@@ -63,6 +63,7 @@ export function MaintenanceForm({
   const [description, setDescription] = useState('')
   const [doneAt, setDoneAt] = useState(today)
   const [temporary, setTemporary] = useState(false)
+  const [followUpDue, setFollowUpDue] = useState('')
 
   const selectedSite = sites.find((s) => s.id === siteId) ?? null
 
@@ -123,6 +124,7 @@ export function MaintenanceForm({
         done_at: doneAt,
         status: temporary ? 'open' : 'resolved',
         follow_up: temporary ? 'Permanent repair recommended' : null,
+        follow_up_due: temporary ? followUpDue || null : null,
         job_id: target?.type === 'job' ? target.id : null,
         project_id: target?.type === 'project' ? target.id : null,
         client_visible: true,
@@ -338,6 +340,20 @@ export function MaintenanceForm({
           </span>
         </span>
       </label>
+
+      {temporary && (
+        <div className="flex flex-col gap-1.5">
+          <label className="text-sm font-medium" htmlFor="fm-due">
+            Permanent fix due by (optional)
+          </label>
+          <Input
+            id="fm-due"
+            type="date"
+            value={followUpDue}
+            onChange={(e) => setFollowUpDue(e.target.value)}
+          />
+        </div>
+      )}
 
       <Button type="submit" size="lg" disabled={pending}>
         {pending ? 'Logging…' : 'Log maintenance entry'}

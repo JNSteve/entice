@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { nextNumber } from '@/lib/numbering'
 import {
   maintenanceEntrySchema,
   maintenanceEntryUpdateSchema,
@@ -116,6 +117,69 @@ export async function setMaintenanceFlag(
     flagged,
     flag_note: flagged ? (flagNote ?? null) : null,
   })
+}
+
+/**
+ * "Quote this" on an open entry — spins up a draft quote for the permanent
+ * fix (client/site from the entry's property, title from the entry) and
+ * stamps the entry with the quote id so the loop is traceable end to end.
+ */
+export async function createQuoteFromMaintenance(
+  entryId: string
+): Promise<{ error?: string; quoteId?: string }> {
+  const profile = await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { data: entry } = await supabase
+    .from('maintenance_entries')
+    .select('id, title, description, follow_up, quote_id, site_id, sites(client_id)')
+    .eq('id', entryId)
+    .maybeSingle()
+  if (!entry) return { error: 'Entry not found' }
+  if (entry.quote_id) return { error: 'This entry already has a quote' }
+
+  const clientId = (entry.sites as unknown as { client_id: string | null } | null)
+    ?.client_id
+  if (!clientId) return { error: 'The property has no client' }
+
+  let number: string
+  try {
+    number = await nextNumber(supabase, 'quote')
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Failed to allocate quote number' }
+  }
+
+  const { data: settings } = await supabase
+    .from('settings')
+    .select('gst_rate')
+    .eq('id', 1)
+    .single()
+
+  const { data: quote, error } = await supabase
+    .from('quotes')
+    .insert({
+      number,
+      client_id: clientId,
+      site_id: entry.site_id,
+      title: `Permanent repair — ${entry.title}`,
+      description:
+        [entry.description, entry.follow_up].filter(Boolean).join('\n\n') || null,
+      pm_id: profile.id,
+      gst_rate: settings?.gst_rate ?? 10,
+      created_by: profile.id,
+    })
+    .select('id')
+    .single()
+  if (error || !quote) return { error: error?.message ?? 'Failed to create quote' }
+
+  const { error: linkError } = await supabase
+    .from('maintenance_entries')
+    .update({ quote_id: quote.id, updated_at: new Date().toISOString() })
+    .eq('id', entryId)
+  if (linkError) return { error: linkError.message }
+
+  revalidatePath('/quotes')
+  return { quoteId: quote.id as string }
 }
 
 export async function deleteMaintenanceEntry(id: string): Promise<Result> {

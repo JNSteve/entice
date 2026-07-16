@@ -379,6 +379,11 @@ export const maintenanceEntrySchema = z.object({
   /** 'open' = temporary measure in place, needs a permanent fix. */
   status: z.enum(['open', 'resolved']).default('resolved'),
   follow_up: optionalText,
+  /** Optional deadline for the permanent fix — drives calendar + chasing. */
+  follow_up_due: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
   job_id: z
     .uuid()
     .nullish()

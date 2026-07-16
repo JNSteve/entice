@@ -33,6 +33,8 @@ import {
   PortalActivityCard,
   PortalEngagementCard,
   PrestartTodayCard,
+  OpenMaintenanceCard,
+  type OpenMaintenanceRow,
   PropertyComplianceCard,
   QualityCard,
   QuotesAwaitingCard,
@@ -313,6 +315,50 @@ async function loadPropertyComplianceDue(
       title: i.title as string,
       reviewDue: i.review_due as string,
       overdue: (i.review_due as string) < todayStr,
+    }
+  })
+}
+
+// ─── 5c. Open maintenance (company-wide unresolved items) ─────────────────────
+
+const MAINTENANCE_DASH_LABELS: Record<string, string> = {
+  make_safe: 'Make-safe',
+  repair: 'Repair',
+  maintenance: 'Maintenance',
+  inspection: 'Inspection',
+}
+
+async function loadOpenMaintenance(
+  supabase: Db,
+  today: Date
+): Promise<OpenMaintenanceRow[]> {
+  const { data, error } = await supabase
+    .from('maintenance_entries')
+    .select('id, kind, title, follow_up_due, flagged, site_id, sites(name, client_id, clients(name))')
+    .eq('status', 'open')
+    .order('follow_up_due', { ascending: true, nullsFirst: false })
+    .order('done_at', { ascending: true })
+  if (error) throw error
+
+  const todayStr = dateStr(today)
+  return (data ?? []).map((m) => {
+    const site = m.sites as unknown as {
+      name: string
+      client_id: string
+      clients: { name: string } | null
+    } | null
+    const due = (m.follow_up_due as string | null) ?? null
+    return {
+      id: m.id as string,
+      clientId: site?.client_id ?? '',
+      siteId: m.site_id as string,
+      siteName: site?.name ?? '—',
+      clientName: site?.clients?.name ?? '—',
+      kindLabel: MAINTENANCE_DASH_LABELS[m.kind as string] ?? (m.kind as string),
+      title: m.title as string,
+      followUpDue: due,
+      overdue: due !== null && due < todayStr,
+      flagged: Boolean(m.flagged),
     }
   })
 }
@@ -1266,6 +1312,7 @@ export default async function DashboardPage() {
     timeBars,
     compliance,
     propertyCompliance,
+    openMaintenance,
     retentionDue,
     activeWork,
     prestartsToday,
@@ -1287,6 +1334,7 @@ export default async function DashboardPage() {
     showMoney ? settle(() => loadTimeBarWarnings(supabase, today)) : none,
     showMoney ? settle(() => loadComplianceExpiries(supabase, today)) : none,
     showMoney ? settle(() => loadPropertyComplianceDue(supabase, today)) : none,
+    showMoney ? settle(() => loadOpenMaintenance(supabase, today)) : none,
     showMoney ? settle(() => loadRetentionDue(supabase, today)) : none,
     showMoney ? settle(() => loadActiveWork(supabase)) : none,
     settle(() => loadPrestartsToday(supabase, todayAU())),
@@ -1328,6 +1376,7 @@ export default async function DashboardPage() {
             <TimeBarCard data={timeBars ?? null} />
             <ComplianceCard data={compliance ?? null} />
             <PropertyComplianceCard data={propertyCompliance ?? null} />
+            <OpenMaintenanceCard data={openMaintenance ?? null} />
             <RetentionDueCard data={retentionDue ?? null} />
             <ActiveWorkCard data={activeWork ?? null} />
             <SystemHealthCard data={systemHealth ?? null} />

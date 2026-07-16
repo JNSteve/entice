@@ -12,6 +12,7 @@ import {
   PencilIcon,
   PlusIcon,
   Trash2Icon,
+  XIcon,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
@@ -42,11 +43,13 @@ import { todayAUClient } from '@/lib/tz-client'
 import { MAINTENANCE_KINDS, type MaintenanceKind } from '@/lib/zod'
 import {
   createMaintenanceEntry,
+  createQuoteFromMaintenance,
   deleteMaintenanceEntry,
   resolveMaintenanceEntry,
   setMaintenanceFlag,
   updateMaintenanceEntry,
 } from '@/lib/maintenance'
+import { deleteAttachment } from '@/lib/attachments'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -66,6 +69,9 @@ export interface MaintenanceEntryRow {
   done_at: string
   status: 'open' | 'resolved'
   follow_up: string | null
+  follow_up_due: string | null
+  quote_id: string | null
+  quote_number: string | null
   flagged: boolean
   flag_note: string | null
   client_visible: boolean
@@ -121,6 +127,7 @@ function EntryDialog({
   const [followUp, setFollowUp] = useState(
     seed?.follow_up ?? 'Permanent repair recommended'
   )
+  const [followUpDue, setFollowUpDue] = useState(seed?.follow_up_due ?? '')
   const [jobId, setJobId] = useState(seed?.job_id ?? 'none')
   const [projectId, setProjectId] = useState(seed?.project_id ?? 'none')
   const [clientVisible, setClientVisible] = useState(seed?.client_visible ?? true)
@@ -140,6 +147,7 @@ function EntryDialog({
         done_at: doneAt,
         status: temporary ? 'open' : 'resolved',
         follow_up: temporary ? followUp : null,
+        follow_up_due: temporary ? followUpDue || null : null,
         job_id: jobId === 'none' ? null : jobId,
         project_id: projectId === 'none' ? null : projectId,
         client_visible: clientVisible,
@@ -278,18 +286,33 @@ function EntryDialog({
                 </Label>
               </div>
               {temporary && (
-                <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="m-followup">Follow-up needed</Label>
-                  <Input
-                    id="m-followup"
-                    value={followUp}
-                    onChange={(e) => setFollowUp(e.target.value)}
-                    placeholder="Permanent repair recommended"
-                  />
-                  <span className="text-xs text-muted-foreground">
-                    Shows as an open flag until resolved.
-                  </span>
-                </div>
+                <>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="m-followup">Follow-up needed</Label>
+                    <Input
+                      id="m-followup"
+                      value={followUp}
+                      onChange={(e) => setFollowUp(e.target.value)}
+                      placeholder="Permanent repair recommended"
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Shows as an open flag until resolved.
+                    </span>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="m-followup-due">Follow-up due (optional)</Label>
+                    <Input
+                      id="m-followup-due"
+                      type="date"
+                      value={followUpDue}
+                      onChange={(e) => setFollowUpDue(e.target.value)}
+                    />
+                    <span className="text-xs text-muted-foreground">
+                      Puts the deadline on the client calendar and the office
+                      dashboard so it gets chased.
+                    </span>
+                  </div>
+                </>
               )}
             </div>
 
@@ -419,6 +442,81 @@ function FlagDialog({
 
 // ─── Entry row ───────────────────────────────────────────────────────────────
 
+/** Office-only: remove a bad evidence photo (row + storage object). */
+function EvidenceDeleteButton({
+  attachmentId,
+  inline,
+}: {
+  attachmentId: string
+  inline?: boolean
+}) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      aria-label="Remove evidence"
+      onClick={() =>
+        startTransition(async () => {
+          const result = await deleteAttachment(attachmentId)
+          if (result.error) {
+            toast.error(result.error)
+            return
+          }
+          toast.success('Evidence removed')
+          router.refresh()
+        })
+      }
+      className={
+        inline
+          ? 'text-muted-foreground hover:text-destructive disabled:opacity-50'
+          : 'absolute -top-1.5 -right-1.5 rounded-full border bg-background p-0.5 text-muted-foreground shadow-sm hover:text-destructive disabled:opacity-50'
+      }
+    >
+      <XIcon className="size-3.5" />
+    </button>
+  )
+}
+
+/** "Quote this" — draft quote for the permanent fix, linked back here. */
+function QuoteThisButton({ entryId }: { entryId: string }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          const result = await createQuoteFromMaintenance(entryId)
+          if (result.error || !result.quoteId) {
+            toast.error(result.error ?? 'Could not create the quote')
+            return
+          }
+          toast.success('Draft quote created')
+          router.push(`/quotes/${result.quoteId}`)
+        })
+      }
+      className="font-semibold underline underline-offset-2 disabled:opacity-50"
+    >
+      {pending ? 'Creating…' : 'Quote this'}
+    </button>
+  )
+}
+
+/** Amber inside 30 days, red once overdue — matches the compliance lights. */
+function dueTone(due: string): string {
+  const today = todayAUClient()
+  if (due < today) return 'bg-red-600 text-white'
+  const soon = new Date(due) <= new Date(Date.now() + 30 * 86400000)
+  return soon
+    ? 'bg-amber-500 text-white'
+    : 'bg-amber-100 text-amber-900 dark:bg-amber-900 dark:text-amber-100'
+}
+
 function EntryRow({
   entry,
   canEdit,
@@ -504,6 +602,24 @@ function EntryRow({
         <div className="flex flex-wrap items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-200">
           <span className="font-semibold tracking-wide uppercase">Open</span>
           <span>{entry.follow_up || 'Permanent repair recommended'}</span>
+          {entry.follow_up_due && (
+            <span
+              className={`rounded px-1.5 py-0.5 font-semibold ${dueTone(entry.follow_up_due)}`}
+            >
+              due {fmtDate(entry.follow_up_due)}
+            </span>
+          )}
+          {canEdit && !entry.quote_id && (
+            <QuoteThisButton entryId={entry.id} />
+          )}
+          {entry.quote_id && (
+            <Link
+              href={`/quotes/${entry.quote_id}`}
+              className="font-medium underline underline-offset-2"
+            >
+              Quoted{entry.quote_number ? `: ${entry.quote_number}` : ''}
+            </Link>
+          )}
         </div>
       )}
 
@@ -521,34 +637,38 @@ function EntryRow({
               att.content_type?.startsWith('image/') || att.kind === 'photo'
             if (isImage && att.signedUrl) {
               return (
-                <a
-                  key={att.id}
-                  href={att.signedUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="block"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={att.signedUrl}
-                    alt={att.filename}
-                    loading="lazy"
-                    className="size-16 rounded-lg border object-cover"
-                  />
-                </a>
+                <span key={att.id} className="relative block">
+                  <a
+                    href={att.signedUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={att.signedUrl}
+                      alt={att.filename}
+                      loading="lazy"
+                      className="size-16 rounded-lg border object-cover"
+                    />
+                  </a>
+                  {canEdit && <EvidenceDeleteButton attachmentId={att.id} />}
+                </span>
               )
             }
             return (
-              <a
-                key={att.id}
-                href={att.signedUrl ?? '#'}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
-              >
-                <FileIcon className="size-3.5" />
-                {att.filename}
-              </a>
+              <span key={att.id} className="inline-flex items-center gap-1">
+                <a
+                  href={att.signedUrl ?? '#'}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                >
+                  <FileIcon className="size-3.5" />
+                  {att.filename}
+                </a>
+                {canEdit && <EvidenceDeleteButton attachmentId={att.id} inline />}
+              </span>
             )
           })}
         </div>

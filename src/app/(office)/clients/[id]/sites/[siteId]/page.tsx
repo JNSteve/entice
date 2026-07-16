@@ -87,7 +87,7 @@ export default async function SiteDetailPage({
       .order('created_at', { ascending: false }),
     supabase
       .from('maintenance_entries')
-      .select('*, jobs(number), projects(number)')
+      .select('*, jobs(number), projects(number), quotes(number)')
       .eq('site_id', siteId)
       .order('done_at', { ascending: false })
       .order('created_at', { ascending: false }),
@@ -226,6 +226,10 @@ export default async function SiteDetailPage({
       done_at: m.done_at as string,
       status: m.status as MaintenanceEntryRow['status'],
       follow_up: (m.follow_up as string | null) ?? null,
+      follow_up_due: (m.follow_up_due as string | null) ?? null,
+      quote_id: (m.quote_id as string | null) ?? null,
+      quote_number:
+        (m.quotes as unknown as { number: string } | null)?.number ?? null,
       flagged: Boolean(m.flagged),
       flag_note: (m.flag_note as string | null) ?? null,
       client_visible: Boolean(m.client_visible),
