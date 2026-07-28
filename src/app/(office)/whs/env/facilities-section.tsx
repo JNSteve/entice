@@ -58,10 +58,21 @@ import {
 export interface FacilityRow {
   id: string
   name: string
+  /** For a QLD receiving facility this IS the environmental authority number. */
   licence_no: string | null
   licence_expiry: string | null
   waste_types: string | null
   active: boolean
+  // Receiver details required by the BUDF record, fields 39–46 (migration 0054)
+  abn: string | null
+  street_number: string | null
+  street_name: string | null
+  suburb: string | null
+  postcode: string | null
+  contact_name: string | null
+  contact_number: string | null
+  receives_regulated: boolean
+  agent_agreement_date: string | null
 }
 
 export interface PermitRow {
@@ -150,6 +161,15 @@ function FacilityDialog({
     licence_expiry: existing?.licence_expiry ?? '',
     waste_types: existing?.waste_types ?? '',
     active: existing?.active ?? true,
+    abn: existing?.abn ?? '',
+    street_number: existing?.street_number ?? '',
+    street_name: existing?.street_name ?? '',
+    suburb: existing?.suburb ?? '',
+    postcode: existing?.postcode ?? '',
+    contact_name: existing?.contact_name ?? '',
+    contact_number: existing?.contact_number ?? '',
+    receives_regulated: existing?.receives_regulated ?? false,
+    agent_agreement_date: existing?.agent_agreement_date ?? '',
   }))
 
   function handleSubmit(e: React.FormEvent) {
@@ -160,6 +180,15 @@ function FacilityDialog({
       licence_expiry: form.licence_expiry || null,
       waste_types: form.waste_types || null,
       active: form.active,
+      abn: form.abn || null,
+      street_number: form.street_number || null,
+      street_name: form.street_name || null,
+      suburb: form.suburb || null,
+      postcode: form.postcode || null,
+      contact_name: form.contact_name || null,
+      contact_number: form.contact_number || null,
+      receives_regulated: form.receives_regulated,
+      agent_agreement_date: form.agent_agreement_date || null,
     }
     startTransition(async () => {
       const result = existing
@@ -234,6 +263,125 @@ function FacilityDialog({
             />
             Active — available for new loads
           </label>
+
+          {/* Regulated waste receiver. The BUDF record needs the facility's
+              ABN, physical address and contact (fields 39–46), and the
+              licence number above doubles as its environmental authority
+              (field 38, max 15 characters). */}
+          <div className="flex flex-col gap-3 rounded-lg border p-3">
+            <label className="flex items-start gap-2.5">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-4"
+                checked={form.receives_regulated}
+                onChange={(e) =>
+                  setForm((f) => ({ ...f, receives_regulated: e.target.checked }))
+                }
+              />
+              <span className="flex flex-col">
+                <span className="text-sm font-medium">
+                  Receives regulated (trackable) waste
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  Selectable at the gate for trackable waste. The licence number
+                  above is used as the environmental authority on the record.
+                </span>
+              </span>
+            </label>
+
+            {form.receives_regulated && (
+              <>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label>ABN</Label>
+                    <Input
+                      value={form.abn}
+                      onChange={(e) => setForm((f) => ({ ...f, abn: e.target.value }))}
+                      placeholder="12 345 678 901"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Agent agreement signed</Label>
+                    <Input
+                      type="date"
+                      value={form.agent_agreement_date}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, agent_agreement_date: e.target.value }))
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex w-1/3 flex-col gap-1.5">
+                    <Label>Street no.</Label>
+                    <Input
+                      value={form.street_number}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, street_number: e.target.value }))
+                      }
+                      maxLength={20}
+                    />
+                  </div>
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label>Street name</Label>
+                    <Input
+                      value={form.street_name}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, street_name: e.target.value }))
+                      }
+                      maxLength={40}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <div className="flex flex-1 flex-col gap-1.5">
+                    <Label>Suburb</Label>
+                    <Input
+                      value={form.suburb}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, suburb: e.target.value }))
+                      }
+                      maxLength={25}
+                    />
+                  </div>
+                  <div className="flex w-28 flex-col gap-1.5">
+                    <Label>Postcode</Label>
+                    <Input
+                      value={form.postcode}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, postcode: e.target.value }))
+                      }
+                      inputMode="numeric"
+                      maxLength={4}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Contact name</Label>
+                    <Input
+                      value={form.contact_name}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, contact_name: e.target.value }))
+                      }
+                      maxLength={50}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label>Contact number</Label>
+                    <Input
+                      value={form.contact_number}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, contact_number: e.target.value }))
+                      }
+                      inputMode="tel"
+                    />
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
           <DialogFooter>
             <Button
               type="button"

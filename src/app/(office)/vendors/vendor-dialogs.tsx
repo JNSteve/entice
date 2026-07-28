@@ -46,6 +46,13 @@ interface VendorFormState {
   phone: string
   terms: string
   notes: string
+  // Waste transport (migration 0054)
+  street_number: string
+  street_name: string
+  suburb: string
+  postcode: string
+  is_waste_transporter: boolean
+  agent_agreement_date: string
 }
 
 function useVendorFormState(initial?: Partial<VendorFormState>): [
@@ -59,6 +66,12 @@ function useVendorFormState(initial?: Partial<VendorFormState>): [
     setPhone: (v: string) => void
     setTerms: (v: string) => void
     setNotes: (v: string) => void
+    setStreetNumber: (v: string) => void
+    setStreetName: (v: string) => void
+    setSuburb: (v: string) => void
+    setPostcode: (v: string) => void
+    setIsWasteTransporter: (v: boolean) => void
+    setAgentAgreementDate: (v: string) => void
   },
 ] {
   const [name, setName] = useState(initial?.name ?? '')
@@ -69,10 +82,28 @@ function useVendorFormState(initial?: Partial<VendorFormState>): [
   const [phone, setPhone] = useState(initial?.phone ?? '')
   const [terms, setTerms] = useState(initial?.terms ?? '30')
   const [notes, setNotes] = useState(initial?.notes ?? '')
+  const [street_number, setStreetNumber] = useState(initial?.street_number ?? '')
+  const [street_name, setStreetName] = useState(initial?.street_name ?? '')
+  const [suburb, setSuburb] = useState(initial?.suburb ?? '')
+  const [postcode, setPostcode] = useState(initial?.postcode ?? '')
+  const [is_waste_transporter, setIsWasteTransporter] = useState(
+    initial?.is_waste_transporter ?? false
+  )
+  const [agent_agreement_date, setAgentAgreementDate] = useState(
+    initial?.agent_agreement_date ?? ''
+  )
 
   return [
-    { name, abn, tradesRaw, contact_name, email, phone, terms, notes },
-    { setName, setAbn, setTradesRaw, setContactName, setEmail, setPhone, setTerms, setNotes },
+    {
+      name, abn, tradesRaw, contact_name, email, phone, terms, notes,
+      street_number, street_name, suburb, postcode,
+      is_waste_transporter, agent_agreement_date,
+    },
+    {
+      setName, setAbn, setTradesRaw, setContactName, setEmail, setPhone,
+      setTerms, setNotes, setStreetNumber, setStreetName, setSuburb,
+      setPostcode, setIsWasteTransporter, setAgentAgreementDate,
+    },
   ]
 }
 
@@ -166,6 +197,92 @@ function VendorFormFields({
           placeholder="Optional notes…"
         />
       </div>
+
+      {/* Regulated waste transport. The depot address is required by the BUDF
+          record (fields 26–29, all null-not-allowed), so it is captured here
+          rather than at the gate. The EA NUMBER is not here — it is a
+          compliance document, which is what gives it expiry monitoring. */}
+      <div className="flex flex-col gap-3 rounded-lg border p-3">
+        <label className="flex items-start gap-2.5">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4"
+            checked={state.is_waste_transporter}
+            onChange={(e) => handlers.setIsWasteTransporter(e.target.checked)}
+          />
+          <span className="flex flex-col">
+            <span className="text-sm font-medium">Regulated waste transporter</span>
+            <span className="text-xs text-muted-foreground">
+              Selectable at the gate for trackable waste. Add their
+              environmental authority as a compliance document below — a
+              transporter without one cannot be given trackable waste (s96).
+            </span>
+          </span>
+        </label>
+
+        {state.is_waste_transporter && (
+          <>
+            <div className="flex gap-2">
+              <div className="flex w-1/3 flex-col gap-1.5">
+                <Label htmlFor={`${idPrefix}-street-no`}>Depot street no.</Label>
+                <Input
+                  id={`${idPrefix}-street-no`}
+                  value={state.street_number}
+                  onChange={(e) => handlers.setStreetNumber(e.target.value)}
+                  maxLength={20}
+                  placeholder="14"
+                />
+              </div>
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor={`${idPrefix}-street-name`}>Street name</Label>
+                <Input
+                  id={`${idPrefix}-street-name`}
+                  value={state.street_name}
+                  onChange={(e) => handlers.setStreetName(e.target.value)}
+                  maxLength={40}
+                  placeholder="Depot Road"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex flex-1 flex-col gap-1.5">
+                <Label htmlFor={`${idPrefix}-suburb`}>Suburb</Label>
+                <Input
+                  id={`${idPrefix}-suburb`}
+                  value={state.suburb}
+                  onChange={(e) => handlers.setSuburb(e.target.value)}
+                  maxLength={25}
+                />
+              </div>
+              <div className="flex w-28 flex-col gap-1.5">
+                <Label htmlFor={`${idPrefix}-postcode`}>Postcode</Label>
+                <Input
+                  id={`${idPrefix}-postcode`}
+                  value={state.postcode}
+                  onChange={(e) => handlers.setPostcode(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={4}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor={`${idPrefix}-agent`}>
+                Agent agreement signed (optional)
+              </Label>
+              <Input
+                id={`${idPrefix}-agent`}
+                type="date"
+                value={state.agent_agreement_date}
+                onChange={(e) => handlers.setAgentAgreementDate(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Bulk upload lodges their part under our identifier, which makes
+                us their agent. The department may ask to see the agreement.
+              </p>
+            </div>
+          </>
+        )}
+      </div>
     </>
   )
 }
@@ -187,6 +304,12 @@ export function NewVendorDialog() {
     handlers.setPhone('')
     handlers.setTerms('30')
     handlers.setNotes('')
+    handlers.setStreetNumber('')
+    handlers.setStreetName('')
+    handlers.setSuburb('')
+    handlers.setPostcode('')
+    handlers.setIsWasteTransporter(false)
+    handlers.setAgentAgreementDate('')
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -201,6 +324,12 @@ export function NewVendorDialog() {
         phone: state.phone,
         payment_terms_days: Number(state.terms),
         notes: state.notes,
+        street_number: state.street_number,
+        street_name: state.street_name,
+        suburb: state.suburb,
+        postcode: state.postcode,
+        is_waste_transporter: state.is_waste_transporter,
+        agent_agreement_date: state.agent_agreement_date || null,
       })
       if (result.error) {
         toast.error(result.error)
@@ -256,6 +385,12 @@ interface VendorDetail {
   phone: string | null
   payment_terms_days: number
   notes: string | null
+  street_number: string | null
+  street_name: string | null
+  suburb: string | null
+  postcode: string | null
+  is_waste_transporter: boolean
+  agent_agreement_date: string | null
 }
 
 export function EditVendorDialog({ vendor }: { vendor: VendorDetail }) {
@@ -270,6 +405,12 @@ export function EditVendorDialog({ vendor }: { vendor: VendorDetail }) {
     phone: vendor.phone ?? '',
     terms: String(vendor.payment_terms_days),
     notes: vendor.notes ?? '',
+    street_number: vendor.street_number ?? '',
+    street_name: vendor.street_name ?? '',
+    suburb: vendor.suburb ?? '',
+    postcode: vendor.postcode ?? '',
+    is_waste_transporter: vendor.is_waste_transporter,
+    agent_agreement_date: vendor.agent_agreement_date ?? '',
   })
 
   function handleSubmit(e: React.FormEvent) {
@@ -284,6 +425,12 @@ export function EditVendorDialog({ vendor }: { vendor: VendorDetail }) {
         phone: state.phone,
         payment_terms_days: Number(state.terms),
         notes: state.notes,
+        street_number: state.street_number,
+        street_name: state.street_name,
+        suburb: state.suburb,
+        postcode: state.postcode,
+        is_waste_transporter: state.is_waste_transporter,
+        agent_agreement_date: state.agent_agreement_date || null,
       })
       if (result.error) {
         toast.error(result.error)

@@ -132,6 +132,12 @@ export default async function VendorDetailPage({
                     phone: vendor.phone,
                     payment_terms_days: vendor.payment_terms_days ?? 30,
                     notes: vendor.notes,
+                    street_number: vendor.street_number ?? null,
+                    street_name: vendor.street_name ?? null,
+                    suburb: vendor.suburb ?? null,
+                    postcode: vendor.postcode ?? null,
+                    is_waste_transporter: vendor.is_waste_transporter ?? false,
+                    agent_agreement_date: vendor.agent_agreement_date ?? null,
                   }}
                 />
                 <ArchiveVendorButton

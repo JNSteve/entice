@@ -868,6 +868,18 @@ export const vendorSchema = z.object({
   phone: optionalText.optional(),
   payment_terms_days: z.coerce.number().int().min(0).max(120).default(30),
   notes: optionalText.optional(),
+  // Waste transport (migration 0054). The depot address is separate street
+  // number and street name because BUDF fields 26/27 are separate and both
+  // null-not-allowed; a PO Box is not accepted for any address field.
+  street_number: optionalText.optional(),
+  street_name: optionalText.optional(),
+  suburb: optionalText.optional(),
+  postcode: optionalText
+    .refine((v) => v === null || /^\d{4}$/.test(v), 'Postcode must be 4 digits')
+    .optional(),
+  is_waste_transporter: z.boolean().default(false),
+  /** Non-null IS the flag: the date the waste-tracking agent agreement was signed. */
+  agent_agreement_date: optionalText.optional(),
 })
 
 export type VendorInput = z.infer<typeof vendorSchema>
@@ -876,6 +888,11 @@ export const COMPLIANCE_DOC_KINDS = [
   'public_liability',
   'workers_comp',
   'licence',
+  // The transporter's environmental authority (BUDF field 31). Riding the
+  // compliance-doc table is what gives EA numbers expiry monitoring and the
+  // 30-day traffic light for free — reference holds the number, expiry_date
+  // its expiry. Added to the database constraint in migration 0054.
+  'environmental_authority',
   'other',
 ] as const
 export type ComplianceDocKind = (typeof COMPLIANCE_DOC_KINDS)[number]
@@ -884,6 +901,7 @@ export const COMPLIANCE_DOC_KIND_LABELS: Record<ComplianceDocKind, string> = {
   public_liability: 'Public Liability',
   workers_comp: "Workers' Comp",
   licence: 'Licence',
+  environmental_authority: 'Environmental Authority (waste transport)',
   other: 'Other',
 }
 
@@ -2942,12 +2960,30 @@ export type WasteLoadUpdateInput = z.infer<typeof wasteLoadUpdateSchema>
 
 export const envFacilitySchema = z.object({
   name: z.string().trim().min(1, 'Facility name is required'),
+  // For a QLD receiving facility this IS the environmental authority number
+  // (BUDF field 38, max 15). See migration 0054.
   licence_no: optionalText,
   licence_expiry: isoDate
     .nullish()
     .transform((v) => (v?.trim() === '' ? null : v ?? null)),
   waste_types: optionalText,
   active: z.boolean().default(true),
+  // Receiver details required by the BUDF record (fields 39–46).
+  abn: optionalText,
+  street_number: optionalText,
+  street_name: optionalText,
+  suburb: optionalText,
+  postcode: optionalText.refine(
+    (v) => v === null || /^\d{4}$/.test(v),
+    'Postcode must be 4 digits'
+  ),
+  contact_name: optionalText,
+  contact_number: optionalText,
+  receives_regulated: z.boolean().default(false),
+  /** Non-null IS the flag: the date the waste-tracking agent agreement was signed. */
+  agent_agreement_date: isoDate
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v ?? null)),
 })
 
 export type EnvFacilityInput = z.infer<typeof envFacilitySchema>

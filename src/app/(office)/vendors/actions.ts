@@ -39,6 +39,12 @@ export async function createVendor(
       phone: parsed.data.phone ?? null,
       payment_terms_days: parsed.data.payment_terms_days,
       notes: parsed.data.notes ?? null,
+      street_number: parsed.data.street_number ?? null,
+      street_name: parsed.data.street_name ?? null,
+      suburb: parsed.data.suburb ?? null,
+      postcode: parsed.data.postcode ?? null,
+      is_waste_transporter: parsed.data.is_waste_transporter,
+      agent_agreement_date: parsed.data.agent_agreement_date || null,
     })
     .select('id')
     .single()
@@ -72,6 +78,12 @@ export async function updateVendor(
       phone: parsed.data.phone ?? null,
       payment_terms_days: parsed.data.payment_terms_days,
       notes: parsed.data.notes ?? null,
+      street_number: parsed.data.street_number ?? null,
+      street_name: parsed.data.street_name ?? null,
+      suburb: parsed.data.suburb ?? null,
+      postcode: parsed.data.postcode ?? null,
+      is_waste_transporter: parsed.data.is_waste_transporter,
+      agent_agreement_date: parsed.data.agent_agreement_date || null,
     })
     .eq('id', id)
 

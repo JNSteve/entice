@@ -87,6 +87,15 @@ export default async function WhsEnvPage() {
     licence_expiry: (f.licence_expiry as string | null) ?? null,
     waste_types: (f.waste_types as string | null) ?? null,
     active: Boolean(f.active),
+    abn: (f.abn as string | null) ?? null,
+    street_number: (f.street_number as string | null) ?? null,
+    street_name: (f.street_name as string | null) ?? null,
+    suburb: (f.suburb as string | null) ?? null,
+    postcode: (f.postcode as string | null) ?? null,
+    contact_name: (f.contact_name as string | null) ?? null,
+    contact_number: (f.contact_number as string | null) ?? null,
+    receives_regulated: Boolean(f.receives_regulated),
+    agent_agreement_date: (f.agent_agreement_date as string | null) ?? null,
   }))
   const facilityOptions: FacilityOption[] = facilities
     .filter((f) => f.active)
