@@ -12,7 +12,12 @@ export const metadata: Metadata = {
   description: "Civil & remediation operations platform",
   appleWebApp: {
     title: "Entice",
-    statusBarStyle: "black-translucent",
+    // NOT "black-translucent": that runs the web view up under the status bar,
+    // so page content collides with the clock and signal icons. "black" gives
+    // an opaque status bar with white glyphs (right for the navy chrome) and
+    // starts the content below it. The safe-area padding in the shells stays
+    // as belt-and-braces for landscape notches and the home indicator.
+    statusBarStyle: "black",
   },
 };
 

@@ -194,7 +194,9 @@ export function OfficeShell({
 
       <div className="flex min-w-0 flex-1 flex-col md:pl-56">
         {/* Top bar */}
-        <header className="sticky top-0 z-30 flex h-14 items-center justify-between gap-2 border-b bg-background px-4">
+        {/* min-h rather than h so the safe-area padding grows the bar instead
+            of squashing its contents (border-box would eat the 3.5rem). */}
+        <header className="sticky top-0 z-30 flex min-h-14 items-center justify-between gap-2 border-b bg-background px-4 pt-[env(safe-area-inset-top)]">
           <div className="flex items-center gap-2">
             {/* Mobile nav trigger */}
             <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>

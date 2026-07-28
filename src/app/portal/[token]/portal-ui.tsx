@@ -135,7 +135,7 @@ export function PortalShell({
         className={`${BRAND_BG} text-white`}
         style={{ borderBottom: `2px solid ${BRAND_GOLD}` }}
       >
-        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 py-4">
+        <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 py-4 pt-[calc(1rem+env(safe-area-inset-top))]">
           <div className="flex min-w-0 items-center gap-3">
             {branding.logo_path && (
               // eslint-disable-next-line @next/next/no-img-element

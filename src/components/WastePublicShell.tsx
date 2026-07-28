@@ -7,7 +7,10 @@ import { formatLoadNumber, type WasteLinkView } from '@/lib/waste/link-payload'
  */
 export function WastePublicShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-5 p-4 pb-10">
+    // Drivers and weighbridge operators open this on a phone, often as a
+    // standalone-ish full screen page — keep it clear of the notch and the
+    // home indicator.
+    <div className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-5 p-4 pb-[calc(2.5rem+env(safe-area-inset-bottom))] pt-[calc(1rem+env(safe-area-inset-top))]">
       <div className="border-b pb-3">
         <p className="text-2xl font-bold tracking-tight text-[#162040] dark:text-blue-200">
           Entice
