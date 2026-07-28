@@ -102,6 +102,45 @@ export function normaliseAbn(value: string | null | undefined): string {
   return value.replace(/\D/g, '')
 }
 
+/**
+ * §2.1: "The bulk upload data file uses a delimited ASCII text file format."
+ * Free text reaching this file comes from phones and pasted documents, which
+ * readily produce em dashes, curly quotes and ellipses. Those are NOT ASCII,
+ * and a non-conforming file is rejected in full — so they are reported rather
+ * than silently rewritten, because this is a statutory record and the office
+ * should decide the wording, not the exporter.
+ *
+ * Returns the distinct offending characters, in order of first appearance.
+ */
+export function nonAsciiCharacters(value: string): string[] {
+  const found: string[] = []
+  for (const ch of value) {
+    // Printable ASCII plus tab, LF and CR (all legal inside a quoted field).
+    const code = ch.codePointAt(0) ?? 0
+    const ok = (code >= 0x20 && code <= 0x7e) || code === 9 || code === 10 || code === 13
+    if (!ok && !found.includes(ch)) found.push(ch)
+  }
+  return found
+}
+
+/**
+ * Replaces the typographic characters that cause almost all real-world ASCII
+ * failures with their ASCII equivalents. Offered to the office as a one-click
+ * fix — never applied automatically by the exporter.
+ */
+export function toAscii(value: string): string {
+  return value
+    .replace(/[–—−]/g, '-') // en dash, em dash, minus
+    .replace(/[‘’‛]/g, "'") // curly single quotes
+    .replace(/[“”]/g, '"') // curly double quotes
+    .replace(/…/g, '...') // ellipsis
+    .replace(/ /g, ' ') // non-breaking space
+    .replace(/[²]/g, '2')
+    .replace(/[³]/g, '3') // m³ → m3
+    .replace(/°/g, ' deg ')
+    .replace(/[•·]/g, '-')
+}
+
 // ─── §2.4.3 field 2 — the unique identifier ──────────────────────────────────
 
 /**
@@ -361,6 +400,16 @@ export function validateMovement(m: BudfMovement, ctx: BudfContext): BudfProblem
 
     if (spec.max !== null && !UNENFORCED_MAX.has(spec.n) && value.length > spec.max) {
       push(spec.n, spec.name, `is ${value.length} characters, max ${spec.max}`)
+    }
+
+    // §2.1 — the whole file is ASCII.
+    const nonAscii = nonAsciiCharacters(value)
+    if (nonAscii.length > 0) {
+      push(
+        spec.n,
+        spec.name,
+        `contains non-ASCII characters (${nonAscii.join(' ')}) — the specification requires a plain ASCII file`
+      )
     }
 
     switch (spec.n) {

@@ -11,8 +11,10 @@ import {
   formatBudfAmount,
   formatBudfDate,
   groupProblems,
+  nonAsciiCharacters,
   normaliseAbn,
   normaliseContactNumber,
+  toAscii,
   validateMovement,
   type BudfMovement,
 } from '../src/lib/waste/budf'
@@ -558,6 +560,54 @@ describe('validateMovement', () => {
   test('an unlodgeable identifier surfaces as a field 2 problem', () => {
     const problems = validateMovement(movement(), { ...CTX, identifier: 'TOOLONG' })
     expect(problems[0].field).toBe(2)
+  })
+
+  // §2.1: "a delimited ASCII text file format". Phones and pasted documents
+  // readily produce em dashes and curly quotes; the department rejects a
+  // non-conforming file in full.
+  test('non-ASCII characters in free text are reported, not silently emitted', () => {
+    const problems = validateMovement(
+      movement({ receiver_discrepancy: 'Volume higher — load settled' }),
+      CTX
+    )
+    expect(problems).toHaveLength(1)
+    expect(problems[0].field).toBe(53)
+    expect(problems[0].message).toMatch(/non-ASCII/)
+    expect(problems[0].message).toContain('—')
+  })
+
+  test('the m³ symbol is caught — the unit code is the ASCII "m3"', () => {
+    const problems = validateMovement(movement({ waste_description: '2.5 m³ of sheeting' }), CTX)
+    expect(problems[0].field).toBe(54)
+    expect(problems[0].message).toMatch(/non-ASCII/)
+  })
+
+  test('plain ASCII punctuation passes untouched', () => {
+    expect(
+      validateMovement(
+        movement({ waste_description: "Bonded sheet - 100% wrapped; \"double\" bagged (2.5m3)" }),
+        CTX
+      )
+    ).toEqual([])
+  })
+})
+
+describe('nonAsciiCharacters / toAscii', () => {
+  test('reports each distinct offender once, in order', () => {
+    expect(nonAsciiCharacters('a—b—c’d')).toEqual(['—', '’'])
+    expect(nonAsciiCharacters('plain ascii')).toEqual([])
+  })
+
+  test('tabs and line breaks are legal inside a quoted field', () => {
+    expect(nonAsciiCharacters('a\tb\r\nc')).toEqual([])
+  })
+
+  test('toAscii fixes the common typographic offenders', () => {
+    expect(toAscii('Volume higher — load settled')).toBe('Volume higher - load settled')
+    expect(toAscii('the “double” bagged ‘load’')).toBe('the "double" bagged \'load\'')
+    expect(toAscii('2.5 m³ and 3 m²')).toBe('2.5 m3 and 3 m2')
+    expect(toAscii('wait…')).toBe('wait...')
+    expect(nonAsciiCharacters(toAscii('Volume higher — load settled…'))).toEqual([])
   })
 })
 
