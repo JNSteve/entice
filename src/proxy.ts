@@ -91,13 +91,15 @@ export const config = {
     /*
      * Match all request paths except:
      * - api routes
-     * - /sign/*, /submit/* and /portal/* — public external pages (token-
-     *   gated, no login). Excluding them here also skips the proxy for their
-     *   Server Function POSTs / file routes, which use the anon-granted RPCs.
+     * - /sign/*, /submit/*, /portal/*, /haul/* and /receive/* — public
+     *   external pages (token-gated, no login). /haul and /receive are the
+     *   transporter and receiver halves of a regulated waste movement.
+     *   Excluding them here also skips the proxy for their Server Function
+     *   POSTs / file routes, which use the anon-granted RPCs.
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico and common static assets
      */
-    '/((?!api|sign/|submit/|portal/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|map)$).*)',
+    '/((?!api|sign/|submit/|portal/|haul/|receive/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|map)$).*)',
   ],
 }

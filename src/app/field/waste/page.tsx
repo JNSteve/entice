@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { ArrowLeftIcon } from 'lucide-react'
+import { ArrowLeftIcon, ChevronRightIcon } from 'lucide-react'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { fmtDate } from '@/lib/format'
@@ -88,6 +88,23 @@ export default async function FieldWastePage({
           tracking is an ISO 14001 record.
         </p>
       </div>
+
+      {/* Trackable waste carries a separate statutory record (Schedule 12) —
+          the general log below is for everything else. */}
+      <Link
+        href={`/field/waste/regulated${defaultProjectId ? `?project=${defaultProjectId}` : ''}`}
+        className="flex items-center justify-between gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 dark:border-amber-700 dark:bg-amber-950"
+      >
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm font-semibold text-amber-900 dark:text-amber-100">
+            Asbestos or regulated waste?
+          </span>
+          <span className="text-xs text-amber-800 dark:text-amber-200">
+            Trackable waste needs the full movement record — tap here instead.
+          </span>
+        </div>
+        <ChevronRightIcon className="size-4 shrink-0 text-amber-700 dark:text-amber-300" />
+      </Link>
 
       <FieldWasteForm
         projects={projects}

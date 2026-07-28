@@ -24,6 +24,8 @@ const PARENT_TYPES = [
   'waste_load',
   'lot',
   'maintenance',
+  'regulated_waste_movement',
+  'env_facility',
 ] as const
 
 const KINDS = ['photo', 'docket', 'document', 'pdf'] as const
@@ -49,6 +51,10 @@ const PARENT_TABLE: Record<(typeof PARENT_TYPES)[number], string> = {
   waste_load: 'waste_loads',
   lot: 'lots',
   maintenance: 'maintenance_entries',
+  // Docket photos on the statutory movement record, and the signed
+  // waste-tracking agent agreement on a receiving facility (migration 0054).
+  regulated_waste_movement: 'regulated_waste_movements',
+  env_facility: 'env_facilities',
 }
 
 const attachmentInputSchema = z.object({
@@ -95,6 +101,9 @@ async function revalidateParent(
   } else if (parentType === 'waste_load') {
     revalidatePath(`/whs/env/loads/${parentId}`)
     revalidatePath('/whs/env')
+  } else if (parentType === 'regulated_waste_movement') {
+    revalidatePath('/whs/env/regulated')
+    revalidatePath('/field/waste/regulated')
   } else if (parentType === 'lot') {
     // Lots live under /projects/[id]/quality/lots/[lotId]
     const { data } = await supabase

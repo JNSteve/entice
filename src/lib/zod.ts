@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import { PROPERTY_COMPLIANCE_KINDS } from '@/lib/portal'
 import { REQUEST_STATUSES } from '@/lib/portal-interactions'
+import {
+  BUDF_UNITS,
+  DG_PACKING_GROUPS,
+  PHYSICAL_NATURES,
+  isValidWasteCode,
+} from '@/lib/waste/qld-codes'
 
 export const CLIENT_TYPES = [
   'builder',
@@ -2976,6 +2982,154 @@ export const envAspectSchema = z.object({
 })
 
 export type EnvAspectInput = z.infer<typeof envAspectSchema>
+
+// ─── QLD regulated (trackable) waste movements ───────────────────────────────
+//
+// The Schedule 12 prescribed dataset, captured at the gate. Field lengths and
+// permitted values come from DETSI ESR/2023/6563 v2.01 — see
+// src/lib/waste/qld-codes.ts and docs/superpowers/specs/
+// 2026-07-28-qld-waste-tracking-design.md.
+//
+// This schema covers what is knowable AT CAPTURE. Parts 2 and 3 (the
+// transporter's vehicles and the receiver's weighbridge figures) arrive later
+// through the QR links or the office register, and are validated in their own
+// database RPCs. The EXPORT is what enforces full BUDF conformance.
+
+const regulatedText = (max: number, label: string) =>
+  z.string().trim().min(1, `${label} is required`).max(max, `${label} is too long (max ${max})`)
+
+const regulatedOptionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .nullish()
+    .transform((v) => (v && v.trim() !== '' ? v.trim() : null))
+
+const postcode = z
+  .string()
+  .trim()
+  .regex(/^\d{4}$/, 'Postcode must be 4 digits')
+
+/** Stored as given; the export normalises and enforces the spec's N(10). */
+const contactNumber = z
+  .string()
+  .trim()
+  .min(1, 'Contact number is required')
+  .refine((v) => v.replace(/\D/g, '').length === 10, 'Contact number must be 10 digits')
+
+export const REGULATED_GENERATOR_KINDS = ['client', 'company'] as const
+export type RegulatedGeneratorKind = (typeof REGULATED_GENERATOR_KINDS)[number]
+
+export const regulatedMovementCreateSchema = z
+  .object({
+    project_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    job_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    permit_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+
+    // Generator — the ACTUAL generator, never the agent lodging on their behalf.
+    generator_kind: z.enum(REGULATED_GENERATOR_KINDS),
+    generator_client_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    generator_site_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    generator_name: regulatedText(60, 'Generator name'),
+    generator_abn: regulatedOptionalText(20),
+    generator_street_number: regulatedText(20, 'Generator street number'),
+    generator_street_name: regulatedText(40, 'Generator street name'),
+    generator_suburb: regulatedText(25, 'Generator suburb'),
+    generator_postcode: postcode,
+    generator_contact_name: regulatedText(50, 'Generator contact name'),
+    generator_contact_number: contactNumber,
+    collection_date: isoDate,
+    local_government_area: regulatedOptionalText(50),
+
+    // Waste as classified by the generator.
+    waste_physical_nature: z.enum(PHYSICAL_NATURES),
+    waste_code: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .refine(isValidWasteCode, 'Pick a waste code from Appendix A'),
+    waste_amount: z.coerce
+      .number()
+      .positive('Amount must be greater than zero')
+      .max(99_999_999, 'Amount is too large'),
+    waste_unit: z.enum(BUDF_UNITS),
+    waste_description: regulatedOptionalText(225),
+    consignment_authorisation: regulatedOptionalText(225),
+
+    // Dangerous goods — optional block.
+    dg_un_class: regulatedOptionalText(2),
+    dg_un_number: regulatedOptionalText(4),
+    dg_subsidiary_risk: regulatedOptionalText(2),
+    dg_packaging_count: regulatedOptionalText(5),
+    dg_packaging_type: regulatedOptionalText(20),
+    dg_packing_group: z
+      .enum(DG_PACKING_GROUPS)
+      .nullish()
+      .transform((v) => v ?? null),
+
+    // Transporter. transporter_ea_number has no optional path by design: it is
+    // an offence under s96 of the Environmental Protection Regulation 2019 to
+    // give trackable waste to an unauthorised transporter.
+    transporter_vendor_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    transporter_name: regulatedText(60, 'Transporter name'),
+    transporter_contact_name: regulatedText(50, 'Transporter contact name'),
+    transporter_contact_number: contactNumber,
+    transporter_street_number: regulatedText(20, 'Transporter street number'),
+    transporter_street_name: regulatedText(40, 'Transporter street name'),
+    transporter_suburb: regulatedText(25, 'Transporter suburb'),
+    transporter_postcode: postcode,
+    transporter_abn: regulatedOptionalText(20),
+    transporter_ea_number: regulatedText(50, 'Transporter environmental authority number'),
+
+    // Receiver identity — known at the gate; Part 3 figures arrive later.
+    receiver_facility_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    receiver_ea_number: regulatedOptionalText(15),
+    receiver_name: regulatedText(50, 'Receiver name'),
+    receiver_contact_name: regulatedText(50, 'Receiver contact name'),
+    receiver_contact_number: contactNumber,
+    receiver_street_number: regulatedText(20, 'Receiver street number'),
+    receiver_street_name: regulatedText(40, 'Receiver street name'),
+    receiver_suburb: regulatedText(25, 'Receiver suburb'),
+    receiver_postcode: postcode,
+    receiver_abn: regulatedOptionalText(20),
+
+    notes: optionalText,
+  })
+  .refine((d) => d.project_id !== null || d.job_id !== null, {
+    message: 'Pick a project or job',
+    path: ['project_id'],
+  })
+  .refine((d) => d.generator_kind !== 'client' || d.generator_client_id !== null, {
+    message: 'A client-generated load needs the client on the project',
+    path: ['generator_client_id'],
+  })
+
+export type RegulatedMovementCreateInput = z.infer<
+  typeof regulatedMovementCreateSchema
+>
+
 // ─── ITP / Lot conformance / test records (ISO 9001 8.5/8.6/8.7) ─────────────
 
 export const ITP_POINT_TYPES = ['hold', 'witness', 'surveillance'] as const
