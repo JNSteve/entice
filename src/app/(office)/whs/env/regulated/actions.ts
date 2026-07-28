@@ -122,3 +122,100 @@ export async function getMovementLinks(
   const links = await issueLinks(supabase, movementId, origin)
   return links ? { links } : { error: 'Could not issue the links' }
 }
+
+/**
+ * Marks a movement as given to the department.
+ *
+ * Everything the record needs at lodgement is written in ONE update, because
+ * the regulated_waste_guard trigger freezes the statutory fields the moment
+ * lodged_at is set — a follow-up write would be rejected. Afterwards only
+ * wtc_reference and notes may change.
+ */
+export async function markLodged(
+  movementId: string,
+  method: 'connect' | 'bulk_upload',
+  wtcReference: string | null
+): Promise<Result> {
+  await requireRole('admin', 'office', 'supervisor')
+
+  if (method !== 'connect' && method !== 'bulk_upload') {
+    return { error: 'Unknown lodgement method' }
+  }
+  // Connect issues a waste transport certificate reference; bulk upload does
+  // not, so it is only required for the Connect route.
+  const reference = (wtcReference ?? '').trim()
+  if (method === 'connect' && !reference) {
+    return { error: 'Enter the Connect WTC reference' }
+  }
+
+  const supabase = await createClient()
+
+  const { data: settings } = await supabase
+    .from('settings')
+    .select('budf_identifier')
+    .eq('id', 1)
+    .single()
+
+  const { error } = await supabase
+    .from('regulated_waste_movements')
+    .update({
+      lodged_at: new Date().toISOString(),
+      lodgement_method: method,
+      wtc_reference: reference || null,
+      // The identifier actually submitted under, snapshotted.
+      budf_identifier: (settings?.budf_identifier as string | null) ?? null,
+    })
+    .eq('id', movementId)
+    .is('lodged_at', null)
+
+  if (error) return { error: error.message }
+
+  revalidateRegulated()
+  return {}
+}
+
+/** The WTC reference stays editable after lodgement — the guard allows it. */
+export async function setWtcReference(
+  movementId: string,
+  wtcReference: string
+): Promise<Result> {
+  await requireRole('admin', 'office', 'supervisor')
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('regulated_waste_movements')
+    .update({ wtc_reference: wtcReference.trim() || null })
+    .eq('id', movementId)
+
+  if (error) return { error: error.message }
+
+  revalidateRegulated()
+  return {}
+}
+
+/**
+ * Reopens the transporter or receiver part so it can be submitted again.
+ * Goes through the reopen_waste_part RPC, which refuses once the movement is
+ * lodged; the table's audit trigger records it either way.
+ */
+export async function reopenPart(
+  movementId: string,
+  part: 'transporter' | 'receiver'
+): Promise<Result> {
+  await requireRole('admin', 'office', 'supervisor')
+
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('reopen_waste_part', {
+    p_movement_id: movementId,
+    p_part: part,
+  })
+  if (error) return { error: error.message }
+
+  const payload = data as { ok?: boolean; error?: string } | null
+  if (!payload?.ok) return { error: payload?.error ?? 'Could not reopen that part' }
+
+  revalidateRegulated()
+  return {}
+}
+
+type Result = { error?: string }
