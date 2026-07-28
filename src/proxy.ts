@@ -100,6 +100,10 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico and common static assets
      */
-    '/((?!api|sign/|submit/|portal/|haul/|receive/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|map)$).*)',
+    // NOTE: .webmanifest MUST stay in the extension list. The manifest is
+    // fetched by the browser BEFORE anyone signs in (and by the install
+    // prompt), so proxying it returns a 307 to /login and the PWA silently
+    // falls back to defaults — wrong name, no standalone display, no icons.
+    '/((?!api|sign/|submit/|portal/|haul/|receive/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|map|webmanifest)$).*)',
   ],
 }
