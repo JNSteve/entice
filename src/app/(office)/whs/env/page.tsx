@@ -1,3 +1,5 @@
+import Link from 'next/link'
+import { ChevronRightIcon } from 'lucide-react'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
@@ -171,6 +173,22 @@ export default async function WhsEnvPage() {
         title="Environment"
         description="ISO 14001 operational core — aspects & impacts, waste/spoil load tracking with permit reconciliation, licensed facilities and monitoring (via field forms)."
       />
+
+      {/* Trackable waste is a separate statutory record (Schedule 12) with its
+          own 7-day clock and monthly bulk upload file. */}
+      <Link
+        href="/whs/env/regulated"
+        className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors hover:bg-muted"
+      >
+        <div className="flex min-w-0 flex-col">
+          <span className="text-sm font-semibold">Regulated waste register</span>
+          <span className="text-xs text-muted-foreground">
+            Trackable waste movements, 7-day lodgement countdown and the monthly
+            bulk upload file.
+          </span>
+        </div>
+        <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+      </Link>
 
       <AspectsSection
         aspects={aspects}

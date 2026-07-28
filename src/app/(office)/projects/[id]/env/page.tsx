@@ -7,7 +7,11 @@ import { Button } from '@/components/ui/button'
 import { fmtDate } from '@/lib/format'
 import { expiryColour } from '@/lib/compliance'
 import { cn } from '@/lib/utils'
-import { permitUsage, type WasteUnit } from '@/lib/env'
+import {
+  permitUsageWithMovements,
+  type BudfPermitUnit,
+  type WasteUnit,
+} from '@/lib/env'
 import {
   WASTE_CLASSIFICATION_LABELS,
   WASTE_UNIT_LABELS,
@@ -42,6 +46,7 @@ export default async function ProjectEnvPage({
     { data: loadRows },
     { data: permitRows },
     { data: facilityRows },
+    { data: movementRows },
   ] = await Promise.all([
     supabase.from('projects').select('id, number, name').eq('id', id).single(),
     supabase
@@ -56,6 +61,12 @@ export default async function ProjectEnvPage({
       .select('id, name, licence_expiry, active')
       .eq('active', true)
       .order('name'),
+    // Tracked movements count against the same allowances — one physical load
+    // is one record, so the two tables never double-count each other.
+    supabase
+      .from('regulated_waste_movements')
+      .select('permit_id, waste_amount, waste_unit')
+      .eq('project_id', id),
   ])
 
   if (!project) notFound()
@@ -73,6 +84,12 @@ export default async function ProjectEnvPage({
     const permitLoads = loads
       .filter((l) => l.permit_id === (p.id as string))
       .map((l) => ({ qty: l.qty, unit: l.unit as WasteUnit }))
+    const permitMovements = (movementRows ?? [])
+      .filter((mv) => mv.permit_id === (p.id as string))
+      .map((mv) => ({
+        qty: Number(mv.waste_amount),
+        unit: mv.waste_unit as BudfPermitUnit,
+      }))
     return {
       id: p.id as string,
       project_id: p.project_id as string,
@@ -82,10 +99,11 @@ export default async function ProjectEnvPage({
       allowance_qty: Number(p.allowance_qty),
       allowance_unit: p.allowance_unit as WasteUnitKey,
       expiry: (p.expiry as string | null) ?? null,
-      usage: permitUsage(
+      usage: permitUsageWithMovements(
         Number(p.allowance_qty),
         p.allowance_unit as WasteUnit,
-        permitLoads
+        permitLoads,
+        permitMovements
       ),
     }
   })

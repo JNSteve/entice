@@ -82,6 +82,62 @@ export function permitUsage(
   return { used, pctUsed, level, otherUnitCount }
 }
 
+// ─── Regulated waste movements against a permit ───────────────────────────────
+//
+// Tracked movements are measured in the BUDF units (kg, L, m³, Each, IBC) while
+// permits state m³ or tonnes. Only ONE conversion happens: kg → t, which is
+// exact arithmetic (÷1000).
+//
+// This does not contradict the locked decision above. That rule exists because
+// there is no defensible DENSITY assumption for mixed demolition spoil — it
+// bans mass↔volume conversion, not mass↔mass. Litres, Each and IBC are never
+// converted to either permit unit; they are surfaced as other-unit loads, the
+// same treatment m³ loads get against a tonne permit.
+
+export const BUDF_PERMIT_UNITS = ['kg', 'L', 'm3', 'Each', 'IBC'] as const
+export type BudfPermitUnit = (typeof BUDF_PERMIT_UNITS)[number]
+
+export interface RegulatedLoadLike {
+  qty: number
+  unit: BudfPermitUnit
+}
+
+/**
+ * Expresses a regulated movement in permit units, or null when it cannot be
+ * expressed without inventing a density.
+ */
+export function regulatedToPermitLoad(
+  load: RegulatedLoadLike
+): PermitLoadLike | null {
+  if (load.unit === 'm3') return { qty: load.qty, unit: 'm3' }
+  if (load.unit === 'kg') return { qty: load.qty / 1000, unit: 't' }
+  return null
+}
+
+/**
+ * Permit usage across BOTH the general waste log and the regulated movement
+ * register — one physical load is one record, so neither table double-counts
+ * the other.
+ */
+export function permitUsageWithMovements(
+  allowanceQty: number,
+  allowanceUnit: WasteUnit,
+  loads: PermitLoadLike[],
+  movements: RegulatedLoadLike[]
+): PermitUsage {
+  const converted: PermitLoadLike[] = []
+  let unconvertible = 0
+
+  for (const m of movements) {
+    const asPermitLoad = regulatedToPermitLoad(m)
+    if (asPermitLoad) converted.push(asPermitLoad)
+    else unconvertible++
+  }
+
+  const usage = permitUsage(allowanceQty, allowanceUnit, [...loads, ...converted])
+  return { ...usage, otherUnitCount: usage.otherUnitCount + unconvertible }
+}
+
 // ─── Gating warnings (WARN + override reason — never a hard block) ────────────
 
 export interface GatingCheckInput {

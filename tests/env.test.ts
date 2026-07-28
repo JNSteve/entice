@@ -1,12 +1,14 @@
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, test } from 'vitest'
 import {
   SIGNIFICANCE_THRESHOLD,
   significanceScore,
   isSignificant,
   PERMIT_WARN_PCT,
   permitUsage,
+  permitUsageWithMovements,
+  regulatedToPermitLoad,
   gatingWarnings,
 } from '@/lib/env'
 
@@ -161,5 +163,92 @@ describe('gatingWarnings', () => {
     expect(warnings).toHaveLength(2)
     expect(warnings.join(' ')).toContain('expired')
     expect(warnings.join(' ')).toContain('classification')
+  })
+})
+
+// ─── Regulated movements against permit allowances ───────────────────────────
+// Locked decision: union both tables, convert kg→t ONLY. That is exact
+// arithmetic, not the density assumption the no-conversion rule exists to ban.
+
+describe('regulatedToPermitLoad', () => {
+  test('m³ maps straight across', () => {
+    expect(regulatedToPermitLoad({ qty: 2.5, unit: 'm3' })).toEqual({
+      qty: 2.5,
+      unit: 'm3',
+    })
+  })
+
+  test('kg converts to tonnes exactly', () => {
+    expect(regulatedToPermitLoad({ qty: 1000, unit: 'kg' })).toEqual({
+      qty: 1,
+      unit: 't',
+    })
+    expect(regulatedToPermitLoad({ qty: 2500, unit: 'kg' })).toEqual({
+      qty: 2.5,
+      unit: 't',
+    })
+  })
+
+  test('litres and container counts are never converted', () => {
+    expect(regulatedToPermitLoad({ qty: 200, unit: 'L' })).toBeNull()
+    expect(regulatedToPermitLoad({ qty: 3, unit: 'Each' })).toBeNull()
+    expect(regulatedToPermitLoad({ qty: 1, unit: 'IBC' })).toBeNull()
+  })
+})
+
+describe('permitUsageWithMovements', () => {
+  test('sums general loads and tracked movements against a m³ permit', () => {
+    const usage = permitUsageWithMovements(
+      100,
+      'm3',
+      [{ qty: 40, unit: 'm3' }],
+      [{ qty: 10, unit: 'm3' }]
+    )
+    expect(usage.used).toBe(50)
+    expect(usage.pctUsed).toBe(50)
+    expect(usage.otherUnitCount).toBe(0)
+  })
+
+  test('kg movements count against a tonne permit', () => {
+    const usage = permitUsageWithMovements(
+      10,
+      't',
+      [{ qty: 2, unit: 't' }],
+      [{ qty: 3000, unit: 'kg' }]
+    )
+    expect(usage.used).toBe(5)
+    expect(usage.level).toBe('ok')
+  })
+
+  test('non-convertible movements are surfaced, never summed', () => {
+    const usage = permitUsageWithMovements(
+      100,
+      'm3',
+      [],
+      [
+        { qty: 5, unit: 'm3' },
+        { qty: 200, unit: 'L' },
+        { qty: 2, unit: 'IBC' },
+      ]
+    )
+    expect(usage.used).toBe(5)
+    expect(usage.otherUnitCount).toBe(2)
+  })
+
+  test('kg is NOT summed against a m³ permit — that would need a density', () => {
+    const usage = permitUsageWithMovements(100, 'm3', [], [{ qty: 5000, unit: 'kg' }])
+    expect(usage.used).toBe(0)
+    expect(usage.otherUnitCount).toBe(1)
+  })
+
+  test('the over-allowance level still fires on the union', () => {
+    const usage = permitUsageWithMovements(
+      5,
+      't',
+      [{ qty: 3, unit: 't' }],
+      [{ qty: 2500, unit: 'kg' }]
+    )
+    expect(usage.used).toBe(5.5)
+    expect(usage.level).toBe('over')
   })
 })
