@@ -24,7 +24,7 @@ const FIELD_SOURCES = [
 type FieldSource = (typeof FIELD_SOURCES)[number]['value']
 
 const selectClass =
-  'w-full rounded-lg border bg-background px-3 py-2.5 text-sm appearance-none'
+  'w-full rounded-lg border bg-background px-3 py-2.5 text-base appearance-none md:text-sm'
 
 interface NcrRaiseFormProps {
   projects: TargetOption[]

@@ -314,7 +314,7 @@ function ManualEntrySection({
           <div className="flex flex-col gap-1">
             <label className="text-xs font-medium">Assignment</label>
             <select
-              className="rounded-md border bg-background px-3 py-2 text-sm"
+              className="rounded-md border bg-background px-3 py-2 text-base md:text-sm"
               value={assignmentId}
               onChange={(e) => setAssignmentId(e.target.value)}
               required
@@ -335,7 +335,7 @@ function ManualEntrySection({
               <label className="text-xs font-medium">Start time</label>
               <input
                 type="time"
-                className="rounded-md border bg-background px-3 py-2 text-sm"
+                className="rounded-md border bg-background px-3 py-2 text-base md:text-sm"
                 value={startTime}
                 onChange={(e) => setStartTime(e.target.value)}
                 required
@@ -345,7 +345,7 @@ function ManualEntrySection({
               <label className="text-xs font-medium">End time</label>
               <input
                 type="time"
-                className="rounded-md border bg-background px-3 py-2 text-sm"
+                className="rounded-md border bg-background px-3 py-2 text-base md:text-sm"
                 value={endTime}
                 onChange={(e) => setEndTime(e.target.value)}
                 required

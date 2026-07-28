@@ -69,7 +69,7 @@ export function ProjectPicker({
             placeholder="Search projects…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            className="w-full rounded-xl border bg-background py-2.5 pl-9 pr-3 text-sm"
+            className="w-full rounded-xl border bg-background py-2.5 pl-9 pr-3 text-base md:text-sm"
           />
         </div>
         {filtered.length === 0 ? (

@@ -94,7 +94,8 @@ function mergeWeather(option: string, note: string): string {
 
 // ─── Shared field styles (mobile-first, chunky) ──────────────────────────────
 
-const inputCls = 'rounded-xl border bg-background px-3 py-2.5 text-sm w-full'
+const inputCls =
+  'rounded-xl border bg-background px-3 py-2.5 text-base w-full md:text-sm'
 const labelCls = 'text-xs font-medium'
 
 // ─── Diary details form ──────────────────────────────────────────────────────

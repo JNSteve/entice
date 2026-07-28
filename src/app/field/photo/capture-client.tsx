@@ -152,7 +152,7 @@ function TargetPicker({
           placeholder="Search jobs &amp; projects…"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm pr-9 pl-3"
+          className="w-full rounded-xl border bg-background px-3 py-2.5 text-base pr-9 pl-3 md:text-sm"
         />
       </div>
 

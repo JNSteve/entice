@@ -24,7 +24,7 @@ import { formatLoadNumber, type WasteLinkView } from '@/lib/waste/link-payload'
 import { submitReceiverPart } from './actions'
 
 const selectClass =
-  'w-full rounded-lg border bg-background px-3 py-2.5 text-sm appearance-none'
+  'w-full rounded-lg border bg-background px-3 py-2.5 text-base appearance-none md:text-sm'
 
 export function ReceiveForm({
   token,

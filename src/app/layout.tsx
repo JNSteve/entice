@@ -18,6 +18,10 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = {
   themeColor: "#162040",
+  // Draw edge-to-edge behind the notch and home indicator. Without this iOS
+  // letterboxes a standalone PWA; with it, the shells below must respect
+  // env(safe-area-inset-*) or content slides under the system UI.
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

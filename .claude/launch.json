@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "entice-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "port": 3000,
+      "autoPort": true,
+      "env": {
+        "NODE_EXTRA_CA_CERTS": "C:\\Users\\nickj\\norton-ssl-root-ca.pem"
+      }
+    }
+  ]
+}

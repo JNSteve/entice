@@ -347,7 +347,7 @@ function EditAuditDialog({
 // ─── Conduct checklist dialog ─────────────────────────────────────────────────
 
 const selectClass =
-  'w-full rounded-md border bg-background px-3 py-2 text-sm appearance-none'
+  'w-full rounded-md border bg-background px-3 py-2 text-base appearance-none md:text-sm'
 
 function ChecklistField({
   field,

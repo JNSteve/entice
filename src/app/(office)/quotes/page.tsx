@@ -116,7 +116,7 @@ export default async function QuotesPage({
           />
         }
       />
-      <div className="flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
+      <div className="flex w-fit flex-wrap items-center gap-1 rounded-lg bg-muted p-1">
         {STATUS_TABS.map((t) => (
           <Link
             key={t.value}

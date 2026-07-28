@@ -106,7 +106,7 @@ export default async function MoneyPage({
         description="Invoices, claims and payments."
       />
 
-      <div className="flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
+      <div className="flex w-fit flex-wrap items-center gap-1 rounded-lg bg-muted p-1">
         {FILTER_TABS.map((t) => (
           <Link
             key={t.value}

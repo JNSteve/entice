@@ -39,7 +39,7 @@ const KIND_LABELS: Record<MaintenanceKind, string> = {
 }
 
 const selectClass =
-  'w-full rounded-lg border bg-background px-3 py-2.5 text-sm appearance-none'
+  'w-full rounded-lg border bg-background px-3 py-2.5 text-base appearance-none md:text-sm'
 
 // ─── Form ─────────────────────────────────────────────────────────────────────
 
@@ -215,7 +215,7 @@ export function MaintenanceForm({
           placeholder="Search properties…"
           value={siteQuery}
           onChange={(e) => setSiteQuery(e.target.value)}
-          className="w-full rounded-xl border bg-background px-3 py-2.5 text-sm"
+          className="w-full rounded-xl border bg-background px-3 py-2.5 text-base md:text-sm"
         />
 
         {q && (

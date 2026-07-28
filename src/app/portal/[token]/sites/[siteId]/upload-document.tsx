@@ -174,7 +174,7 @@ export function UploadDocumentCard({
             id="up-kind"
             value={kind}
             onChange={(e) => setKind(e.target.value as PropertyComplianceKind)}
-            className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040]"
+            className="h-11 w-full rounded-xl border bg-white px-3 text-base outline-none transition-colors focus:border-[#162040] md:text-sm"
           >
             {KINDS.map((k) => (
               <option key={k} value={k}>
@@ -195,7 +195,7 @@ export function UploadDocumentCard({
             placeholder="e.g. Clearance certificate — storeroom"
             maxLength={200}
             required
-            className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040]"
+            className="h-11 w-full rounded-xl border bg-white px-3 text-base outline-none transition-colors focus:border-[#162040] md:text-sm"
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -208,7 +208,7 @@ export function UploadDocumentCard({
             value={issueDate}
             onChange={(e) => setIssueDate(e.target.value)}
             required
-            className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040]"
+            className="h-11 w-full rounded-xl border bg-white px-3 text-base outline-none transition-colors focus:border-[#162040] md:text-sm"
           />
         </div>
         <div className="flex flex-col gap-1.5">
@@ -221,7 +221,7 @@ export function UploadDocumentCard({
             type="date"
             value={reviewDue}
             onChange={(e) => setReviewDue(e.target.value)}
-            className="h-11 w-full rounded-xl border bg-white px-3 text-sm outline-none transition-colors focus:border-[#162040]"
+            className="h-11 w-full rounded-xl border bg-white px-3 text-base outline-none transition-colors focus:border-[#162040] md:text-sm"
           />
         </div>
       </div>

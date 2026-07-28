@@ -23,7 +23,9 @@ export function FieldTabs() {
   const pathname = usePathname()
 
   return (
-    <nav className="sticky bottom-0 z-30 mx-auto w-full max-w-md border-t bg-background">
+    // pb clears the iPhone home indicator, which otherwise sits over the last
+    // tab in standalone mode.
+    <nav className="sticky bottom-0 z-30 mx-auto w-full max-w-md border-t bg-background pb-[env(safe-area-inset-bottom)]">
       <div className="grid grid-cols-5">
         {TABS.map((tab) => {
           const active =

@@ -65,7 +65,7 @@ export function QuoteConversionReport({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         {/* Period picker */}
-        <div className="flex w-fit items-center gap-1 rounded-lg bg-muted p-1">
+        <div className="flex w-fit flex-wrap items-center gap-1 rounded-lg bg-muted p-1">
           {PERIOD_TABS.map((t) => (
             <Link
               key={t.value}
