@@ -4,9 +4,21 @@
 // render its own <html>/<body> and carry its own styling (inline: if the
 // layout is down, the app CSS may be too). Branded to match the app
 // (#162040) and reports into the admin-only app_errors register.
+//
+// Stale-deployment chunk errors self-heal with one automatic full reload
+// instead (see src/lib/stale-chunk.ts) — same behavior as src/app/error.tsx.
 
-import { useEffect } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import { reportAppError } from '@/lib/error-log'
+import {
+  isStaleChunkError,
+  isReloadBlocked,
+  maybeStaleChunkReload,
+} from '@/lib/stale-chunk'
+
+// The blocked flag never changes under a mounted boundary (our own write
+// coincides with the page reloading), so no store notifications are needed.
+const subscribeNever = () => () => {}
 
 export default function GlobalError({
   error,
@@ -15,14 +27,50 @@ export default function GlobalError({
   error: Error & { digest?: string }
   unstable_retry: () => void
 }) {
+  const stale = isStaleChunkError(error)
+  // Render-time read of the cooldown guard: true when an auto-reload just
+  // ran, so reloading again can't help and real error UI must show.
+  const reloadBlocked = useSyncExternalStore(
+    subscribeNever,
+    () => stale && isReloadBlocked(window.sessionStorage, Date.now()),
+    () => false
+  )
+
   useEffect(() => {
+    if (stale && maybeStaleChunkReload(error, window, Date.now()) === 'reloading') {
+      return
+    }
     reportAppError({
       source: 'client',
       path: typeof window !== 'undefined' ? window.location.pathname : null,
       message: error.message,
       stack: error.stack ?? (error.digest ? `digest: ${error.digest}` : null),
     })
-  }, [error])
+  }, [error, stale])
+
+  if (stale && !reloadBlocked) {
+    return (
+      <html lang="en">
+        <body
+          style={{
+            margin: 0,
+            minHeight: '100vh',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            backgroundColor: '#f8fafc',
+            color: '#64748b',
+            fontFamily:
+              "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
+            fontSize: 14,
+          }}
+        >
+          <title>Entice</title>
+          <p>Getting the latest version…</p>
+        </body>
+      </html>
+    )
+  }
 
   return (
     <html lang="en">
@@ -97,7 +145,7 @@ export default function GlobalError({
           >
             <button
               type="button"
-              onClick={() => unstable_retry()}
+              onClick={() => (stale ? window.location.reload() : unstable_retry())}
               style={{
                 height: 36,
                 padding: '0 16px',
