@@ -10,15 +10,18 @@ import type { MetadataRoute } from 'next'
  * zone so no crop clips it. The iOS home-screen icon is separate again — it
  * comes from src/app/apple-icon.png via Next's file convention.
  *
- * start_url stays /field: the crew are the ones who install this. Office staff
- * open it in a browser.
+ * start_url is '/' — the role router: office/admin installs land on the
+ * dashboard, field-role users are bounced to /field by requireRole. One
+ * install works for every role. (iOS caches start_url at install time, so
+ * anyone who installed while this pointed at /field keeps that until they
+ * delete and re-add the icon — same destination for crew either way.)
  */
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: 'Entice',
     short_name: 'Entice',
     description: 'Civil & remediation operations platform',
-    start_url: '/field',
+    start_url: '/',
     scope: '/',
     display: 'standalone',
     orientation: 'portrait',
