@@ -51,6 +51,7 @@ create policy agent_audit_admin_read on public.agent_audit
 create or replace function public.agent_audit_protect()
 returns trigger
 language plpgsql
+set search_path = public, pg_temp
 as $$
 begin
   if coalesce(current_setting('app.allow_agent_audit_prune', true), '') = 'true' then
