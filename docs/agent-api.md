@@ -9,7 +9,9 @@ owner's Claude sessions. Two surfaces, same capabilities and audit trail:
 
 Auth for both: `Authorization: Bearer <agent key>`. Keys are stored as SHA-256
 hashes in `agent_keys`; every call lands in `agent_audit` (admin-visible,
-append-only). Design: `docs/superpowers/specs/2026-08-29-agent-api-design.md`.
+append-only) on a best-effort basis — the action commits before its audit row,
+so a rare backend failure in between is logged to the server console rather than
+the table. Design: `docs/superpowers/specs/2026-08-29-agent-api-design.md`.
 
 ## Connect a Claude Code / Cowork session (MCP)
 

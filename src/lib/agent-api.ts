@@ -200,7 +200,7 @@ export function formatEnvelopeIssues(error: z.ZodError): string {
 export const AGENT_HELP = {
   name: 'ECR portal agent API',
   what: 'Read/write access to the live Entice/ECR portal database and storage for authorised Claude agents. One envelope: POST /api/agent {"action": …}. Same capabilities as MCP tools at /api/agent/mcp.',
-  auth: 'Authorization: Bearer <agent key>. Keys are stored hashed and revocable; every call is audited to agent_audit.',
+  auth: 'Authorization: Bearer <agent key>. Keys are stored hashed and revocable; every call is audited to agent_audit on a best-effort basis (the action commits before its audit row, so a rare backend failure between them is logged to the server console instead).',
   actions: {
     help: 'This document.',
     schema: 'List all public tables with their columns; pass {table} for one table with types/nullability/defaults.',

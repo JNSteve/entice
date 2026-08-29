@@ -106,7 +106,15 @@ export async function auditAgentCall(
     user_agent: entry.request.headers.get('user-agent')?.slice(0, 500) ?? null,
     duration_ms: Math.round(performance.now() - entry.startedAt),
   })
-  if (error) console.error('[agent] audit insert failed:', error.message)
+  if (error) {
+    // The action has already committed; this row is its only trace, so log
+    // enough to reconstruct it from the server console if the insert failed.
+    console.error(
+      `[agent] AUDIT INSERT FAILED — unlogged ${entry.ok ? 'ok' : 'failed'} ` +
+        `action=${entry.action} target=${entry.target ?? '-'} key=${entry.keyId ?? '-'} ` +
+        `rows=${entry.rowCount ?? '-'}: ${error.message}`
+    )
+  }
 }
 
 function requireWritableTable(table: string): void {
