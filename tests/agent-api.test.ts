@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_TOOLS,
   FORBIDDEN_WRITE_TABLES,
+  STORAGE_BUCKETS,
   agentEnvelopeSchema,
   auditParams,
+  base64Bytes,
+  formatEnvelopeIssues,
   hashAgentKey,
   isValidIdentifier,
   isValidStoragePath,
@@ -129,9 +132,46 @@ describe('agentEnvelopeSchema', () => {
     expect(upd({ column: 'id', op: 'in', value: 'abc' })).toBe(false)
     expect(upd({ column: 'id', op: 'in', value: [] })).toBe(false)
     expect(upd({ column: 'id', op: 'in', value: ['a', 'b'] })).toBe(true)
+    // 'in' elements must be scalars — objects/arrays would silently no-op
+    expect(upd({ column: 'id', op: 'in', value: [{}, {}] })).toBe(false)
+    expect(upd({ column: 'id', op: 'in', value: [['a'], ['b']] })).toBe(false)
     expect(upd({ column: 'archived', op: 'is', value: 'null' })).toBe(false)
     expect(upd({ column: 'archived', op: 'is', value: null })).toBe(true)
     expect(upd({ column: 'archived', op: 'is', value: false })).toBe(true)
+  })
+
+  it('rejects empty update values and empty insert rows', () => {
+    expect(
+      agentEnvelopeSchema.safeParse({
+        action: 'update',
+        table: 'clients',
+        filters: [{ column: 'id', op: 'eq', value: 'abc' }],
+        values: {},
+      }).success
+    ).toBe(false)
+    expect(
+      agentEnvelopeSchema.safeParse({
+        action: 'insert',
+        table: 'clients',
+        rows: [{ name: 'ok' }, {}],
+      }).success
+    ).toBe(false)
+  })
+
+  it('an arguments.action cannot shadow the tool name (MCP spread order)', () => {
+    // Regression for the MCP action-override bug: the route builds
+    // {...args, action: name} so a caller-supplied action inside arguments
+    // never wins over the resolved tool name.
+    const args = {
+      action: 'delete',
+      table: 'clients',
+      filters: [{ column: 'id', op: 'neq', value: '0' }],
+      confirm: true,
+    }
+    const name = 'help'
+    const parsed = agentEnvelopeSchema.safeParse({ ...args, action: name })
+    expect(parsed.success).toBe(true)
+    if (parsed.success) expect(parsed.data.action).toBe('help')
   })
 
   it('rejects invalid table/column identifiers', () => {
@@ -200,6 +240,51 @@ describe('auditParams', () => {
     const out = auditParams({ action: 'insert', blob: 'x'.repeat(20000) })
     expect(out._truncated).toBe(true)
     expect(String(out.preview).length).toBeLessThanOrEqual(8000)
+  })
+
+  it('never leaves a lone surrogate in a truncated preview (jsonb-safe)', () => {
+    // An emoji (surrogate pair) placed right at the 8000-char cut would leave
+    // an unpaired surrogate that Postgres jsonb rejects. Build a value whose
+    // JSON.stringify length crosses 8000 exactly on a pair.
+    const filler = 'x'.repeat(7996)
+    const out = auditParams({ action: 'insert', blob: `${filler}😀tail` })
+    expect(out._truncated).toBe(true)
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(String(out.preview))).toBe(false)
+  })
+})
+
+describe('base64Bytes', () => {
+  it('accounts for = padding (JS *3/4 overcounts otherwise)', () => {
+    expect(base64Bytes('')).toBe(0)
+    expect(base64Bytes('AA==')).toBe(1) // 1 byte, 2 padding
+    expect(base64Bytes('AAA=')).toBe(2) // 2 bytes, 1 padding
+    expect(base64Bytes('AAAA')).toBe(3) // 3 bytes, no padding
+    // Round-trips a real payload's byte length.
+    const b64 = Buffer.from('hello world!').toString('base64')
+    expect(base64Bytes(b64)).toBe(12)
+  })
+})
+
+describe('formatEnvelopeIssues', () => {
+  it('renders path: message pairs joined by ;', () => {
+    const parsed = agentEnvelopeSchema.safeParse({
+      action: 'update',
+      table: 'clients',
+      filters: [],
+      values: { name: 'x' },
+    })
+    expect(parsed.success).toBe(false)
+    if (!parsed.success) {
+      const s = formatEnvelopeIssues(parsed.error)
+      expect(s).toContain('filters')
+      expect(s.length).toBeGreaterThan(0)
+    }
+  })
+})
+
+describe('STORAGE_BUCKETS allowlist', () => {
+  it('contains exactly the app buckets', () => {
+    expect([...STORAGE_BUCKETS].sort()).toEqual(['attachments', 'backups', 'branding'])
   })
 })
 

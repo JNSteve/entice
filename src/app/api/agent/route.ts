@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { AGENT_HELP, agentEnvelopeSchema } from '@/lib/agent-api'
-import {
-  AgentApiError,
-  auditAgentCall,
-  authenticateAgentKey,
-  executeAgentAction,
-} from '@/lib/agent-executor'
+import { AGENT_HELP } from '@/lib/agent-api'
+import { authenticateAgentKey, runAgentRequest } from '@/lib/agent-executor'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -20,8 +15,9 @@ export const maxDuration = 60
  *
  * Auth: `Authorization: Bearer <agent key>` — verified against SHA-256
  * hashes in agent_keys (revocable, last_used_at stamped). Every POST is
- * appended to agent_audit. /api/* is outside the auth proxy, so this route
- * enforces its own auth (same pattern as /api/cron/backup).
+ * appended to agent_audit via the shared runAgentRequest pipeline. /api/* is
+ * outside the auth proxy, so this route enforces its own auth (same pattern
+ * as /api/cron/backup).
  *
  * The MCP surface at /api/agent/mcp exposes the same actions as tools.
  * Design: docs/superpowers/specs/2026-08-29-agent-api-design.md
@@ -51,11 +47,18 @@ const unauthorized = () =>
     { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
   )
 
+const authUnavailable = () =>
+  NextResponse.json(
+    { ok: false, error: 'Authentication backend unavailable — try again shortly' },
+    { status: 503 }
+  )
+
 export async function GET(request: Request) {
   const { admin, response } = adminOr503()
   if (!admin) return response
-  const key = await authenticateAgentKey(admin, request)
-  if (!key) return unauthorized()
+  const auth = await authenticateAgentKey(admin, request)
+  if (auth.outcome === 'db_error') return authUnavailable()
+  if (auth.outcome !== 'authenticated') return unauthorized()
   return NextResponse.json({ ok: true, help: AGENT_HELP })
 }
 
@@ -64,8 +67,9 @@ export async function POST(request: Request) {
   const { admin, response } = adminOr503()
   if (!admin) return response
 
-  const key = await authenticateAgentKey(admin, request)
-  if (!key) return unauthorized()
+  const auth = await authenticateAgentKey(admin, request)
+  if (auth.outcome === 'db_error') return authUnavailable()
+  if (auth.outcome !== 'authenticated') return unauthorized()
 
   let body: unknown
   try {
@@ -77,58 +81,9 @@ export async function POST(request: Request) {
     )
   }
 
-  const parsed = agentEnvelopeSchema.safeParse(body)
-  if (!parsed.success) {
-    const detail = parsed.error.issues
-      .map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message))
-      .join('; ')
-    const action =
-      typeof body === 'object' && body !== null && 'action' in body
-        ? String((body as { action: unknown }).action)
-        : 'invalid'
-    await auditAgentCall(admin, {
-      keyId: key.id,
-      action,
-      target: null,
-      envelope: typeof body === 'object' && body !== null ? (body as Record<string, unknown>) : null,
-      rowCount: null,
-      ok: false,
-      error: detail,
-      request,
-      startedAt,
-    })
-    return NextResponse.json({ ok: false, error: detail }, { status: 400 })
+  const outcome = await runAgentRequest(admin, auth.key, body, request, startedAt)
+  if (!outcome.ok) {
+    return NextResponse.json({ ok: false, error: outcome.error }, { status: outcome.status })
   }
-
-  const envelope = parsed.data
-  try {
-    const { result, rowCount, target } = await executeAgentAction(admin, envelope)
-    await auditAgentCall(admin, {
-      keyId: key.id,
-      action: envelope.action,
-      target,
-      envelope,
-      rowCount,
-      ok: true,
-      error: null,
-      request,
-      startedAt,
-    })
-    return NextResponse.json({ ok: true, action: envelope.action, ...result })
-  } catch (err) {
-    const status = err instanceof AgentApiError ? err.status : 500
-    const message = err instanceof Error ? err.message : String(err)
-    await auditAgentCall(admin, {
-      keyId: key.id,
-      action: envelope.action,
-      target: null,
-      envelope,
-      rowCount: null,
-      ok: false,
-      error: message,
-      request,
-      startedAt,
-    })
-    return NextResponse.json({ ok: false, error: message }, { status })
-  }
+  return NextResponse.json({ ok: true, action: outcome.action, ...outcome.result })
 }

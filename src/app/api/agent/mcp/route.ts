@@ -1,12 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
-import { AGENT_TOOLS, agentEnvelopeSchema } from '@/lib/agent-api'
-import {
-  AgentApiError,
-  auditAgentCall,
-  authenticateAgentKey,
-  executeAgentAction,
-} from '@/lib/agent-executor'
+import { AGENT_TOOLS } from '@/lib/agent-api'
+import { authenticateAgentKey, runAgentRequest } from '@/lib/agent-executor'
 
 export const runtime = 'nodejs'
 export const maxDuration = 60
@@ -23,7 +18,9 @@ export const maxDuration = 60
  *
  * Stateless by design: no session ids, each POST is a full JSON-RPC exchange
  * (initialize / tools/list / tools/call / ping; notifications get 202). GET
- * (SSE streaming) is not offered — 405, which the spec permits.
+ * (SSE streaming) is not offered — 405, which the spec permits. Validation,
+ * dispatch and audit go through the shared runAgentRequest pipeline, so this
+ * surface can't drift from the REST route.
  */
 
 const SUPPORTED_PROTOCOLS = ['2024-11-05', '2025-03-26', '2025-06-18']
@@ -61,13 +58,17 @@ export async function POST(request: Request) {
     return rpcError(null, -32000, 'Agent API unavailable: service role key missing', 503)
   }
 
-  const key = await authenticateAgentKey(admin, request)
-  if (!key) {
+  const auth = await authenticateAgentKey(admin, request)
+  if (auth.outcome === 'db_error') {
+    return rpcError(null, -32000, 'Authentication backend unavailable — try again shortly', 503)
+  }
+  if (auth.outcome !== 'authenticated') {
     return NextResponse.json(
       { jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid, revoked or missing agent key' } },
       { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
     )
   }
+  const key = auth.key
 
   let body: unknown
   try {
@@ -85,11 +86,17 @@ export async function POST(request: Request) {
 
   const msg = body as { method?: unknown; id?: JsonRpcId; params?: unknown }
 
-  // Notifications and client→server responses need no reply.
-  if (typeof msg.method !== 'string' || msg.method.startsWith('notifications/')) {
+  // A message with no id is a notification (client→server) — never answered.
+  const isNotification = msg.id === undefined || msg.id === null
+  if (typeof msg.method !== 'string') {
+    return isNotification
+      ? new Response(null, { status: 202 })
+      : rpcError(msg.id ?? null, -32600, 'Invalid request: method must be a string')
+  }
+  if (msg.method.startsWith('notifications/') || isNotification) {
     return new Response(null, { status: 202 })
   }
-  const id = msg.id ?? null
+  const id = msg.id as JsonRpcId
   const params = (msg.params ?? {}) as Record<string, unknown>
 
   switch (msg.method) {
@@ -120,63 +127,24 @@ export async function POST(request: Request) {
         return rpcError(id, -32602, `Unknown tool: ${name}`)
       }
 
-      const parsed = agentEnvelopeSchema.safeParse({ action: name, ...args })
-      if (!parsed.success) {
-        const detail = parsed.error.issues
-          .map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message))
-          .join('; ')
-        await auditAgentCall(admin, {
-          keyId: key.id,
-          action: name,
-          target: null,
-          envelope: args,
-          rowCount: null,
-          ok: false,
-          error: detail,
-          request,
-          startedAt,
-        })
+      // action LAST so a caller-supplied arguments.action cannot shadow the
+      // resolved tool name (which would bypass the allowlist and mis-audit).
+      const outcome = await runAgentRequest(
+        admin,
+        key,
+        { ...args, action: name },
+        request,
+        startedAt
+      )
+      if (!outcome.ok) {
         return rpcResult(id, {
-          content: [{ type: 'text', text: `Invalid arguments — ${detail}` }],
+          content: [{ type: 'text', text: outcome.error }],
           isError: true,
         })
       }
-
-      try {
-        const { result, rowCount, target } = await executeAgentAction(admin, parsed.data)
-        await auditAgentCall(admin, {
-          keyId: key.id,
-          action: name,
-          target,
-          envelope: parsed.data,
-          rowCount,
-          ok: true,
-          error: null,
-          request,
-          startedAt,
-        })
-        return rpcResult(id, {
-          content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-        })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        await auditAgentCall(admin, {
-          keyId: key.id,
-          action: name,
-          target: null,
-          envelope: parsed.data,
-          rowCount: null,
-          ok: false,
-          error: message,
-          request,
-          startedAt,
-        })
-        const friendly = err instanceof AgentApiError ? message : `Unexpected error: ${message}`
-        return rpcResult(id, {
-          content: [{ type: 'text', text: friendly }],
-          isError: true,
-        })
-      }
+      return rpcResult(id, {
+        content: [{ type: 'text', text: JSON.stringify(outcome.result, null, 2) }],
+      })
     }
 
     default:

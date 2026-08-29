@@ -51,12 +51,16 @@ curl -s https://entice-pink.vercel.app/api/agent \
 
 ## What it can and cannot do
 
-Reads are unlimited (`sql` takes any single SELECT/WITH, 1000-row cap,
-read-only at the database level). Writes are structured: `update`/`delete`
-require at least one filter, `delete` also requires `confirm: true`,
-`agent_keys`/`agent_audit` are write-protected, and there is **no DDL** —
-schema changes still go through migrations. Existing DB protections (append-
-only audit_log, storage protect trigger, CHECK constraints) still apply.
+Reads are unlimited (`sql` takes any single SELECT/WITH, 1000-row cap). The
+`sql` path runs inside a **read-only transaction**, so it cannot write even by
+calling a function that would — use `insert`/`update`/`delete`/`rpc` to write.
+Writes are structured: `update`/`delete` require at least one filter, `delete`
+also requires `confirm: true`, `agent_keys`/`agent_audit` are write-protected,
+and there is **no DDL** — schema changes still go through migrations. Storage
+actions are limited to the `attachments`, `branding` and `backups` buckets;
+`storage_upload` caps at 3 MB decoded (Vercel's request-body limit — use
+`storage_sign` for anything larger). Existing DB protections (append-only
+audit_log, storage protect trigger, CHECK constraints) still apply.
 
 ## Keys
 

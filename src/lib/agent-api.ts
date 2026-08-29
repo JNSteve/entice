@@ -13,8 +13,6 @@ import { z } from 'zod'
  * Design: docs/superpowers/specs/2026-08-29-agent-api-design.md
  */
 
-export const AGENT_KEY_PREFIX = 'ecr_agent_'
-
 /** SHA-256 hex of a bearer token — the only form a key is stored in. */
 export function hashAgentKey(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex')
@@ -23,6 +21,9 @@ export function hashAgentKey(token: string): string {
 /** Tables the write actions must never touch (key minting / audit tamper). */
 export const FORBIDDEN_WRITE_TABLES = new Set(['agent_keys', 'agent_audit'])
 
+/** Buckets the storage actions may touch — the app's only three buckets. */
+export const STORAGE_BUCKETS = new Set(['attachments', 'branding', 'backups'])
+
 const IDENTIFIER = /^[a-zA-Z_][a-zA-Z0-9_]{0,62}$/
 const BUCKET = /^[a-zA-Z0-9_-]{1,100}$/
 
@@ -30,10 +31,12 @@ export function isValidIdentifier(name: string): boolean {
   return IDENTIFIER.test(name)
 }
 
-/** Max rows a single sql/select response returns (server-enforced too). */
-export const SQL_ROW_CAP = 1000
-/** Max decoded bytes for storage_upload (Vercel 413s ~10 MB anyway). */
-export const UPLOAD_MAX_BYTES = 8 * 1024 * 1024
+/**
+ * Max decoded bytes for storage_upload. Vercel caps a serverless request body
+ * at ~4.5 MB, and base64 inflates ~33%, so a 3 MB decoded ceiling keeps the
+ * request under the platform limit (bigger uploads should use a signed URL).
+ */
+export const UPLOAD_MAX_BYTES = 3 * 1024 * 1024
 
 /**
  * Client-side mirror of the agent_select() checks so obvious mistakes fail
@@ -70,6 +73,8 @@ const filterSchema = z
     if (f.op === 'in') {
       if (!Array.isArray(f.value) || f.value.length === 0)
         ctx.addIssue({ code: 'custom', message: "op 'in' needs a non-empty array value" })
+      else if (!f.value.every((v) => scalar.safeParse(v).success))
+        ctx.addIssue({ code: 'custom', message: "op 'in' array elements must be string/number/boolean" })
     } else if (f.op === 'is') {
       if (f.value !== null && typeof f.value !== 'boolean')
         ctx.addIssue({ code: 'custom', message: "op 'is' takes null, true or false" })
@@ -81,6 +86,11 @@ export type AgentFilter = z.infer<typeof filterSchema>
 
 const tableName = z.string().regex(IDENTIFIER, 'invalid table name')
 const rowObject = z.record(z.string(), z.unknown())
+/** A row/patch that actually sets at least one column (an empty {} 500s). */
+const nonEmptyRow = rowObject.refine(
+  (r) => Object.keys(r).length > 0,
+  'must set at least one column'
+)
 
 export const agentEnvelopeSchema = z.discriminatedUnion('action', [
   z.object({ action: z.literal('help') }),
@@ -95,14 +105,14 @@ export const agentEnvelopeSchema = z.discriminatedUnion('action', [
   z.object({
     action: z.literal('insert'),
     table: tableName,
-    rows: z.array(rowObject).min(1).max(500),
+    rows: z.array(nonEmptyRow).min(1).max(500),
     returning: z.boolean().optional(),
   }),
   z.object({
     action: z.literal('update'),
     table: tableName,
     filters: z.array(filterSchema).min(1, 'update requires at least one filter'),
-    values: rowObject,
+    values: nonEmptyRow,
     returning: z.boolean().optional(),
   }),
   z.object({
@@ -145,6 +155,22 @@ export function isValidStoragePath(path: string): boolean {
   return !path.includes('..') && !path.startsWith('/') && path.trim() === path
 }
 
+/** Decoded byte length of a base64 string, accounting for `=` padding. */
+export function base64Bytes(b64: string): number {
+  const padding = b64.endsWith('==') ? 2 : b64.endsWith('=') ? 1 : 0
+  return Math.max(0, Math.floor((b64.length * 3) / 4) - padding)
+}
+
+/**
+ * Drop any unpaired UTF-16 surrogate. A lone surrogate survives JSON.stringify
+ * as a \udXXX escape that Postgres jsonb rejects — which would make the audit
+ * insert fail and the call go unlogged. Slicing a preview can create one, so
+ * this runs after truncation.
+ */
+function stripLoneSurrogates(s: string): string {
+  return s.replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, '�')
+}
+
 /**
  * Audit-safe copy of an envelope: base64 payloads replaced with their size,
  * and anything huge truncated so agent_audit rows stay small.
@@ -153,13 +179,20 @@ export function auditParams(envelope: Record<string, unknown>): Record<string, u
   const copy: Record<string, unknown> = { ...envelope }
   delete copy.action
   if (typeof copy.content_base64 === 'string') {
-    copy.content_base64 = `<${Math.floor((copy.content_base64.length * 3) / 4)} bytes>`
+    copy.content_base64 = `<${base64Bytes(copy.content_base64)} bytes>`
   }
   const serialized = JSON.stringify(copy)
   if (serialized.length > 8000) {
-    return { _truncated: true, preview: serialized.slice(0, 8000) }
+    return { _truncated: true, preview: stripLoneSurrogates(serialized.slice(0, 8000)) }
   }
   return copy
+}
+
+/** Compact one-line rendering of zod issues for an error response/audit. */
+export function formatEnvelopeIssues(error: z.ZodError): string {
+  return error.issues
+    .map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message))
+    .join('; ')
 }
 
 // ── Self-documentation (help action / GET, and the MCP tool list) ─────────
@@ -171,18 +204,18 @@ export const AGENT_HELP = {
   actions: {
     help: 'This document.',
     schema: 'List all public tables with their columns; pass {table} for one table with types/nullability/defaults.',
-    sql: '{query} — any single read-only SELECT/WITH (joins, aggregates, anything). Capped at 1000 rows (result.truncated=true when cut). Writes are impossible on this path.',
+    sql: '{query} — any single read-only SELECT/WITH (joins, aggregates, anything). Capped at 1000 rows (result.truncated=true when cut). Runs in a read-only transaction, so it cannot write even via a function call — use insert/update/delete/rpc to write.',
     insert: '{table, rows: [{…}, …], returning?} — insert up to 500 rows. Returns inserted rows unless returning=false.',
     update: '{table, filters: [{column, op, value}, …], values: {…}, returning?} — at least one filter is mandatory (no accidental whole-table updates).',
     delete: '{table, filters: […], confirm: true} — filters AND confirm:true are mandatory. Returns deleted rows.',
     rpc: '{fn, args?} — call a public Postgres function (portal RPCs, next_number, …).',
     storage_list: '{bucket, prefix?, limit?} — list storage objects. Buckets: attachments, branding, backups.',
     storage_sign: '{bucket, path, expires_in?} — signed download URL (default 1h, max 7d).',
-    storage_upload: '{bucket, path, content_base64, content_type?, upsert?} — upload a file, max 8 MB decoded.',
+    storage_upload: '{bucket, path, content_base64, content_type?, upsert?} — upload a file, max 3 MB decoded (Vercel body limit; use storage_sign for larger).',
   },
   filter_ops: FILTER_OPS,
   guardrails: [
-    'sql is read-only at the database level; use insert/update/delete for writes.',
+    'sql runs in a read-only transaction; use insert/update/delete/rpc to write.',
     'update/delete require filters; delete also requires confirm:true.',
     `agent_keys and agent_audit are write-protected. No DDL anywhere — schema changes go through migrations, not this API.`,
     'Existing DB rules still apply: audit_log and agent_audit are append-only, storage deletes are trigger-guarded, CHECK constraints enforce status values.',
@@ -232,7 +265,7 @@ export const AGENT_TOOLS: ToolDef[] = [
   },
   {
     name: 'sql',
-    description: 'Run any single read-only SELECT/WITH query against the live portal DB (joins/aggregates fine). 1000-row cap. Writes are impossible on this path — use insert/update/delete.',
+    description: 'Run any single read-only SELECT/WITH query against the live portal DB (joins/aggregates fine). 1000-row cap. Runs in a read-only transaction (cannot write, even via a function) — use insert/update/delete/rpc to write.',
     inputSchema: {
       type: 'object',
       properties: { query: { type: 'string' } },
@@ -316,7 +349,7 @@ export const AGENT_TOOLS: ToolDef[] = [
   },
   {
     name: 'storage_upload',
-    description: 'Upload a file to storage (base64, max 8 MB decoded).',
+    description: 'Upload a file to storage (base64, max 3 MB decoded; use storage_sign for larger).',
     inputSchema: {
       type: 'object',
       properties: {

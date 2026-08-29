@@ -2,8 +2,11 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import {
   AGENT_HELP,
   FORBIDDEN_WRITE_TABLES,
+  STORAGE_BUCKETS,
   UPLOAD_MAX_BYTES,
+  agentEnvelopeSchema,
   auditParams,
+  formatEnvelopeIssues,
   hashAgentKey,
   isValidStoragePath,
   validateSelectSql,
@@ -40,30 +43,40 @@ export class AgentApiError extends Error {
 }
 
 /**
- * Resolve the bearer token to an active key row, or null. Tokens are looked
- * up by SHA-256 hash — the plaintext never touches the database.
+ * Auth outcome. `unknown_key` is a definitive 401 (bad/revoked/absent key);
+ * `db_error` is a transient backend failure that must NOT read as revocation,
+ * so the caller returns 503 and the human doesn't discard a good key.
+ */
+export type AuthResult =
+  | { outcome: 'authenticated'; key: AgentKeyRow }
+  | { outcome: 'unknown_key' }
+  | { outcome: 'db_error'; message: string }
+
+/**
+ * Resolve the bearer token to an active key. Looked up by SHA-256 hash — the
+ * plaintext never touches the database — and stamped in the same round-trip:
+ * a single UPDATE … WHERE key_hash=? AND revoked_at IS NULL RETURNING both
+ * authenticates and refreshes last_used_at (no separate SELECT+UPDATE, and no
+ * write on the hot path when the key doesn't match).
  */
 export async function authenticateAgentKey(
   admin: Admin,
   request: Request
-): Promise<AgentKeyRow | null> {
+): Promise<AuthResult> {
   const header = request.headers.get('authorization') ?? ''
   const match = /^Bearer\s+(.+)$/i.exec(header)
-  if (!match) return null
+  if (!match) return { outcome: 'unknown_key' }
   const hash = hashAgentKey(match[1].trim())
   const { data, error } = await admin
     .from('agent_keys')
-    .select('id, name')
+    .update({ last_used_at: new Date().toISOString() })
     .eq('key_hash', hash)
     .is('revoked_at', null)
+    .select('id, name')
     .maybeSingle()
-  if (error || !data) return null
-  // Best-effort freshness stamp — builders surface errors, they never throw.
-  await admin
-    .from('agent_keys')
-    .update({ last_used_at: new Date().toISOString() })
-    .eq('id', data.id)
-  return data as AgentKeyRow
+  if (error) return { outcome: 'db_error', message: error.message }
+  if (!data) return { outcome: 'unknown_key' }
+  return { outcome: 'authenticated', key: data as AgentKeyRow }
 }
 
 /** Append the call to agent_audit. Best-effort: log loudly, never throw. */
@@ -99,6 +112,14 @@ export async function auditAgentCall(
 function requireWritableTable(table: string): void {
   if (FORBIDDEN_WRITE_TABLES.has(table)) {
     throw new AgentApiError(`table '${table}' is write-protected on this API`)
+  }
+}
+
+function requireAllowedBucket(bucket: string): void {
+  if (!STORAGE_BUCKETS.has(bucket)) {
+    throw new AgentApiError(
+      `bucket '${bucket}' is not accessible; allowed: ${[...STORAGE_BUCKETS].join(', ')}`
+    )
   }
 }
 
@@ -249,6 +270,9 @@ export async function executeAgentAction(
     }
 
     case 'storage_list': {
+      requireAllowedBucket(envelope.bucket)
+      if (envelope.prefix && !isValidStoragePath(envelope.prefix))
+        throw new AgentApiError('storage_list: invalid prefix')
       const { data, error } = await admin.storage
         .from(envelope.bucket)
         .list(envelope.prefix ?? '', {
@@ -269,6 +293,7 @@ export async function executeAgentAction(
     }
 
     case 'storage_sign': {
+      requireAllowedBucket(envelope.bucket)
       if (!isValidStoragePath(envelope.path))
         throw new AgentApiError('storage_sign: invalid path')
       const expiresIn = envelope.expires_in ?? 3600
@@ -284,11 +309,18 @@ export async function executeAgentAction(
     }
 
     case 'storage_upload': {
+      requireAllowedBucket(envelope.bucket)
       if (!isValidStoragePath(envelope.path))
         throw new AgentApiError('storage_upload: invalid path')
-      const bytes = Buffer.from(envelope.content_base64, 'base64')
+      // Buffer.from(base64) is lenient — it silently drops invalid characters
+      // rather than throwing, which would upload a truncated file under a
+      // "success". Reject anything that doesn't round-trip cleanly.
+      const normalized = envelope.content_base64.replace(/\s/g, '')
+      const bytes = Buffer.from(normalized, 'base64')
+      if (bytes.toString('base64').replace(/=+$/, '') !== normalized.replace(/=+$/, ''))
+        throw new AgentApiError('storage_upload: content_base64 is not valid base64')
       if (bytes.byteLength === 0)
-        throw new AgentApiError('storage_upload: empty or invalid base64 content')
+        throw new AgentApiError('storage_upload: empty content')
       if (bytes.byteLength > UPLOAD_MAX_BYTES)
         throw new AgentApiError(
           `storage_upload: ${bytes.byteLength} bytes exceeds the ${UPLOAD_MAX_BYTES} byte cap`
@@ -306,5 +338,80 @@ export async function executeAgentAction(
         target: `${envelope.bucket}/${envelope.path}`,
       }
     }
+  }
+}
+
+export type RunOutcome =
+  | { ok: true; action: string; result: Record<string, unknown> }
+  | { ok: false; action: string; error: string; status: number }
+
+/**
+ * Validate → dispatch → audit for one raw envelope. The single pipeline both
+ * surfaces (REST and MCP) call, so their auth/validation/audit behaviour can't
+ * drift; each route only adapts request/response shape. Every outcome —
+ * including a validation failure — is written to agent_audit.
+ */
+export async function runAgentRequest(
+  admin: Admin,
+  key: AgentKeyRow,
+  rawEnvelope: unknown,
+  request: Request,
+  startedAt: number
+): Promise<RunOutcome> {
+  const guessedAction =
+    typeof rawEnvelope === 'object' && rawEnvelope !== null && 'action' in rawEnvelope
+      ? String((rawEnvelope as { action: unknown }).action)
+      : 'invalid'
+
+  const parsed = agentEnvelopeSchema.safeParse(rawEnvelope)
+  if (!parsed.success) {
+    const detail = formatEnvelopeIssues(parsed.error)
+    await auditAgentCall(admin, {
+      keyId: key.id,
+      action: guessedAction,
+      target: null,
+      envelope:
+        typeof rawEnvelope === 'object' && rawEnvelope !== null
+          ? (rawEnvelope as Record<string, unknown>)
+          : null,
+      rowCount: null,
+      ok: false,
+      error: detail,
+      request,
+      startedAt,
+    })
+    return { ok: false, action: guessedAction, error: detail, status: 400 }
+  }
+
+  const envelope = parsed.data
+  try {
+    const { result, rowCount, target } = await executeAgentAction(admin, envelope)
+    await auditAgentCall(admin, {
+      keyId: key.id,
+      action: envelope.action,
+      target,
+      envelope,
+      rowCount,
+      ok: true,
+      error: null,
+      request,
+      startedAt,
+    })
+    return { ok: true, action: envelope.action, result }
+  } catch (err) {
+    const status = err instanceof AgentApiError ? err.status : 500
+    const message = err instanceof Error ? err.message : String(err)
+    await auditAgentCall(admin, {
+      keyId: key.id,
+      action: envelope.action,
+      target: null,
+      envelope,
+      rowCount: null,
+      ok: false,
+      error: message,
+      request,
+      startedAt,
+    })
+    return { ok: false, action: envelope.action, error: message, status }
   }
 }
