@@ -4,7 +4,9 @@ import { AGENT_HELP } from '@/lib/agent-api'
 import { authenticateAgentKey, runAgentRequest } from '@/lib/agent-executor'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+// 300s (matching /api/cron/backup): storage_upload_finish downloads every part,
+// concatenates and re-uploads, which can take a while for a 100 MB file.
+export const maxDuration = 300
 
 /**
  * Agent API — REST surface. Lets the owner's Claude sessions (Cowork,

@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   AGENT_TOOLS,
   FORBIDDEN_WRITE_TABLES,
+  MAX_PARTS,
   STORAGE_BUCKETS,
+  UPLOAD_MAX_BYTES,
+  UPLOAD_STAGING_BUCKET,
+  UPLOAD_TOTAL_MAX_BYTES,
   agentEnvelopeSchema,
   auditParams,
   base64Bytes,
@@ -285,6 +289,85 @@ describe('formatEnvelopeIssues', () => {
 describe('STORAGE_BUCKETS allowlist', () => {
   it('contains exactly the app buckets', () => {
     expect([...STORAGE_BUCKETS].sort()).toEqual(['attachments', 'backups', 'branding'])
+  })
+
+  it('excludes the private chunked-upload staging bucket', () => {
+    // Staging must not be reachable through the ordinary storage actions.
+    expect(STORAGE_BUCKETS.has(UPLOAD_STAGING_BUCKET)).toBe(false)
+  })
+})
+
+describe('chunked upload envelopes', () => {
+  it('accepts a minimal begin and a fully-specified filing begin', () => {
+    expect(
+      agentEnvelopeSchema.safeParse({
+        action: 'storage_upload_begin',
+        bucket: 'attachments',
+        path: 'job/abc/report.pdf',
+      }).success
+    ).toBe(true)
+    expect(
+      agentEnvelopeSchema.safeParse({
+        action: 'storage_upload_begin',
+        bucket: 'attachments',
+        path: 'job/abc/report.pdf',
+        content_type: 'application/pdf',
+        parent_type: 'job',
+        parent_id: '11450f03-f7a1-49f7-9296-ed48c8a809e1',
+        kind: 'pdf',
+        caption: 'Clearance certificate',
+        client_visible: true,
+      }).success
+    ).toBe(true)
+  })
+
+  it('rejects an unknown parent_type or a non-uuid parent_id', () => {
+    const begin = (over: Record<string, unknown>) =>
+      agentEnvelopeSchema.safeParse({
+        action: 'storage_upload_begin',
+        bucket: 'attachments',
+        path: 'x.pdf',
+        ...over,
+      }).success
+    expect(begin({ parent_type: 'not_a_thing', parent_id: '11450f03-f7a1-49f7-9296-ed48c8a809e1' })).toBe(false)
+    expect(begin({ parent_type: 'job', parent_id: 'not-a-uuid' })).toBe(false)
+    expect(begin({ kind: 'spreadsheet' })).toBe(false)
+  })
+
+  it('requires 1-based part numbers within the cap', () => {
+    const part = (n: unknown) =>
+      agentEnvelopeSchema.safeParse({
+        action: 'storage_upload_part',
+        upload_id: '11450f03-f7a1-49f7-9296-ed48c8a809e1',
+        part_number: n,
+        content_base64: 'AAAA',
+      }).success
+    expect(part(1)).toBe(true)
+    expect(part(0)).toBe(false)
+    expect(part(-1)).toBe(false)
+    expect(part(1.5)).toBe(false)
+    expect(part(MAX_PARTS)).toBe(true)
+    expect(part(MAX_PARTS + 1)).toBe(false)
+  })
+
+  it('validates the optional sha256 on finish', () => {
+    const finish = (over: Record<string, unknown>) =>
+      agentEnvelopeSchema.safeParse({
+        action: 'storage_upload_finish',
+        upload_id: '11450f03-f7a1-49f7-9296-ed48c8a809e1',
+        total_parts: 3,
+        ...over,
+      }).success
+    expect(finish({})).toBe(true)
+    expect(finish({ sha256: 'a'.repeat(64) })).toBe(true)
+    expect(finish({ sha256: 'nope' })).toBe(false)
+    expect(finish({ sha256: 'z'.repeat(64) })).toBe(false)
+  })
+
+  it('caps a whole upload well above a single part', () => {
+    expect(UPLOAD_TOTAL_MAX_BYTES).toBeGreaterThan(UPLOAD_MAX_BYTES)
+    // A 100 MB file at 3 MB a part needs ~34 — comfortably inside MAX_PARTS.
+    expect(Math.ceil(UPLOAD_TOTAL_MAX_BYTES / UPLOAD_MAX_BYTES)).toBeLessThanOrEqual(MAX_PARTS)
   })
 })
 

@@ -6,7 +6,8 @@ import { requestOrigin } from '@/lib/agent-oauth-server'
 import { authenticateAgentKey, runAgentRequest } from '@/lib/agent-executor'
 
 export const runtime = 'nodejs'
-export const maxDuration = 60
+// Matches the REST route — the chunked-upload finish step is the long one.
+export const maxDuration = 300
 
 /**
  * Agent API — MCP surface (Streamable HTTP transport, stateless).

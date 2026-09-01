@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import { z } from 'zod'
+import { ATTACHMENT_KINDS, PARENT_TYPES } from '@/lib/attachment-parents'
 
 /**
  * Agent API — pure layer (validation, envelope schemas, self-documentation).
@@ -32,11 +33,18 @@ export function isValidIdentifier(name: string): boolean {
 }
 
 /**
- * Max decoded bytes for storage_upload. Vercel caps a serverless request body
- * at ~4.5 MB, and base64 inflates ~33%, so a 3 MB decoded ceiling keeps the
- * request under the platform limit (bigger uploads should use a signed URL).
+ * Max decoded bytes for storage_upload, and for a single chunked part. Vercel
+ * caps a serverless request body at ~4.5 MB and base64 inflates ~33%, so a 3 MB
+ * decoded ceiling keeps the request under the platform limit. Anything larger
+ * goes through storage_upload_begin/part/finish.
  */
 export const UPLOAD_MAX_BYTES = 3 * 1024 * 1024
+/** Ceiling on a whole chunked upload (reassembled server-side, so memory-bound). */
+export const UPLOAD_TOTAL_MAX_BYTES = 100 * 1024 * 1024
+/** Upper bound on part numbers — 100 MB at 3 MB/part needs ~34. */
+export const MAX_PARTS = 200
+/** Private staging bucket for in-flight parts (never exposed to storage_*). */
+export const UPLOAD_STAGING_BUCKET = 'agent-uploads'
 
 /**
  * Client-side mirror of the agent_select() checks so obvious mistakes fail
@@ -146,6 +154,38 @@ export const agentEnvelopeSchema = z.discriminatedUnion('action', [
     content_type: z.string().max(255).optional(),
     upsert: z.boolean().optional(),
   }),
+  // ── Chunked upload (files larger than the ~4.5 MB platform body limit) ──
+  z.object({
+    action: z.literal('storage_upload_begin'),
+    bucket: z.string().regex(BUCKET, 'invalid bucket name'),
+    path: z.string().min(1).max(1024),
+    content_type: z.string().max(255).optional(),
+    upsert: z.boolean().optional(),
+    // Optional: also file the finished object as an attachment, which is what
+    // makes it appear in a job's/project's Documents.
+    parent_type: z.enum(PARENT_TYPES).optional(),
+    parent_id: z.string().uuid().optional(),
+    kind: z.enum(ATTACHMENT_KINDS).optional(),
+    caption: z.string().max(500).optional(),
+    client_visible: z.boolean().optional(),
+  }),
+  z.object({
+    action: z.literal('storage_upload_part'),
+    upload_id: z.string().uuid(),
+    part_number: z.number().int().min(1).max(MAX_PARTS),
+    content_base64: z.string().min(1),
+  }),
+  z.object({
+    action: z.literal('storage_upload_finish'),
+    upload_id: z.string().uuid(),
+    total_parts: z.number().int().min(1).max(MAX_PARTS),
+    /** Optional sha256 (hex) of the whole file — verified before publishing. */
+    sha256: z.string().regex(/^[0-9a-f]{64}$/i, 'sha256 must be 64 hex chars').optional(),
+  }),
+  z.object({
+    action: z.literal('storage_upload_abort'),
+    upload_id: z.string().uuid(),
+  }),
 ])
 export type AgentEnvelope = z.infer<typeof agentEnvelopeSchema>
 export type AgentAction = AgentEnvelope['action']
@@ -211,7 +251,11 @@ export const AGENT_HELP = {
     rpc: '{fn, args?} — call a public Postgres function (portal RPCs, next_number, …).',
     storage_list: '{bucket, prefix?, limit?} — list storage objects. Buckets: attachments, branding, backups.',
     storage_sign: '{bucket, path, expires_in?} — signed download URL (default 1h, max 7d).',
-    storage_upload: '{bucket, path, content_base64, content_type?, upsert?} — upload a file, max 3 MB decoded (Vercel body limit; use storage_sign for larger).',
+    storage_upload: '{bucket, path, content_base64, content_type?, upsert?} — upload a file in one call, max 3 MB decoded (platform body limit). Larger files use the chunked flow below.',
+    storage_upload_begin: '{bucket, path, content_type?, upsert?, parent_type?, parent_id?, kind?, caption?, client_visible?} — start a chunked upload for a file over 3 MB. Returns {upload_id, part_max_bytes}. Pass parent_type+parent_id (e.g. job + its uuid) to ALSO file the finished document against that record so it appears in its Documents.',
+    storage_upload_part: '{upload_id, part_number, content_base64} — send one part (1-based, ≤3 MB decoded). Parts may be sent in any order; gaps are caught at finish.',
+    storage_upload_finish: '{upload_id, total_parts, sha256?} — reassemble and publish. Pass the sha256 (hex) of the whole file to have it verified before publishing; a truncated document is rejected rather than filed.',
+    storage_upload_abort: '{upload_id} — discard an in-flight upload and its parts.',
   },
   filter_ops: FILTER_OPS,
   guardrails: [
@@ -349,7 +393,7 @@ export const AGENT_TOOLS: ToolDef[] = [
   },
   {
     name: 'storage_upload',
-    description: 'Upload a file to storage (base64, max 3 MB decoded; use storage_sign for larger).',
+    description: 'Upload a file to storage in one call (base64, max 3 MB decoded). For anything larger use storage_upload_begin/part/finish.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -360,6 +404,62 @@ export const AGENT_TOOLS: ToolDef[] = [
         upsert: { type: 'boolean' },
       },
       required: ['bucket', 'path', 'content_base64'],
+    },
+  },
+  {
+    name: 'storage_upload_begin',
+    description:
+      'Start a chunked upload for a file larger than 3 MB. Returns {upload_id, part_max_bytes}. Set parent_type + parent_id (e.g. "job" and its uuid) to also file the finished document against that record, so it appears in its Documents.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        bucket: { type: 'string' },
+        path: { type: 'string' },
+        content_type: { type: 'string' },
+        upsert: { type: 'boolean' },
+        parent_type: { type: 'string', enum: [...PARENT_TYPES] },
+        parent_id: { type: 'string' },
+        kind: { type: 'string', enum: [...ATTACHMENT_KINDS] },
+        caption: { type: 'string' },
+        client_visible: { type: 'boolean' },
+      },
+      required: ['bucket', 'path'],
+    },
+  },
+  {
+    name: 'storage_upload_part',
+    description: 'Send one part of a chunked upload (1-based part_number, max 3 MB decoded each).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        upload_id: { type: 'string' },
+        part_number: { type: 'number' },
+        content_base64: { type: 'string' },
+      },
+      required: ['upload_id', 'part_number', 'content_base64'],
+    },
+  },
+  {
+    name: 'storage_upload_finish',
+    description:
+      'Reassemble and publish a chunked upload. Pass sha256 (hex of the whole file) to have integrity verified before publishing — a truncated file is rejected rather than filed.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        upload_id: { type: 'string' },
+        total_parts: { type: 'number' },
+        sha256: { type: 'string' },
+      },
+      required: ['upload_id', 'total_parts'],
+    },
+  },
+  {
+    name: 'storage_upload_abort',
+    description: 'Discard an in-flight chunked upload and its staged parts.',
+    inputSchema: {
+      type: 'object',
+      properties: { upload_id: { type: 'string' } },
+      required: ['upload_id'],
     },
   },
 ]
