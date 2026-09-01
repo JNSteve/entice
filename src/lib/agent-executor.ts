@@ -160,6 +160,7 @@ type UploadRow = {
   id: string
   bucket: string
   path: string
+  filename: string | null
   content_type: string | null
   upsert: boolean
   parent_type: string | null
@@ -177,7 +178,7 @@ async function openUpload(admin: Admin, uploadId: string): Promise<UploadRow> {
   const { data, error } = await admin
     .from('agent_uploads')
     .select(
-      'id, bucket, path, content_type, upsert, parent_type, parent_id, kind, caption, client_visible, status, bytes_received, expires_at'
+      'id, bucket, path, filename, content_type, upsert, parent_type, parent_id, kind, caption, client_visible, status, bytes_received, expires_at'
     )
     .eq('id', uploadId)
     .maybeSingle()
@@ -443,6 +444,7 @@ export async function executeAgentAction(
         .insert({
           bucket: envelope.bucket,
           path: envelope.path,
+          filename: envelope.filename ?? null,
           content_type: envelope.content_type ?? null,
           upsert: envelope.upsert ?? false,
           parent_type: envelope.parent_type ?? null,
@@ -583,7 +585,14 @@ export async function executeAgentAction(
       // Optionally file it so it shows up in the record's Documents.
       let attachmentId: string | null = null
       if (upload.parent_type && upload.parent_id) {
-        const filename = upload.path.split('/').pop() ?? upload.path
+        // Prefer the explicit display name. Falling back to the path segment,
+        // strip any uuid- prefix so the Documents list doesn't show one.
+        const filename =
+          upload.filename ??
+          (upload.path.split('/').pop() ?? upload.path).replace(
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-/i,
+            ''
+          )
         const { data: att, error: attErr } = await admin
           .from('attachments')
           .insert({

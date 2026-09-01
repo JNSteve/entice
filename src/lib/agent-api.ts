@@ -159,6 +159,12 @@ export const agentEnvelopeSchema = z.discriminatedUnion('action', [
     action: z.literal('storage_upload_begin'),
     bucket: z.string().regex(BUCKET, 'invalid bucket name'),
     path: z.string().min(1).max(1024),
+    /**
+     * Display name for the attachment. The app keeps this separate from the
+     * sanitised, uuid-prefixed storage path, so it cannot be derived — pass the
+     * original filename or the Documents list shows the path segment.
+     */
+    filename: z.string().min(1).max(255).optional(),
     content_type: z.string().max(255).optional(),
     upsert: z.boolean().optional(),
     // Optional: also file the finished object as an attachment, which is what
@@ -252,7 +258,7 @@ export const AGENT_HELP = {
     storage_list: '{bucket, prefix?, limit?} — list storage objects. Buckets: attachments, branding, backups.',
     storage_sign: '{bucket, path, expires_in?} — signed download URL (default 1h, max 7d).',
     storage_upload: '{bucket, path, content_base64, content_type?, upsert?} — upload a file in one call, max 3 MB decoded (platform body limit). Larger files use the chunked flow below.',
-    storage_upload_begin: '{bucket, path, content_type?, upsert?, parent_type?, parent_id?, kind?, caption?, client_visible?} — start a chunked upload for a file over 3 MB. Returns {upload_id, part_max_bytes}. Pass parent_type+parent_id (e.g. job + its uuid) to ALSO file the finished document against that record so it appears in its Documents.',
+    storage_upload_begin: '{bucket, path, filename?, content_type?, upsert?, parent_type?, parent_id?, kind?, caption?, client_visible?} — start a chunked upload for a file over 3 MB. Returns {upload_id, part_max_bytes}. Pass parent_type+parent_id (e.g. job + its uuid) to ALSO file the finished document against that record so it appears in its Documents, and pass filename (the original name) so the Documents list shows it rather than the storage path segment.',
     storage_upload_part: '{upload_id, part_number, content_base64} — send one part (1-based, ≤3 MB decoded). Parts may be sent in any order; gaps are caught at finish.',
     storage_upload_finish: '{upload_id, total_parts, sha256?} — reassemble and publish. Pass the sha256 (hex) of the whole file to have it verified before publishing; a truncated document is rejected rather than filed.',
     storage_upload_abort: '{upload_id} — discard an in-flight upload and its parts.',
@@ -415,6 +421,11 @@ export const AGENT_TOOLS: ToolDef[] = [
       properties: {
         bucket: { type: 'string' },
         path: { type: 'string' },
+        filename: {
+          type: 'string',
+          description:
+            'Display name shown in Documents. Pass the original filename — it is stored separately from the sanitised storage path.',
+        },
         content_type: { type: 'string' },
         upsert: { type: 'boolean' },
         parent_type: { type: 'string', enum: [...PARENT_TYPES] },
