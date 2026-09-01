@@ -64,6 +64,28 @@ actions are limited to the `attachments`, `branding` and `backups` buckets;
 `storage_sign` for anything larger). Existing DB protections (append-only
 audit_log, storage protect trigger, CHECK constraints) still apply.
 
+## Uploading a large document (chunked)
+
+`storage_upload` takes files up to 3 MB in one call — the platform caps a
+request body at ~4.5 MB and base64 inflates ~33%. Anything bigger (surveys,
+clearance certificates) goes through the chunked flow, which needs no network
+access beyond the portal itself:
+
+1. `storage_upload_begin` — `{bucket, path, content_type?}`, plus
+   `parent_type` + `parent_id` (e.g. `"job"` and its uuid) to file the finished
+   document against that record so it appears in its Documents. Returns
+   `upload_id` and `part_max_bytes`.
+2. `storage_upload_part` — `{upload_id, part_number, content_base64}` for each
+   ≤3 MB slice, 1-based. Order doesn't matter; gaps are caught at the end.
+3. `storage_upload_finish` — `{upload_id, total_parts, sha256?}`. **Send the
+   sha256** of the whole file: it is verified before anything is published, so
+   a truncated document is rejected rather than quietly filed.
+4. `storage_upload_abort` — `{upload_id}` to discard an in-flight upload.
+
+Limits: 3 MB per part, 100 MB per file, sessions expire after 24 hours. Parts
+stage in a private `agent-uploads` bucket that is excluded from backups and
+unreachable via the ordinary storage actions.
+
 ## Keys
 
 Mint (run in the Supabase SQL editor; keep the plaintext, store only its hash):
