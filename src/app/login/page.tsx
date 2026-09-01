@@ -18,7 +18,15 @@ type SignInState = { error: string } | null
 
 export default function LoginPage() {
   const [state, formAction, pending] = useActionState<SignInState, FormData>(
-    async (_prev, formData) => (await signIn(formData)) ?? null,
+    async (_prev, formData) => {
+      // Carry ?next= (set by the OAuth consent screen) through the sign-in so
+      // the admin lands back on the approval page. Read at submit time rather
+      // than via useSearchParams, which would require a Suspense boundary on
+      // this statically rendered page. The server validates it is same-origin.
+      const next = new URLSearchParams(window.location.search).get('next')
+      if (next) formData.set('next', next)
+      return (await signIn(formData)) ?? null
+    },
     null
   )
 

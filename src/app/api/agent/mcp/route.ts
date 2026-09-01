@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { createAdminClient } from '@/lib/supabase/server'
 import { AGENT_TOOLS } from '@/lib/agent-api'
+import { wwwAuthenticate } from '@/lib/agent-oauth'
+import { requestOrigin } from '@/lib/agent-oauth-server'
 import { authenticateAgentKey, runAgentRequest } from '@/lib/agent-executor'
 
 export const runtime = 'nodejs'
@@ -63,9 +65,14 @@ export async function POST(request: Request) {
     return rpcError(null, -32000, 'Authentication backend unavailable — try again shortly', 503)
   }
   if (auth.outcome !== 'authenticated') {
+    // The WWW-Authenticate resource_metadata hint is how an OAuth-capable MCP
+    // client (Cowork, the mobile app) discovers where to authenticate.
     return NextResponse.json(
       { jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid, revoked or missing agent key' } },
-      { status: 401, headers: { 'WWW-Authenticate': 'Bearer' } }
+      {
+        status: 401,
+        headers: { 'WWW-Authenticate': wwwAuthenticate(requestOrigin(request)) },
+      }
     )
   }
   const key = auth.key

@@ -104,6 +104,11 @@ export const config = {
     // fetched by the browser BEFORE anyone signs in (and by the install
     // prompt), so proxying it returns a 307 to /login and the PWA silently
     // falls back to defaults — wrong name, no standalone display, no icons.
-    '/((?!api|sign/|submit/|portal/|haul/|receive/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|map|webmanifest)$).*)',
+    //
+    // NOTE: .well-known/ MUST stay excluded for the same reason — OAuth
+    // discovery (RFC 8414 / RFC 9728) is fetched unauthenticated before a
+    // connector can start its flow, so proxying it 307s to /login and
+    // connector setup fails with a confusing error.
+    '/((?!api|sign/|submit/|portal/|haul/|receive/|\\.well-known/|_next/static|_next/image|favicon\\.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|css|js|txt|map|webmanifest)$).*)',
   ],
 }

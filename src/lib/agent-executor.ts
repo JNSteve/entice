@@ -72,6 +72,9 @@ export async function authenticateAgentKey(
     .update({ last_used_at: new Date().toISOString() })
     .eq('key_hash', hash)
     .is('revoked_at', null)
+    // OAuth access tokens are agent_keys rows with an expiry; static keys have
+    // expires_at NULL and never age out.
+    .or(`expires_at.is.null,expires_at.gt.${new Date().toISOString()}`)
     .select('id, name')
     .maybeSingle()
   if (error) return { outcome: 'db_error', message: error.message }
