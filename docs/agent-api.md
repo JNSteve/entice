@@ -89,3 +89,31 @@ from agent_audit order by created_at desc limit 50;
 
 `agent_audit` is append-only; a deliberate admin prune needs
 `set local app.allow_agent_audit_prune = 'true';` in the same transaction.
+
+**Revoke, don't delete.** A key that has audited calls cannot be deleted: the
+`agent_audit.key_id` FK is `ON DELETE SET NULL`, and nulling it trips the
+append-only trigger, so the delete fails with `agent_audit is append-only`.
+That is deliberate — deleting a key would otherwise quietly rewrite its audit
+history. Set `revoked_at` instead (and `disabled_at` on an OAuth client).
+
+## Connecting Cowork / the mobile app (OAuth)
+
+Claude Code uses the bearer key above. claude.ai **account connectors** (Cowork,
+the mobile app) can't send a static header, so they authenticate with OAuth
+instead — no key to paste. Add a custom connector pointing at:
+
+```
+https://entice-pink.vercel.app/api/agent/mcp
+```
+
+The client registers itself, then sends you to a consent screen. You must be
+signed into the portal **as an admin** to approve — that is the same bar as
+minting a key, because a grant hands the agent full read/write. Approving mints
+a 1-hour access token (auto-refreshed) that appears in `agent_keys` as
+`kind='oauth'`, so every call is audited exactly like a static-key call and the
+grant is revocable the same way:
+
+```sql
+update agent_keys set revoked_at = now() where kind = 'oauth';
+update agent_oauth_clients set disabled_at = now();
+```
