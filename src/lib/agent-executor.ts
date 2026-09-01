@@ -604,10 +604,13 @@ export async function executeAgentAction(
         attachmentId = att.id as string
       }
 
-      // Clear staging, then close the session.
+      // Clear staging — blobs AND their rows, so no metadata survives pointing
+      // at files that no longer exist. The session row keeps the record
+      // (status + final_bytes).
       await admin.storage
         .from(UPLOAD_STAGING_BUCKET)
         .remove(list.map((p) => partKey(envelope.upload_id, p.part_number)))
+      await admin.from('agent_upload_parts').delete().eq('upload_id', envelope.upload_id)
       await admin
         .from('agent_uploads')
         .update({
@@ -649,6 +652,7 @@ export async function executeAgentAction(
       )
       if (keys.length > 0)
         await admin.storage.from(UPLOAD_STAGING_BUCKET).remove(keys)
+      await admin.from('agent_upload_parts').delete().eq('upload_id', envelope.upload_id)
       await admin
         .from('agent_uploads')
         .update({ status: 'aborted' })
