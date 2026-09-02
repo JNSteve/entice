@@ -3682,16 +3682,24 @@ The app generates PDFs server-side using `@react-pdf/renderer`, streamed from th
 **Quote templates.** Settings → Quote templates holds structured quote documents (headings, boilerplate, merge fields, pricing display defaults). Upload an existing quote PDF and the app reads it into a template via OpenAI (`OPENAI_API_KEY`), or build one by hand. Applying a template to a quote snapshots it onto the quote (`quotes.doc`, `quotes.pdf_options`); the office PDF and the client-portal copy render the same snapshot. Pricing can be shown as a lump sum, section totals or itemised lines. Cost price and markup never print.
 ```
 
-- [ ] **Step 2: Mark the spec implemented**
+- [ ] **Step 2: Document the OpenAI key**
+
+In the README environment-variable table (the one listing `NEXT_PUBLIC_SITE_URL`, around line 170) add a row:
+
+```markdown
+| `OPENAI_API_KEY` | Enables PDF import for quote templates and takeoff report extraction. Optional; both features show a hint until it is set. Add to `.env.local` and to the Vercel project environment. |
+```
+
+- [ ] **Step 3: Mark the spec implemented**
 
 Change `Status: draft for review` to `Status: implemented 2026-09-02 (plan: docs/superpowers/plans/2026-09-02-quote-templates.md)`.
 
-- [ ] **Step 3: Full verification**
+- [ ] **Step 4: Full verification**
 
 Run: `npm test && npx tsc --noEmit && npm run lint && npm run build`
 Expected: all green. Then the manual pass from Task 10 Step 6 and Task 12 Step 7 with the reference PDF; confirm one templated PDF in each pricing mode opens, the portal copy carries the watermark, and no cost figure appears anywhere in any of them (search the PDF text for the quote's unit costs).
 
-- [ ] **Step 4: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add README.md docs/superpowers/specs/2026-09-02-quote-templates-design.md
