@@ -119,6 +119,11 @@ export function QuotePdfDialog({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value={STANDARD}>Standard layout</SelectItem>
+                  {quote.template_id && !templates.some((t) => t.id === quote.template_id) && (
+                    <SelectItem value={quote.template_id}>
+                      {`${quote.template_name ?? 'Current template'} (inactive)`}
+                    </SelectItem>
+                  )}
                   {templates.map((t) => (
                     <SelectItem key={t.id} value={t.id}>
                       {t.name}

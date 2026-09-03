@@ -26,8 +26,17 @@ export function QuoteDocCard({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [openEditor, setOpenEditor] = useState(false)
+  const docJson = JSON.stringify(doc)
   const [draft, setDraft] = useState<QuoteDoc | null>(doc)
-  const dirty = draft !== doc
+  const [baseJson, setBaseJson] = useState(docJson)
+  // Adopt a changed server document (template applied from the PDF dialog,
+  // or our own save coming back normalised) — React's derive-state-from-props
+  // pattern. Refreshes that leave the document unchanged keep unsaved edits.
+  if (docJson !== baseJson) {
+    setBaseJson(docJson)
+    setDraft(doc)
+  }
+  const dirty = JSON.stringify(draft) !== docJson
 
   if (!doc) {
     return (
