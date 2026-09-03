@@ -122,19 +122,9 @@ Runs a series of role-impersonated queries to verify RLS policies are working as
 
 ## PDFs
 
-The app generates PDFs server-side using `@react-pdf/renderer`. PDF types and their API route patterns:
+The app generates PDFs server-side using `@react-pdf/renderer`, streamed from the consolidated route `GET /api/pdf/[type]/[id]` (types include `quote`, `invoice`, `po`, `claim`, `swms`, `form`, `incident`, `qr-poster`, `programme`, `diary`, `takeoff`, and more). Nothing is written to disk.
 
-| Document | Route |
-|---|---|
-| Quote | `GET /api/quotes/[id]/pdf` |
-| Invoice | `GET /api/invoices/[id]/pdf` |
-| Purchase Order | `GET /api/projects/[id]/pos/[poId]/pdf` |
-| Progress Claim | `GET /api/projects/[id]/claims/[claimId]/pdf` |
-| SWMS | `GET /api/swms/[id]/pdf` |
-
-PDFs are streamed directly; no files are written to disk.
-
-WHS documents (form submissions, incident reports, SWMS, QR posters, programme) are served by the consolidated route `GET /api/pdf/[type]/[id]` with types `form`, `incident`, `swms`, `qr-poster`, `programme`, `diary` / `diary-range`.
+**Quote templates.** Settings → Quote templates holds structured quote documents (headings, boilerplate, merge fields, pricing display defaults). Upload an existing quote PDF and the app reads it into a template via OpenAI (`OPENAI_API_KEY`), or build one by hand. Applying a template to a quote snapshots it onto the quote (`quotes.doc`, `quotes.pdf_options`); the office PDF and the client-portal copy render the same snapshot. Pricing can be shown as a lump sum, section totals or itemised lines. Cost price and markup never print.
 
 ---
 
@@ -168,6 +158,7 @@ The WHS module lives at `/whs` (office hub: Overview / Forms / Incidents / Subbi
    | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anon key |
    | `SUPABASE_SERVICE_ROLE_KEY` | Your Supabase service role key |
    | `NEXT_PUBLIC_SITE_URL` | Your Vercel deployment URL (e.g. `https://entice.vercel.app`) |
+   | `OPENAI_API_KEY` | Enables PDF import for quote templates and takeoff report extraction. Optional; both features show a hint until it is set. Add to `.env.local` and to the Vercel project environment. |
 
 4. Leave the build command as the default (`next build`). Click **Deploy**.
 

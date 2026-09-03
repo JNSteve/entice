@@ -1,7 +1,7 @@
 # Quote templates — design
 
 Date: 2026-09-02
-Status: draft for review
+Status: implemented 2026-09-03 (plan: docs/superpowers/plans/2026-09-02-quote-templates.md)
 
 ## 1. Goal
 
