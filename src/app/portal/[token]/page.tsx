@@ -1,12 +1,13 @@
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import {
   Building2Icon,
-  CalendarDaysIcon,
   ChevronRightIcon,
   CircleCheckIcon,
   ClockIcon,
   FileSignatureIcon,
   FileTextIcon,
+  InboxIcon,
   MapPinIcon,
   PlusIcon,
   TriangleAlertIcon,
@@ -14,13 +15,14 @@ import {
 } from 'lucide-react'
 import { createPublicClient } from '@/lib/supabase/public'
 import { todayAU } from '@/lib/tz'
-import { fmtDate } from '@/lib/format'
-import { derivePropertyStatus } from '@/lib/portal'
+import { aud, fmtDate } from '@/lib/format'
+import { derivePortalPropertyStatus } from '@/lib/portal'
 import {
   propertyStatusPhrase,
   summarisePortfolio,
+  workGroupForJob,
+  workGroupForProject,
 } from '@/lib/portal-experience'
-import { redirect } from 'next/navigation'
 import {
   isRegisterScope,
   LinkInactivePage,
@@ -32,28 +34,19 @@ import {
   type PortalApprovalsPayload,
   type PortalBranding,
   type PortalRequestRow,
+  type PortalSiteRow,
+  type PortalWorkSummary,
 } from './portal-ui'
+import { WorkCard } from './work-ui'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
 export const dynamic = 'force-dynamic'
 
-interface PortalSiteRow {
-  id: string
-  name: string
-  address: string | null
-  suburb: string | null
-  state: string | null
-  postcode: string | null
-  review_dues: (string | null)[]
-  open_works: number
-}
-
 /**
- * Portfolio landing: welcome header, headline summary cards (properties,
- * compliance state, active works, due-in-60-days) and a property card per
- * site with an at-a-glance compliance ring. No login — the token is the
- * credential; everything runs through anon security-definer RPCs and every
- * load is logged to portal_views.
+ * Overview (works-first): approvals banner, headline cards, current works
+ * across every property, pending quotes, a compact property list and open
+ * requests. Compliance only takes a card when the client keeps a register.
+ * No login — the token is the credential; every load is logged.
  */
 export default async function PortalHomePage({
   params,
@@ -68,33 +61,43 @@ export default async function PortalHomePage({
   })
   const branding = (resolved ?? null) as PortalBranding | null
   if (!branding) return <LinkInactivePage />
-  // Register-scope links (site QR posters) only see their property's register.
   if (isRegisterScope(branding)) {
     redirect(`/portal/${token}/sites/${branding.site_id}`)
   }
 
-  const [{ data: sitesData }, { data: approvalsData }, { data: requestsData }] =
-    await Promise.all([
-      supabase.rpc('portal_sites', { p_token: token }),
-      supabase.rpc('portal_approvals', { p_token: token }),
-      supabase.rpc('portal_my_requests', { p_token: token }),
-      supabase.rpc('portal_log_view', {
-        p_token: token,
-        p_site: null,
-        p_path: '/portal',
-      }),
-    ])
+  const [
+    { data: sitesData },
+    { data: approvalsData },
+    { data: requestsData },
+    { data: worksData },
+  ] = await Promise.all([
+    supabase.rpc('portal_sites', { p_token: token }),
+    supabase.rpc('portal_approvals', { p_token: token }),
+    supabase.rpc('portal_my_requests', { p_token: token }),
+    supabase.rpc('portal_works', { p_token: token }),
+    supabase.rpc('portal_log_view', {
+      p_token: token,
+      p_site: null,
+      p_path: '/portal',
+    }),
+  ])
   const sites = ((sitesData ?? []) as PortalSiteRow[]) ?? []
   const approvals = ((approvalsData ?? null) as PortalApprovalsPayload | null) ?? {
     pending: [],
     decided: [],
   }
   const requests = ((requestsData ?? []) as PortalRequestRow[]) ?? []
+  const works = ((worksData ?? []) as PortalWorkSummary[]) ?? []
+
   const openRequests = requests.filter(
     (r) => r.status !== 'completed' && r.status !== 'declined'
   )
+  const currentWorks = works.filter((w) =>
+    (w.kind === 'job' ? workGroupForJob(w.status) : workGroupForProject(w.status)) === 'live'
+  )
   const today = todayAU()
   const summary = summarisePortfolio(sites, today)
+  const keepsRegister = sites.some((s) => (s.review_dues ?? []).length > 0)
 
   return (
     <PortalShell branding={branding} token={token} active="overview">
@@ -104,19 +107,21 @@ export default async function PortalHomePage({
             Welcome, {branding.client_name}
           </h1>
           <p className="text-sm text-slate-500">
-            Your property compliance and works with {branding.company_name} —{' '}
+            Your quotes, works and property records with {branding.company_name} —{' '}
             all in one place.
           </p>
         </div>
-        <a
-          href={`/portal/${token}/report-pdf`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex min-h-11 items-center gap-2 rounded-xl border bg-white px-3.5 text-sm font-medium text-[#162040] transition-colors hover:bg-slate-50"
-        >
-          <FileTextIcon className="size-4" />
-          Compliance report (PDF)
-        </a>
+        {keepsRegister && (
+          <a
+            href={`/portal/${token}/report-pdf`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex min-h-11 items-center gap-2 rounded-xl border bg-white px-3.5 text-sm font-medium text-[#162040] transition-colors hover:bg-slate-50"
+          >
+            <FileTextIcon className="size-4" />
+            Compliance report (PDF)
+          </a>
+        )}
       </div>
 
       {/* Awaiting approvals */}
@@ -131,7 +136,7 @@ export default async function PortalHomePage({
           <span className="min-w-0 flex-1">
             <span className="block text-sm font-semibold text-amber-900">
               {approvals.pending.length === 1
-                ? '1 item awaiting your approval'
+                ? '1 quote awaiting your approval'
                 : `${approvals.pending.length} items awaiting your approval`}
             </span>
             <span className="block text-xs text-amber-700">
@@ -145,12 +150,35 @@ export default async function PortalHomePage({
       {/* Headline summary */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryCard
-          icon={<Building2Icon className="size-4" />}
-          iconClass="bg-slate-100 text-slate-600"
-          value={String(summary.properties)}
-          label={summary.properties === 1 ? 'Property' : 'Properties'}
+          icon={<WrenchIcon className="size-4" />}
+          iconClass="bg-blue-50 text-blue-600"
+          value={String(currentWorks.length)}
+          label={currentWorks.length === 1 ? 'Active work' : 'Active works'}
+          valueClass={currentWorks.length > 0 ? 'text-blue-700' : undefined}
         />
-        {summary.overdue > 0 ? (
+        <SummaryCard
+          icon={<FileSignatureIcon className="size-4" />}
+          iconClass={
+            approvals.pending.length > 0 ? 'bg-amber-50 text-amber-600' : 'bg-slate-100 text-slate-600'
+          }
+          value={String(approvals.pending.length)}
+          label="Awaiting approval"
+          valueClass={approvals.pending.length > 0 ? 'text-amber-600' : undefined}
+        />
+        <SummaryCard
+          icon={<InboxIcon className="size-4" />}
+          iconClass="bg-slate-100 text-slate-600"
+          value={String(openRequests.length)}
+          label={openRequests.length === 1 ? 'Open request' : 'Open requests'}
+        />
+        {!keepsRegister ? (
+          <SummaryCard
+            icon={<Building2Icon className="size-4" />}
+            iconClass="bg-slate-100 text-slate-600"
+            value={String(summary.properties)}
+            label={summary.properties === 1 ? 'Property' : 'Properties'}
+          />
+        ) : summary.overdue > 0 ? (
           <SummaryCard
             icon={<TriangleAlertIcon className="size-4" />}
             iconClass="bg-red-50 text-red-600"
@@ -175,25 +203,79 @@ export default async function PortalHomePage({
             valueClass="text-green-700"
           />
         )}
-        <SummaryCard
-          icon={<WrenchIcon className="size-4" />}
-          iconClass="bg-blue-50 text-blue-600"
-          value={String(summary.activeWorks)}
-          label={summary.activeWorks === 1 ? 'Active work' : 'Active works'}
-          valueClass={summary.activeWorks > 0 ? 'text-blue-700' : undefined}
-        />
-        <SummaryCard
-          icon={<CalendarDaysIcon className="size-4" />}
-          iconClass={
-            summary.dueSoon > 0
-              ? 'bg-amber-50 text-amber-600'
-              : 'bg-slate-100 text-slate-600'
-          }
-          value={String(summary.dueSoon)}
-          label="Due in next 60 days"
-          valueClass={summary.dueSoon > 0 ? 'text-amber-600' : undefined}
-        />
       </div>
+
+      {/* Current works */}
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Current works
+          </h2>
+          {works.length > currentWorks.length && (
+            <Link
+              href={`/portal/${token}/works`}
+              className="flex min-h-6 items-center gap-1 text-sm font-medium text-[#162040] hover:underline"
+            >
+              All works <ChevronRightIcon className="size-4" />
+            </Link>
+          )}
+        </div>
+        {currentWorks.length === 0 ? (
+          <p className="rounded-2xl border border-dashed bg-white px-4 py-10 text-center text-sm text-slate-500">
+            No works under way right now.
+          </p>
+        ) : (
+          <ul className="flex flex-col gap-3">
+            {currentWorks.map((w) => (
+              <li key={`${w.kind}-${w.id}`}>
+                <WorkCard token={token} work={w} />
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Pending quotes */}
+      {approvals.pending.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+              Your quotes
+            </h2>
+            <Link
+              href={`/portal/${token}/approvals`}
+              className="flex min-h-6 items-center gap-1 text-sm font-medium text-[#162040] hover:underline"
+            >
+              All quotes <ChevronRightIcon className="size-4" />
+            </Link>
+          </div>
+          <PortalCard className="divide-y">
+            {approvals.pending.slice(0, 3).map((item) => (
+              <Link
+                key={`${item.kind}-${item.id}`}
+                href={`/portal/${token}/approvals/${item.kind}/${item.id}`}
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    {item.number} — {item.title}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">
+                    {item.context ?? (item.kind === 'quote' ? 'Quotation' : 'Variation')}
+                    {item.date ? ` · ${fmtDate(item.date)}` : ''}
+                  </p>
+                </div>
+                {item.amount != null && (
+                  <span className="text-sm font-semibold tabular-nums text-slate-900">
+                    {aud(item.amount)}
+                  </span>
+                )}
+                <ChevronRightIcon className="size-4 shrink-0 text-slate-300" />
+              </Link>
+            ))}
+          </PortalCard>
+        </div>
+      )}
 
       {/* Properties */}
       <div className="flex flex-col gap-3">
@@ -209,60 +291,52 @@ export default async function PortalHomePage({
             Request work
           </Link>
         </div>
-
         {sites.length === 0 ? (
           <p className="rounded-2xl border border-dashed bg-white px-4 py-10 text-center text-sm text-slate-500">
             No properties on record yet.
           </p>
         ) : (
-          <ul className="flex flex-col gap-3">
+          <PortalCard className="divide-y">
             {sites.map((site) => {
               const address = [site.address, site.suburb, site.state, site.postcode]
                 .filter(Boolean)
                 .join(', ')
               const dues = site.review_dues ?? []
-              const status = derivePropertyStatus(dues, today)
+              const status = derivePortalPropertyStatus(dues, today)
               const { phrase } = propertyStatusPhrase(dues, today)
               return (
-                <li key={site.id}>
-                  <Link
-                    href={`/portal/${token}/sites/${site.id}`}
-                    className="block rounded-2xl border bg-white p-4 shadow-sm transition-all hover:border-slate-300 hover:shadow"
-                  >
-                    <div className="flex items-center gap-3.5">
-                      <StatusRing status={status} />
-                      <div className="flex min-w-0 flex-1 flex-col gap-1">
-                        <p className="truncate text-[15px] font-semibold text-slate-900">
-                          {site.name}
-                        </p>
-                        {address && (
-                          <p className="flex items-center gap-1 truncate text-xs text-slate-500">
-                            <MapPinIcon className="size-3 shrink-0" />
-                            <span className="truncate">{address}</span>
-                          </p>
-                        )}
-                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
-                          <PortalLight status={status} label={phrase} />
-                          <span
-                            className={`text-xs ${
-                              site.open_works > 0
-                                ? 'font-medium text-blue-700'
-                                : 'text-slate-400'
-                            }`}
-                          >
-                            {site.open_works === 0
-                              ? 'No open works'
-                              : `${site.open_works} open work${site.open_works === 1 ? '' : 's'}`}
-                          </span>
-                        </div>
-                      </div>
-                      <ChevronRightIcon className="size-5 shrink-0 text-slate-300" />
+                <Link
+                  key={site.id}
+                  href={`/portal/${token}/sites/${site.id}`}
+                  className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50"
+                >
+                  <StatusRing status={status} />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-slate-900">{site.name}</p>
+                    {address && (
+                      <p className="flex items-center gap-1 truncate text-xs text-slate-500">
+                        <MapPinIcon className="size-3 shrink-0" />
+                        <span className="truncate">{address}</span>
+                      </p>
+                    )}
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
+                      <PortalLight status={status} label={phrase} />
+                      <span
+                        className={`text-xs ${
+                          site.open_works > 0 ? 'font-medium text-blue-700' : 'text-slate-400'
+                        }`}
+                      >
+                        {site.open_works === 0
+                          ? 'No open works'
+                          : `${site.open_works} open work${site.open_works === 1 ? '' : 's'}`}
+                      </span>
                     </div>
-                  </Link>
-                </li>
+                  </div>
+                  <ChevronRightIcon className="size-4 shrink-0 text-slate-300" />
+                </Link>
               )
             })}
-          </ul>
+          </PortalCard>
         )}
       </div>
 
@@ -318,9 +392,7 @@ function SummaryCard({
 }) {
   return (
     <PortalCard className="flex flex-col gap-2 p-3.5">
-      <span
-        className={`flex size-8 items-center justify-center rounded-lg ${iconClass}`}
-      >
+      <span className={`flex size-8 items-center justify-center rounded-lg ${iconClass}`}>
         {icon}
       </span>
       <div className="flex flex-col">
