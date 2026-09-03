@@ -17,8 +17,8 @@ import { createPublicClient } from '@/lib/supabase/public'
 import { todayAU } from '@/lib/tz'
 import { aud, fmtDate } from '@/lib/format'
 import {
+  derivePortalPropertyStatus,
   derivePropertyItemStatus,
-  derivePropertyStatus,
   PROPERTY_COMPLIANCE_KIND_LABELS,
   type PropertyComplianceKind,
 } from '@/lib/portal'
@@ -334,7 +334,7 @@ export default async function PortalSitePage({
     .join(', ')
 
   const dues = detail.items.map((i) => i.review_due)
-  const siteStatus = derivePropertyStatus(dues, today)
+  const siteStatus = derivePortalPropertyStatus(dues, today)
   const { phrase } = propertyStatusPhrase(dues, today)
 
   // ── Works: one shape, grouped live vs history ──────────────────────────────
@@ -435,7 +435,7 @@ export default async function PortalSitePage({
       <div className="flex flex-col gap-3">
         {!registerOnly && (
           <Link
-            href={`/portal/${token}`}
+            href={`/portal/${token}/properties`}
             className="flex min-h-6 w-fit items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900"
           >
             <ArrowLeftIcon className="size-3.5" />
@@ -499,7 +499,8 @@ export default async function PortalSitePage({
         <div className="flex flex-col gap-3">
         {detail.items.length === 0 ? (
           <EmptyState>
-            No compliance documents on record for this property yet.
+            No compliance register is kept for this property. Ask us if you would
+            like one set up.
           </EmptyState>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -654,14 +655,17 @@ export default async function PortalSitePage({
                   <li key={w.key}>
                     <PortalCard className="flex flex-col gap-3 p-4">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex min-w-0 flex-col gap-0.5">
+                        <Link
+                          href={`/portal/${token}/works/${w.kind}/${w.id}`}
+                          className="flex min-w-0 flex-col gap-0.5 hover:underline"
+                        >
                           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
                             {w.number}
                           </p>
                           <p className="text-[15px] font-semibold text-slate-900">
                             {w.title}
                           </p>
-                        </div>
+                        </Link>
                         <WorkStatusBadge status={w.status} />
                       </div>
                       {(w.from || w.to) && (
@@ -678,11 +682,17 @@ export default async function PortalSitePage({
                       {w.progressPct !== null && (
                         <ProgressBar pct={w.progressPct} />
                       )}
-                      <PhotoGallery token={token} photos={w.attachments.filter(isPhoto)} />
+                      <PhotoGallery token={token} photos={w.attachments.filter(isPhoto)} limit={6} />
                       <DocRows
                         token={token}
                         docs={w.attachments.filter((a) => !isPhoto(a))}
                       />
+                      <Link
+                        href={`/portal/${token}/works/${w.kind}/${w.id}`}
+                        className="flex min-h-6 w-fit items-center gap-1 text-xs font-medium text-[#162040] hover:underline"
+                      >
+                        View this work <ChevronRightIcon className="size-3.5" />
+                      </Link>
                     </PortalCard>
                   </li>
                 ))}
@@ -712,9 +722,12 @@ export default async function PortalSitePage({
                             </p>
                           )}
                           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <p className="text-sm font-semibold text-slate-900">
+                            <Link
+                              href={`/portal/${token}/works/${w.kind}/${w.id}`}
+                              className="text-sm font-semibold text-slate-900 hover:underline"
+                            >
                               {w.title}
-                            </p>
+                            </Link>
                             <span className="text-xs text-slate-400">{w.number}</span>
                             <WorkStatusBadge status={w.status} />
                           </div>
@@ -731,13 +744,19 @@ export default async function PortalSitePage({
                             <DownloadIcon className="size-3.5 opacity-70" />
                           </a>
                         )}
-                        <PhotoGallery token={token} photos={w.attachments.filter(isPhoto)} />
+                        <PhotoGallery token={token} photos={w.attachments.filter(isPhoto)} limit={6} />
                         <DocRows
                           token={token}
                           docs={w.attachments.filter(
                             (a) => !isPhoto(a) && a.id !== handoverPack?.id
                           )}
                         />
+                        <Link
+                          href={`/portal/${token}/works/${w.kind}/${w.id}`}
+                          className="flex min-h-6 w-fit items-center gap-1 text-xs font-medium text-[#162040] hover:underline"
+                        >
+                          View this work <ChevronRightIcon className="size-3.5" />
+                        </Link>
                         {givenRating ? (
                           <p className="text-xs font-medium text-slate-500">
                             {'★'.repeat(givenRating)}
