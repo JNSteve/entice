@@ -8,6 +8,8 @@ import {
   mergeDoc,
   mergeText,
   normaliseBlocks,
+  parseQuoteDocInput,
+  parseQuoteTemplateInput,
   quoteDocSchema,
   quoteTemplateSchema,
   snapshotFromTemplate,
@@ -169,5 +171,52 @@ describe('helpers', () => {
     expect(merged.blocks[1]).toMatchObject({ intro: 'Acme', rows: [{ label: 'Acme', value: '—' }] })
     expect(merged.blocks[2]).toMatchObject({ items: ['Acme x'] })
     expect(merged.blocks[3]).toMatchObject({ body: 'Sign, Acme' })
+  })
+})
+
+describe('editor payload parsing', () => {
+  test('parseQuoteDocInput trims header fields and normalises blocks', () => {
+    const r = parseQuoteDocInput({
+      ...starterDoc(),
+      heading: '   ',
+      validity_text: '  14 days  ',
+      blocks: [
+        { id: 'p', type: 'pricing', heading: ' Fee ', note: '  ' },
+        { id: 'b', type: 'bullets', heading: 'B', items: [' one ', ''] },
+      ],
+    })
+    expect(r.success).toBe(true)
+    if (!r.success) return
+    expect(r.data.heading).toBeNull()
+    expect(r.data.validity_text).toBe('14 days')
+    expect(r.data.blocks[0]).toEqual({ id: 'p', type: 'pricing', heading: 'Fee', note: undefined })
+    expect(r.data.blocks[1]).toMatchObject({ items: ['one'] })
+  })
+
+  test('parseQuoteDocInput returns a zod error (does not throw) on malformed blocks', () => {
+    const malformed = {
+      ...starterDoc(),
+      blocks: [{ id: 'x', type: 'bullets', heading: 'B', items: 'not-an-array' }, 42, null],
+    }
+    expect(() => parseQuoteDocInput(malformed)).not.toThrow()
+    expect(parseQuoteDocInput(malformed).success).toBe(false)
+    expect(parseQuoteDocInput('garbage').success).toBe(false)
+    expect(parseQuoteDocInput(undefined).success).toBe(false)
+  })
+
+  test('parseQuoteTemplateInput applies the same cleaning and requires the template fields', () => {
+    const ok = parseQuoteTemplateInput({
+      ...starterDoc(),
+      name: ' Asbestos ',
+      heading: ' Works ',
+      pricing_defaults: DEFAULT_PRICING,
+    })
+    expect(ok.success).toBe(true)
+    if (ok.success) {
+      expect(ok.data.name).toBe('Asbestos')
+      expect(ok.data.heading).toBe('Works')
+    }
+    expect(parseQuoteTemplateInput({ ...starterDoc(), pricing_defaults: DEFAULT_PRICING }).success).toBe(false)
+    expect(() => parseQuoteTemplateInput({ blocks: [{ type: 'table' }] })).not.toThrow()
   })
 })

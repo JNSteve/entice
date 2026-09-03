@@ -356,3 +356,37 @@ export function buildDetailsRows(src: MergeSource, validityText: string): Detail
   rows.push({ label: 'Validity', value: mergeText(validityText, ctx) })
   return rows
 }
+
+// ─── Editor payload parsing ──────────────────────────────────────────────────
+
+/** Trims the free-text header fields (empty heading → null) without touching blocks. */
+function cleanDocInput(data: unknown): Record<string, unknown> {
+  const raw = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  return {
+    ...raw,
+    heading: typeof raw.heading === 'string' ? raw.heading.trim() || null : raw.heading,
+    validity_text:
+      typeof raw.validity_text === 'string' ? raw.validity_text.trim() : raw.validity_text,
+  }
+}
+
+/**
+ * Editor payload → validated QuoteDoc. The shape is validated BEFORE
+ * normaliseBlocks runs (so malformed input yields a zod error, never a
+ * throw), then the normalised blocks are validated again.
+ */
+export function parseQuoteDocInput(data: unknown) {
+  const first = quoteDocSchema.safeParse(cleanDocInput(data))
+  if (!first.success) return first
+  return quoteDocSchema.safeParse({ ...first.data, blocks: normaliseBlocks(first.data.blocks) })
+}
+
+/** Same as parseQuoteDocInput for the template shape (name + pricing defaults). */
+export function parseQuoteTemplateInput(data: unknown) {
+  const first = quoteTemplateSchema.safeParse(cleanDocInput(data))
+  if (!first.success) return first
+  return quoteTemplateSchema.safeParse({
+    ...first.data,
+    blocks: normaliseBlocks(first.data.blocks),
+  })
+}

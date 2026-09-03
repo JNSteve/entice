@@ -20,12 +20,10 @@ import {
   quoteLineUpdateSchema,
 } from '@/lib/zod'
 import {
-  normaliseBlocks,
+  parseQuoteDocInput,
   pricingDisplaySchema,
-  quoteDocSchema,
   quoteTemplateSchema,
   snapshotFromTemplate,
-  type DocBlock,
 } from '@/lib/quote-doc'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -1001,15 +999,7 @@ export async function applyQuoteTemplate(
 /** Saves per-quote edits to the document snapshot (heading, validity, blocks). */
 export async function updateQuoteDoc(quoteId: string, doc: unknown): Promise<Result> {
   await requireRole('admin', 'office')
-  const raw = (doc && typeof doc === 'object' ? doc : {}) as Record<string, unknown>
-  const cleaned = {
-    ...raw,
-    heading: typeof raw.heading === 'string' ? raw.heading.trim() || null : raw.heading,
-    validity_text:
-      typeof raw.validity_text === 'string' ? raw.validity_text.trim() : raw.validity_text,
-    blocks: Array.isArray(raw.blocks) ? normaliseBlocks(raw.blocks as DocBlock[]) : raw.blocks,
-  }
-  const parsed = quoteDocSchema.safeParse(cleaned)
+  const parsed = parseQuoteDocInput(doc)
   if (!parsed.success) {
     return { error: parsed.error.issues[0]?.message ?? 'Invalid document' }
   }

@@ -24,9 +24,7 @@ import { swmsTemplateV2Schema } from '@/lib/swms'
 import { z } from 'zod'
 import {
   MAX_TEMPLATE_PDF_BYTES,
-  normaliseBlocks,
-  quoteTemplateSchema,
-  type DocBlock,
+  parseQuoteTemplateInput,
   type QuoteTemplateInput,
 } from '@/lib/quote-doc'
 import {
@@ -794,21 +792,11 @@ export async function deleteAssemblyComponent(
 // ─── Quote templates ─────────────────────────────────────────────────────────
 
 /**
- * Validates editor output. Blocks are normalised (trimmed, empties dropped)
- * and the free-text header fields trimmed before the schema runs, so a
- * heading of "   " saves as null and stray whitespace never reaches the PDF.
+ * Validates editor output: header fields trimmed, blocks normalised (trimmed,
+ * empties dropped) — shape-checked before normalising so bad input yields a
+ * message, never a throw. See parseQuoteTemplateInput.
  */
-function parseTemplate(data: unknown) {
-  const raw = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
-  const cleaned = {
-    ...raw,
-    heading: typeof raw.heading === 'string' ? raw.heading.trim() || null : raw.heading,
-    validity_text:
-      typeof raw.validity_text === 'string' ? raw.validity_text.trim() : raw.validity_text,
-    blocks: Array.isArray(raw.blocks) ? normaliseBlocks(raw.blocks as DocBlock[]) : raw.blocks,
-  }
-  return quoteTemplateSchema.safeParse(cleaned)
-}
+const parseTemplate = parseQuoteTemplateInput
 
 export async function createQuoteTemplate(
   data: unknown
@@ -899,6 +887,16 @@ export async function setDefaultQuoteTemplate(id: string): Promise<{ error?: str
   if (!target) return { error: 'Template not found' }
   if (!target.active) return { error: 'Activate the template before making it the default' }
 
+  // Two statements (supabase-js cannot express "set is_default = (id = X)").
+  // The partial unique index forbids two defaults, so the current one must be
+  // cleared first; if the second write fails the previous default is restored
+  // so the admin never silently ends up with none.
+  const { data: previous } = await supabase
+    .from('quote_templates')
+    .select('id')
+    .eq('is_default', true)
+    .maybeSingle()
+
   const { error: clearErr } = await supabase
     .from('quote_templates')
     .update({ is_default: false })
@@ -909,7 +907,20 @@ export async function setDefaultQuoteTemplate(id: string): Promise<{ error?: str
     .from('quote_templates')
     .update({ is_default: true })
     .eq('id', id)
-  if (error) return { error: error.message }
+  if (error) {
+    let outcome = 'There is currently no default.'
+    if (previous?.id) {
+      const { error: restoreErr } = await supabase
+        .from('quote_templates')
+        .update({ is_default: true })
+        .eq('id', previous.id)
+      outcome = restoreErr
+        ? 'The previous default could not be restored. Pick a default again.'
+        : 'The previous default was kept.'
+    }
+    revalidatePath('/settings')
+    return { error: `Could not set the default (${error.message}). ${outcome}` }
+  }
 
   revalidatePath('/settings')
   revalidatePath('/quotes')
