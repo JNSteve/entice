@@ -19,6 +19,14 @@ import {
   quoteLineCreateSchema,
   quoteLineUpdateSchema,
 } from '@/lib/zod'
+import {
+  normaliseBlocks,
+  pricingDisplaySchema,
+  quoteDocSchema,
+  quoteTemplateSchema,
+  snapshotFromTemplate,
+  type DocBlock,
+} from '@/lib/quote-doc'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 type Result = { error?: string }
@@ -81,6 +89,17 @@ export async function createQuote(
     .eq('id', 1)
     .single()
 
+  let templatePatch: Record<string, unknown> = {}
+  if (parsed.data.template_id) {
+    const loaded = await loadTemplate(supabase, parsed.data.template_id)
+    if ('error' in loaded) return { error: loaded.error }
+    templatePatch = {
+      template_id: parsed.data.template_id,
+      doc: snapshotFromTemplate(loaded.template),
+      pdf_options: loaded.template.pricing_defaults,
+    }
+  }
+
   let number: string
   try {
     number = await nextNumber(supabase, 'quote')
@@ -100,6 +119,7 @@ export async function createQuote(
       pm_id: parsed.data.pm_id ?? profile.id,
       gst_rate: settings?.gst_rate ?? 10,
       created_by: profile.id,
+      ...templatePatch,
     })
     .select('id')
     .single()
@@ -126,7 +146,7 @@ export async function duplicateQuote(
   const { data: source, error: srcErr } = await supabase
     .from('quotes')
     .select(
-      'id, client_id, site_id, contact_id, title, description, notes, valid_days, gst_rate'
+      'id, client_id, site_id, contact_id, title, description, notes, valid_days, gst_rate, template_id, doc, pdf_options'
     )
     .eq('id', quoteId)
     .single()
@@ -151,6 +171,9 @@ export async function duplicateQuote(
       notes: source.notes,
       valid_days: source.valid_days,
       gst_rate: source.gst_rate,
+      template_id: source.template_id,
+      doc: source.doc,
+      pdf_options: source.pdf_options,
       status: 'draft',
       pm_id: profile.id,
       created_by: profile.id,
@@ -925,4 +948,98 @@ async function swapAndReindex(
   ;[next[index], next[swapWith]] = [next[swapWith], next[index]]
 
   return renumberSiblings(next, write)
+}
+
+// ─── Document template ───────────────────────────────────────────────────────
+
+/** Active template row, validated, or an error message. */
+async function loadTemplate(supabase: SupabaseClient, templateId: string) {
+  const { data } = await supabase
+    .from('quote_templates')
+    .select('doc_title, heading, validity_text, number_headings, blocks, pricing_defaults, name')
+    .eq('id', templateId)
+    .eq('active', true)
+    .maybeSingle()
+  if (!data) return { error: 'Template not found or inactive' as const }
+  const parsed = quoteTemplateSchema.safeParse(data)
+  if (!parsed.success) return { error: 'Template is invalid — fix it in Settings' as const }
+  return { template: parsed.data }
+}
+
+/**
+ * Snapshots a template onto the quote (doc + pricing defaults) or, with null,
+ * returns the quote to the standard layout. Frozen quotes are refused.
+ */
+export async function applyQuoteTemplate(
+  quoteId: string,
+  templateId: string | null
+): Promise<Result> {
+  await requireRole('admin', 'office')
+  const supabase = await createClient()
+  const editable = await assertEditable(supabase, quoteId)
+  if (editable.error) return editable
+
+  let patch: Record<string, unknown>
+  if (templateId) {
+    const loaded = await loadTemplate(supabase, templateId)
+    if ('error' in loaded) return { error: loaded.error }
+    patch = {
+      template_id: templateId,
+      doc: snapshotFromTemplate(loaded.template),
+      pdf_options: loaded.template.pricing_defaults,
+    }
+  } else {
+    patch = { template_id: null, doc: null }
+  }
+
+  const { error } = await supabase.from('quotes').update(patch).eq('id', quoteId)
+  if (error) return { error: error.message }
+  revalidateQuote(quoteId)
+  return {}
+}
+
+/** Saves per-quote edits to the document snapshot (heading, validity, blocks). */
+export async function updateQuoteDoc(quoteId: string, doc: unknown): Promise<Result> {
+  await requireRole('admin', 'office')
+  const raw = (doc && typeof doc === 'object' ? doc : {}) as Record<string, unknown>
+  const cleaned = {
+    ...raw,
+    heading: typeof raw.heading === 'string' ? raw.heading.trim() || null : raw.heading,
+    validity_text:
+      typeof raw.validity_text === 'string' ? raw.validity_text.trim() : raw.validity_text,
+    blocks: Array.isArray(raw.blocks) ? normaliseBlocks(raw.blocks as DocBlock[]) : raw.blocks,
+  }
+  const parsed = quoteDocSchema.safeParse(cleaned)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid document' }
+  }
+
+  const supabase = await createClient()
+  const editable = await assertEditable(supabase, quoteId)
+  if (editable.error) return editable
+
+  const { error } = await supabase.from('quotes').update({ doc: parsed.data }).eq('id', quoteId)
+  if (error) return { error: error.message }
+  revalidateQuote(quoteId)
+  return {}
+}
+
+export async function updateQuotePdfOptions(quoteId: string, options: unknown): Promise<Result> {
+  await requireRole('admin', 'office')
+  const parsed = pricingDisplaySchema.safeParse(options)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid options' }
+  }
+
+  const supabase = await createClient()
+  const editable = await assertEditable(supabase, quoteId)
+  if (editable.error) return editable
+
+  const { error } = await supabase
+    .from('quotes')
+    .update({ pdf_options: parsed.data })
+    .eq('id', quoteId)
+  if (error) return { error: error.message }
+  revalidateQuote(quoteId)
+  return {}
 }
