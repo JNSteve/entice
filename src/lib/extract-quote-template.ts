@@ -5,6 +5,7 @@ import {
   MERGE_FIELDS,
   isMergeField,
   newBlockId,
+  stripLeadingOrdinal,
   unknownMergeTokens,
   type DocBlock,
   type QuoteTemplateInput,
@@ -235,7 +236,8 @@ export function draftFromExtraction(
   let acceptanceSeen = false
 
   for (const b of raw.blocks ?? []) {
-    const heading = scrub((b.heading ?? '').trim() || 'Section', notes)
+    // The app numbers headings by position, so drop the source's own numbers.
+    const heading = scrub(stripLeadingOrdinal((b.heading ?? '').trim()) || 'Section', notes)
     const asText = (body: string) =>
       blocks.push({ id: newBlockId(), type: 'text', heading, body: scrub(body, notes) })
 

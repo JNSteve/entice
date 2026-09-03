@@ -40,10 +40,12 @@ const styles = StyleSheet.create({
     marginTop: 8,
     marginBottom: 3,
   },
+  itemListTitleFirst: { marginTop: 0 },
   itemRow: { flexDirection: 'row', gap: 5, paddingVertical: 1.5, paddingLeft: 4 },
   itemMark: { fontSize: fontSize.base, color: palette.slate500 },
   itemText: { flex: 1, fontSize: fontSize.base, color: palette.slate900, lineHeight: 1.4 },
   lumpBlock: { alignSelf: 'flex-start', width: 300, marginTop: 2 },
+  lumpBlockAfterItems: { alignSelf: 'flex-start', width: 300, marginTop: 12 },
 })
 
 /** react-pdf's Style, reached through the renderer's public Styles map. */
@@ -77,12 +79,17 @@ function SubtotalRow({ value }: { value: number }) {
 
 export function PricingBlock({ model }: { model: PricingModel }) {
   if (model.mode === 'lump_sum') {
+    // What the fee covers reads first; the money is the conclusion.
     return (
       <View>
-        <Totals totals={model.totals} style={styles.lumpBlock} />
         {model.itemLists.map((list, i) => (
           <View key={i}>
-            <Text style={styles.itemListTitle}>{list.title}</Text>
+            <Text
+              style={[styles.itemListTitle, i === 0 ? styles.itemListTitleFirst : {}]}
+              minPresenceAhead={40}
+            >
+              {list.title}
+            </Text>
             {list.items.map((item, j) => (
               <View key={j} style={styles.itemRow} wrap={false}>
                 <Text style={styles.itemMark}>•</Text>
@@ -91,6 +98,10 @@ export function PricingBlock({ model }: { model: PricingModel }) {
             ))}
           </View>
         ))}
+        <Totals
+          totals={model.totals}
+          style={model.itemLists.length > 0 ? styles.lumpBlockAfterItems : styles.lumpBlock}
+        />
       </View>
     )
   }

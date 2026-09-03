@@ -1,5 +1,5 @@
 import { View, Text, Image, StyleSheet } from '@react-pdf/renderer'
-import type { DetailRow, DocBlock, QuoteDoc } from '@/lib/quote-doc'
+import { stripLeadingOrdinal, type DetailRow, type DocBlock, type QuoteDoc } from '@/lib/quote-doc'
 import type { PricingModel } from '@/lib/quote-pricing'
 import { DocShell, type DocCompany } from './DocShell'
 import { PricingBlock } from './quote-pricing'
@@ -102,9 +102,10 @@ const styles = StyleSheet.create({
 })
 
 function Heading({ n, text }: { n: number | null; text: string }) {
+  // Numbering off: the heading keeps whatever numbers the author typed.
   return (
     <Text style={styles.h} minPresenceAhead={80}>
-      {n === null ? text : `${n}. ${text}`}
+      {n === null ? text : `${n}. ${stripLeadingOrdinal(text)}`}
     </Text>
   )
 }

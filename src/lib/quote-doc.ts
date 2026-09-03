@@ -163,6 +163,22 @@ export type QuoteTemplateRow = QuoteTemplateInput & {
   invalid?: boolean
 }
 
+/**
+ * Matches numbering a document carries in its own heading text: "2. ", "3) ",
+ * "4.1 ". Deliberately does NOT match a heading that merely starts with a
+ * number ("5 Year Warranty", "2026 Review") — those keep their first word.
+ */
+const LEADING_ORDINAL_RE = /^\s*(?:\d{1,2}(?:\.\d{1,2})*[.):]|\d{1,2}(?:\.\d{1,2})+)\s+/
+
+/**
+ * Strips the heading's own ordinal so the document's automatic numbering does
+ * not print twice ("2. 2. Fixed Fee"). Imported templates carry the source
+ * PDF's numbers; the app renumbers by position.
+ */
+export function stripLeadingOrdinal(text: string): string {
+  return text.replace(LEADING_ORDINAL_RE, '')
+}
+
 export function newBlockId(): string {
   return crypto.randomUUID()
 }

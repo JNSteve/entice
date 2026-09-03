@@ -50,6 +50,23 @@ describe('draftFromExtraction', () => {
     expect(new Set(draft.blocks.map((b) => b.id)).size).toBe(4)
   })
 
+  test('drops the source document numbering from headings', () => {
+    const raw = {
+      ...RAW,
+      blocks: [
+        block({ type: 'pricing', heading: '2. Fixed Fee', note: 'x' }),
+        block({ type: 'bullets', heading: '3. Key Assumptions', items: ['a'] }),
+        block({ type: 'text', heading: '5 Year Warranty', body: 'b' }),
+      ],
+    }
+    const { draft } = draftFromExtraction(raw, 'X')
+    expect(draft.blocks.map((b) => b.heading)).toEqual([
+      'Fixed Fee',
+      'Key Assumptions',
+      '5 Year Warranty',
+    ])
+  })
+
   test('adds a pricing block when the extraction has none, with a note', () => {
     const raw = { ...RAW, blocks: RAW.blocks.filter((b) => b.type !== 'pricing') }
     const { draft, notes } = draftFromExtraction(raw, 'X')

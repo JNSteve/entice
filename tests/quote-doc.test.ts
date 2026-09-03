@@ -14,6 +14,7 @@ import {
   quoteTemplateSchema,
   snapshotFromTemplate,
   starterDoc,
+  stripLeadingOrdinal,
   unknownMergeTokens,
   type DocBlock,
   type MergeContext,
@@ -230,5 +231,20 @@ describe('editor payload parsing', () => {
     }
     expect(parseQuoteTemplateInput({ ...starterDoc(), pricing_defaults: DEFAULT_PRICING }).success).toBe(false)
     expect(() => parseQuoteTemplateInput({ blocks: [{ type: 'table' }] })).not.toThrow()
+  })
+})
+
+describe('stripLeadingOrdinal', () => {
+  test('removes numbering the heading carries itself', () => {
+    expect(stripLeadingOrdinal('2. Fixed Fee')).toBe('Fixed Fee')
+    expect(stripLeadingOrdinal('3) Key Assumptions')).toBe('Key Assumptions')
+    expect(stripLeadingOrdinal('4.1 Scope and Deliverables')).toBe('Scope and Deliverables')
+    expect(stripLeadingOrdinal('  7.  Standard Terms')).toBe('Standard Terms')
+  })
+
+  test('keeps a heading that merely starts with a number', () => {
+    expect(stripLeadingOrdinal('5 Year Warranty')).toBe('5 Year Warranty')
+    expect(stripLeadingOrdinal('2026 Compliance Review')).toBe('2026 Compliance Review')
+    expect(stripLeadingOrdinal('Fixed Fee')).toBe('Fixed Fee')
   })
 })
