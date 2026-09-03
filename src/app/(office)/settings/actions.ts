@@ -21,7 +21,19 @@ import {
   takeoffAssemblyComponentSchema,
 } from '@/lib/zod'
 import { swmsTemplateV2Schema } from '@/lib/swms'
-import { normaliseBlocks, quoteTemplateSchema, type DocBlock } from '@/lib/quote-doc'
+import { z } from 'zod'
+import {
+  MAX_TEMPLATE_PDF_BYTES,
+  normaliseBlocks,
+  quoteTemplateSchema,
+  type DocBlock,
+  type QuoteTemplateInput,
+} from '@/lib/quote-doc'
+import {
+  draftFromExtraction,
+  extractQuoteTemplate,
+  extractionEnabled,
+} from '@/lib/extract-quote-template'
 import { signedUrl } from '@/lib/attachment-urls'
 
 // ─── Company settings ────────────────────────────────────────────────────────
@@ -920,4 +932,57 @@ export async function quoteTemplateOriginalUrl(
 
   const url = await signedUrl(supabase, data.source_path as string, 600)
   return url ? { url } : { error: 'Could not sign the file URL' }
+}
+
+const importInputSchema = z.object({
+  path: z.string().regex(/^quote-templates\/[A-Za-z0-9._-]+$/, 'Bad upload path'),
+  filename: z.string().min(1).max(200),
+  name: z.string().trim().min(1, 'Name is required').max(80),
+})
+
+/**
+ * Reads an uploaded quote PDF (attachments bucket, quote-templates/ prefix)
+ * and returns a template DRAFT for review. Nothing is inserted here; the
+ * browser calls createQuoteTemplate after the admin checks the result, and
+ * removes the upload if they cancel or this fails.
+ */
+export async function importQuoteTemplate(
+  input: unknown
+): Promise<{ error?: string; draft?: QuoteTemplateInput; notes?: string[] }> {
+  await requireRole('admin')
+
+  const parsed = importInputSchema.safeParse(input)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+  if (!extractionEnabled()) {
+    return { error: 'Add OPENAI_API_KEY to the environment to enable PDF import' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { data: blob, error: downloadError } = await supabase.storage
+    .from('attachments')
+    .download(parsed.data.path)
+  if (downloadError || !blob) {
+    return { error: downloadError?.message ?? 'Could not read the uploaded PDF' }
+  }
+  const bytes = Buffer.from(await blob.arrayBuffer())
+  if (bytes.byteLength > MAX_TEMPLATE_PDF_BYTES) {
+    return { error: 'This PDF is over 20MB' }
+  }
+  if (bytes.subarray(0, 4).toString() !== '%PDF') {
+    return { error: 'That file is not a PDF' }
+  }
+
+  const result = await extractQuoteTemplate(bytes.toString('base64'))
+  if (result.error || !result.result) return { error: result.error ?? 'Import failed' }
+  if ((result.result.blocks ?? []).length === 0) {
+    return { error: 'No sections were recognised in this document' }
+  }
+
+  const { draft, notes } = draftFromExtraction(result.result, parsed.data.name)
+  return {
+    draft: { ...draft, source_path: parsed.data.path, source_filename: parsed.data.filename },
+    notes,
+  }
 }
