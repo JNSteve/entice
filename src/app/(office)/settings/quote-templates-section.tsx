@@ -137,6 +137,15 @@ export function QuoteTemplatesSection({
                 <TableCell>{PRICING_MODE_LABELS[t.pricing_defaults.mode]}</TableCell>
                 <TableCell>
                   <ActiveBadge active={t.active} />
+                  {t.invalid && (
+                    <Badge
+                      variant="outline"
+                      className="ml-2 border-red-200 bg-red-50 font-medium text-red-700 dark:bg-red-950 dark:text-red-300"
+                      title="The stored document failed validation. Edit and save to rebuild it, or deactivate it."
+                    >
+                      Invalid
+                    </Badge>
+                  )}
                 </TableCell>
                 <TableCell className="text-muted-foreground">
                   {fmtDate(t.updated_at)}
@@ -144,7 +153,7 @@ export function QuoteTemplatesSection({
                 <TableCell>
                   <div className="flex justify-end gap-1">
                     {t.source_path && <ViewOriginalButton id={t.id} />}
-                    {!t.is_default && t.active && <SetDefaultButton id={t.id} />}
+                    {!t.is_default && t.active && !t.invalid && <SetDefaultButton id={t.id} />}
                     <Button
                       variant="ghost"
                       size="icon-sm"

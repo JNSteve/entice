@@ -37,6 +37,18 @@ describe('merge fields', () => {
     expect(unknownMergeTokens('no tokens')).toEqual([])
   })
 
+  test('unknownMergeTokens catches case and spacing typos, accepts inner padding', () => {
+    expect(unknownMergeTokens('{{Client.Name}} {{client name}} {{ client.name }} {{}}')).toEqual([
+      'Client.Name',
+      'client name',
+      '',
+    ])
+    const r = docBlocksSchema.safeParse([
+      { id: 'p', type: 'pricing', heading: 'Fee', note: 'For {{Client.Name}}' },
+    ])
+    expect(r.success).toBe(false)
+  })
+
   test('mergeText substitutes known fields, dashes empties, leaves unknown tokens', () => {
     const ctx = { ...emptyCtx, 'client.name': 'Malcolm Civil' }
     expect(mergeText('For {{client.name}} ({{client.abn}}) {{nope}}', ctx)).toBe('For Malcolm Civil (—) {{nope}}')

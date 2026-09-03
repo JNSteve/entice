@@ -109,6 +109,8 @@ export interface TemplateOption {
   id: string
   name: string
   is_default: boolean
+  /** Template's default pricing display; seeds the PDF dialog when picked. */
+  pricing_defaults: PricingDisplay
 }
 
 export interface SectionData {

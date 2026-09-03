@@ -79,6 +79,17 @@ describe('draftFromExtraction', () => {
     expect(notes.filter((n) => /converted to text/i.test(n))).toHaveLength(2)
   })
 
+  test('normalises padded known tokens and brackets case typos', () => {
+    const raw = {
+      ...RAW,
+      blocks: [RAW.blocks[1], block({ type: 'text', heading: 'T', body: 'Dear {{ contact.name }} of {{Client.Name}}' })],
+    }
+    const { draft, notes } = draftFromExtraction(raw, 'X')
+    expect(draft.blocks[1]).toMatchObject({ body: 'Dear {{contact.name}} of [Client.Name]' })
+    expect(notes.some((n) => n.includes('{{Client.Name}}'))).toBe(true)
+    expect(quoteTemplateSchema.safeParse(draft).success).toBe(true)
+  })
+
   test('rewrites unknown merge tokens as bracketed text and notes them', () => {
     const raw = {
       ...RAW,

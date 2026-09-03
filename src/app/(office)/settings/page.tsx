@@ -1,8 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { PageHeader } from '@/components/PageHeader'
-import { quoteTemplateSchema, type QuoteTemplateRow } from '@/lib/quote-doc'
+import {
+  DEFAULT_PRICING,
+  quoteTemplateSchema,
+  starterDoc,
+  type QuoteTemplateRow,
+} from '@/lib/quote-doc'
 import { SettingsTabs, type SettingsTab } from './settings-tabs'
+
+// Quote-template PDF import (OpenAI reading a whole quote) can run past the
+// default serverless window — give actions invoked from this page headroom.
+export const maxDuration = 300
 
 const VALID_TABS: SettingsTab[] = [
   'company',
@@ -243,20 +252,30 @@ export default async function SettingsPage({
       cost: Number(r.cost),
     }))
 
-  // Coerced through the schema so malformed template JSON never reaches the client.
-  const quoteTemplateRows: QuoteTemplateRow[] = (quoteTemplates ?? []).flatMap((t) => {
+  // Coerced through the schema so malformed template JSON never reaches the
+  // client. A row that fails validation stays visible, flagged `invalid`, with
+  // starter content so an admin can rebuild (edit + save) or deactivate it.
+  const quoteTemplateRows: QuoteTemplateRow[] = (quoteTemplates ?? []).map((t) => {
+    const base = {
+      id: t.id as string,
+      is_default: Boolean(t.is_default),
+      active: Boolean(t.active),
+      updated_at: t.updated_at as string,
+    }
     const parsed = quoteTemplateSchema.safeParse(t)
-    return parsed.success
-      ? [
-          {
-            ...parsed.data,
-            id: t.id as string,
-            is_default: Boolean(t.is_default),
-            active: Boolean(t.active),
-            updated_at: t.updated_at as string,
-          },
-        ]
-      : []
+    if (parsed.success) return { ...parsed.data, ...base }
+    console.error(`quote_templates row ${t.id} failed validation:`, parsed.error.issues[0]?.message)
+    return {
+      ...starterDoc(),
+      name: typeof t.name === 'string' && t.name ? t.name : 'Untitled template',
+      doc_title: typeof t.doc_title === 'string' && t.doc_title ? t.doc_title : 'Quotation',
+      heading: typeof t.heading === 'string' ? t.heading : null,
+      pricing_defaults: DEFAULT_PRICING,
+      source_path: (t.source_path as string | null) ?? null,
+      source_filename: (t.source_filename as string | null) ?? null,
+      ...base,
+      invalid: true,
+    }
   })
 
   const clientName = (row: { clients: unknown }) =>

@@ -3,6 +3,7 @@ import {
   ACCEPTANCE_BODY,
   DEFAULT_PRICING,
   MERGE_FIELDS,
+  isMergeField,
   newBlockId,
   unknownMergeTokens,
   type DocBlock,
@@ -217,9 +218,10 @@ function scrub(text: string, notes: string[]): string {
   for (const key of unknownMergeTokens(text)) {
     notes.push(`Unrecognised merge field {{${key}}} was kept as plain text [${key}]`)
   }
-  return text.replace(/\{\{\s*([a-z_.]+)\s*\}\}/g, (whole, key: string) =>
-    (MERGE_FIELDS as readonly string[]).includes(key) ? whole : `[${key}]`
-  )
+  return text.replace(/\{\{([^{}]*)\}\}/g, (_whole, raw: string) => {
+    const key = raw.trim()
+    return isMergeField(key) ? `{{${key}}}` : `[${key}]`
+  })
 }
 
 /** Pure mapping from the model's loose output to a valid template draft plus review notes. */

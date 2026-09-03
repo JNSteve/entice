@@ -56,17 +56,25 @@ export const MERGE_FIELDS = [
 export type MergeField = (typeof MERGE_FIELDS)[number]
 export type MergeContext = Record<MergeField, string | null>
 
+/** Substitution is strict: exactly a known field, optional inner spaces. */
 const TOKEN_RE = /\{\{\s*([a-z_.]+)\s*\}\}/g
+/** Detection is permissive: anything between double braces is a token attempt. */
+const ANY_TOKEN_RE = /\{\{([^{}]*)\}\}/g
 
-function isMergeField(key: string): key is MergeField {
+export function isMergeField(key: string): key is MergeField {
   return (MERGE_FIELDS as readonly string[]).includes(key)
 }
 
-/** Distinct `{{tokens}}` in the text that are not merge fields. */
+/**
+ * Distinct `{{tokens}}` in the text that are not merge fields. Anything
+ * between double braces counts — `{{Client.Name}}`, `{{client name}}` — so a
+ * typo can never slip through to a client PDF unsubstituted.
+ */
 export function unknownMergeTokens(text: string): string[] {
   const out = new Set<string>()
-  for (const m of text.matchAll(TOKEN_RE)) {
-    if (!isMergeField(m[1])) out.add(m[1])
+  for (const m of text.matchAll(ANY_TOKEN_RE)) {
+    const key = m[1].trim()
+    if (!isMergeField(key)) out.add(key)
   }
   return [...out]
 }
@@ -151,6 +159,8 @@ export type QuoteTemplateRow = QuoteTemplateInput & {
   is_default: boolean
   active: boolean
   updated_at: string
+  /** Stored row failed validation; content shown is a starter placeholder. */
+  invalid?: boolean
 }
 
 export function newBlockId(): string {

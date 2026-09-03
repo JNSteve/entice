@@ -111,7 +111,14 @@ export function QuotePdfDialog({
               <Label htmlFor="qp-template">Template</Label>
               <Select
                 value={templateId}
-                onValueChange={(v) => v && setTemplateId(v)}
+                onValueChange={(v) => {
+                  if (!v) return
+                  setTemplateId(v)
+                  // A template brings its own pricing defaults (applyQuoteTemplate
+                  // saves them); show them so the dialog matches what will print.
+                  const picked = templates.find((t) => t.id === v)
+                  if (picked) setDisplay(picked.pricing_defaults)
+                }}
                 disabled={!editable}
               >
                 <SelectTrigger id="qp-template" className="w-full">

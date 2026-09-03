@@ -4,7 +4,7 @@ import { RulerIcon } from 'lucide-react'
 import { requireRole } from '@/lib/auth'
 import { buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
-import { pricingDisplaySchema, quoteDocSchema } from '@/lib/quote-doc'
+import { pricingDisplaySchema, quoteDocSchema, DEFAULT_PRICING } from '@/lib/quote-doc'
 import {
   QuoteBuilder,
   type QuoteData,
@@ -63,7 +63,7 @@ export default async function QuoteBuilderPage({
         .order('full_name'),
       supabase
         .from('quote_templates')
-        .select('id, name, is_default')
+        .select('id, name, is_default, pricing_defaults')
         .eq('active', true)
         .order('name'),
     ])
@@ -188,11 +188,15 @@ export default async function QuoteBuilderPage({
         lines={lineData}
         rateItems={rateItemData}
         pmOptions={pmOptions ?? []}
-        templates={(templates ?? []).map((t) => ({
-          id: t.id,
-          name: t.name,
-          is_default: Boolean(t.is_default),
-        }))}
+        templates={(templates ?? []).map((t) => {
+          const p = pricingDisplaySchema.safeParse(t.pricing_defaults)
+          return {
+            id: t.id as string,
+            name: t.name as string,
+            is_default: Boolean(t.is_default),
+            pricing_defaults: p.success ? p.data : DEFAULT_PRICING,
+          }
+        })}
       />
     </div>
   )
