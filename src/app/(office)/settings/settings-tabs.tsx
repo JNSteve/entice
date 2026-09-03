@@ -37,6 +37,8 @@ import {
   type RateItemOption,
 } from './estimating-section'
 import { ArchiveSection, type ArchivedRecordRow } from './archive-section'
+import { QuoteTemplatesSection } from './quote-templates-section'
+import type { QuoteTemplateRow } from '@/lib/quote-doc'
 
 export type SettingsTab =
   | 'company'
@@ -48,6 +50,7 @@ export type SettingsTab =
   | 'swms'
   | 'whs-forms'
   | 'estimating'
+  | 'quote-templates'
   | 'competencies'
   | 'backup'
   | 'errors'
@@ -66,6 +69,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'swms', label: 'SWMS' },
   { value: 'whs-forms', label: 'WHS Forms' },
   { value: 'estimating', label: 'Estimating' },
+  { value: 'quote-templates', label: 'Quote templates' },
   { value: 'archive', label: 'Archive' },
   { value: 'competencies', label: 'Competencies' },
   { value: 'itp', label: 'ITP templates' },
@@ -88,6 +92,8 @@ interface SettingsTabsProps {
   formTemplates: FormTemplateRow[]
   assemblies: TakeoffAssemblyRow[]
   rateOptions: RateItemOption[]
+  quoteTemplates: QuoteTemplateRow[]
+  templateImportEnabled: boolean
   competencyTypes: CompetencyTypeRow[]
   roleRequirements: RoleRequirementRow[]
   backupRuns: BackupRunRow[]
@@ -117,6 +123,8 @@ export function SettingsTabs({
   formTemplates,
   assemblies,
   rateOptions,
+  quoteTemplates,
+  templateImportEnabled,
   competencyTypes,
   roleRequirements,
   backupRuns,
@@ -176,6 +184,12 @@ export function SettingsTabs({
       </TabsContent>
       <TabsContent value="estimating" className="pt-4">
         <EstimatingSection assemblies={assemblies} rateItems={rateOptions} />
+      </TabsContent>
+      <TabsContent value="quote-templates" className="pt-4">
+        <QuoteTemplatesSection
+          templates={quoteTemplates}
+          importEnabled={templateImportEnabled}
+        />
       </TabsContent>
       <TabsContent value="archive" className="pt-4">
         <ArchiveSection

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { requireRole } from '@/lib/auth'
 import { PageHeader } from '@/components/PageHeader'
+import { quoteTemplateSchema, type QuoteTemplateRow } from '@/lib/quote-doc'
 import { SettingsTabs, type SettingsTab } from './settings-tabs'
 
 const VALID_TABS: SettingsTab[] = [
@@ -13,6 +14,7 @@ const VALID_TABS: SettingsTab[] = [
   'swms',
   'whs-forms',
   'estimating',
+  'quote-templates',
   'competencies',
   'backup',
   'errors',
@@ -57,6 +59,7 @@ export default async function SettingsPage({
     { data: emailLog },
     { data: takeoffAssemblies },
     { data: takeoffComponents },
+    { data: quoteTemplates },
     { data: archivedQuotes },
     { data: archivedJobs },
     { data: archivedProjects },
@@ -148,6 +151,12 @@ export default async function SettingsPage({
       .order('assembly_id')
       .order('position'),
     supabase
+      .from('quote_templates')
+      .select(
+        'id, name, doc_title, heading, validity_text, number_headings, blocks, pricing_defaults, is_default, active, source_path, source_filename, updated_at'
+      )
+      .order('name'),
+    supabase
       .from('quotes')
       .select('id, number, title, archived_at, clients(name)')
       .eq('archived', true)
@@ -234,6 +243,22 @@ export default async function SettingsPage({
       cost: Number(r.cost),
     }))
 
+  // Coerced through the schema so malformed template JSON never reaches the client.
+  const quoteTemplateRows: QuoteTemplateRow[] = (quoteTemplates ?? []).flatMap((t) => {
+    const parsed = quoteTemplateSchema.safeParse(t)
+    return parsed.success
+      ? [
+          {
+            ...parsed.data,
+            id: t.id as string,
+            is_default: Boolean(t.is_default),
+            active: Boolean(t.active),
+            updated_at: t.updated_at as string,
+          },
+        ]
+      : []
+  })
+
   const clientName = (row: { clients: unknown }) =>
     (row.clients as { name: string } | null)?.name ?? null
 
@@ -280,6 +305,8 @@ export default async function SettingsPage({
         formTemplates={formTemplates}
         assemblies={assemblies}
         rateOptions={rateOptions}
+        quoteTemplates={quoteTemplateRows}
+        templateImportEnabled={Boolean(process.env.OPENAI_API_KEY)}
         competencyTypes={competencyTypes ?? []}
         roleRequirements={roleRequirements ?? []}
         backupRuns={backupRuns ?? []}
