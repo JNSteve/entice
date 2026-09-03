@@ -32,6 +32,10 @@ export const clientSchema = z.object({
       (v) => v === undefined || /^\d{11}$/.test(v.replace(/\s/g, '')),
       'ABN must be 11 digits'
     ),
+  address: z
+    .string()
+    .optional()
+    .transform((v) => (v?.trim() === '' ? undefined : v?.trim())),
   payment_terms_days: z.coerce
     .number()
     .int()
@@ -147,6 +151,7 @@ export type UserCreateInput = z.infer<typeof userCreateSchema>
 export const profileUpdateSchema = z.object({
   full_name: z.string().min(1, 'Name is required').optional(),
   phone: optionalText.optional(),
+  position: optionalText.optional(),
   role: z.enum(USER_ROLES).optional(),
   hourly_cost: z.number().min(0).nullable().optional(),
   active: z.boolean().optional(),
@@ -248,6 +253,11 @@ export const quoteCreateSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   /** Office-side owner; createQuote defaults it to the creator when null. */
   pm_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  /** Quote template to snapshot at creation; null = standard layout. */
+  template_id: z
     .uuid()
     .nullish()
     .transform((v) => v ?? null),

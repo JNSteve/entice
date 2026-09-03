@@ -33,6 +33,7 @@ export interface ProfileRow {
   full_name: string
   role: UserRole
   phone: string | null
+  position: string | null
   hourly_cost: number | null
   active: boolean
 }
@@ -310,6 +311,7 @@ function EditUserDialog({
 
   const [fullName, setFullName] = useState(profile.full_name)
   const [phone, setPhone] = useState(profile.phone ?? '')
+  const [position, setPosition] = useState(profile.position ?? '')
   const [role, setRole] = useState<UserRole>(profile.role)
   const [hourlyCost, setHourlyCost] = useState<number | null>(
     profile.hourly_cost
@@ -321,6 +323,7 @@ function EditUserDialog({
       const result = await updateProfile(profile.id, {
         full_name: fullName,
         phone,
+        position,
         role,
         hourly_cost: hourlyCost,
       })
@@ -363,6 +366,18 @@ function EditUserDialog({
                 onChange={(e) => setPhone(e.target.value)}
                 placeholder="0400 000 000"
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="eu-position">Position</Label>
+              <Input
+                id="eu-position"
+                value={position}
+                onChange={(e) => setPosition(e.target.value)}
+                placeholder="Director"
+              />
+              <p className="text-xs text-muted-foreground">
+                Printed as &quot;Prepared by&quot; on templated quotes.
+              </p>
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="eu-role">Role</Label>

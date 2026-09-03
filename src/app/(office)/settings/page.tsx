@@ -64,7 +64,7 @@ export default async function SettingsPage({
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
       .from('profiles')
-      .select('id, full_name, role, phone, hourly_cost, active')
+      .select('id, full_name, role, phone, position, hourly_cost, active')
       .order('full_name'),
     supabase
       .from('rate_items')

@@ -54,6 +54,7 @@ export function NewClientDialog() {
   const [name, setName] = useState('')
   const [type, setType] = useState<ClientType>('builder')
   const [abn, setAbn] = useState('')
+  const [address, setAddress] = useState('')
   const [terms, setTerms] = useState('30')
   const [notes, setNotes] = useState('')
 
@@ -61,6 +62,7 @@ export function NewClientDialog() {
     setName('')
     setType('builder')
     setAbn('')
+    setAddress('')
     setTerms('30')
     setNotes('')
   }
@@ -72,6 +74,7 @@ export function NewClientDialog() {
         name,
         type,
         abn,
+        address,
         payment_terms_days: Number(terms),
         notes,
       })
@@ -135,6 +138,15 @@ export function NewClientDialog() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
+              <Label htmlFor="nc-address">Address (optional)</Label>
+              <Input
+                id="nc-address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="11/126 Compton Road, Woodridge QLD 4114"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
               <Label htmlFor="nc-terms">Payment terms (days)</Label>
               <Input
                 id="nc-terms"
@@ -173,6 +185,7 @@ interface ClientRow {
   name: string
   type: ClientType
   abn: string | null
+  address: string | null
   payment_terms_days: number
   notes: string | null
 }
@@ -184,6 +197,7 @@ export function EditClientDialog({ client }: { client: ClientRow }) {
   const [name, setName] = useState(client.name)
   const [type, setType] = useState<ClientType>(client.type)
   const [abn, setAbn] = useState(client.abn ?? '')
+  const [address, setAddress] = useState(client.address ?? '')
   const [terms, setTerms] = useState(String(client.payment_terms_days))
   const [notes, setNotes] = useState(client.notes ?? '')
 
@@ -194,6 +208,7 @@ export function EditClientDialog({ client }: { client: ClientRow }) {
         name,
         type,
         abn,
+        address,
         payment_terms_days: Number(terms),
         notes,
       })
@@ -249,6 +264,15 @@ export function EditClientDialog({ client }: { client: ClientRow }) {
                 value={abn}
                 onChange={(e) => setAbn(e.target.value)}
                 placeholder="12 345 678 901"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="ec-address">Address (optional)</Label>
+              <Input
+                id="ec-address"
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                placeholder="11/126 Compton Road, Woodridge QLD 4114"
               />
             </div>
             <div className="flex flex-col gap-1.5">

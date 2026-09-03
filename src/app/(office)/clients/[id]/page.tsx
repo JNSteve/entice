@@ -180,6 +180,7 @@ export default async function ClientDetailPage({
                     name: client.name,
                     type: client.type,
                     abn: client.abn,
+                    address: client.address,
                     payment_terms_days: client.payment_terms_days ?? 30,
                     notes: client.notes,
                   }}
@@ -208,6 +209,10 @@ export default async function ClientDetailPage({
           <div>
             <dt className="text-muted-foreground">ABN</dt>
             <dd className="font-medium">{client.abn ?? '—'}</dd>
+          </div>
+          <div className="col-span-2">
+            <dt className="text-muted-foreground">Address</dt>
+            <dd className="font-medium">{client.address ?? '—'}</dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Payment terms</dt>
