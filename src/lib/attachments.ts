@@ -102,6 +102,37 @@ async function revalidateParent(
 }
 
 /**
+ * A new photo/document/PDF on a SHARED job or project (or a diary of a shared
+ * project) starts client-visible. Dockets and every other parent stay hidden.
+ */
+async function defaultClientVisible(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  parentType: string,
+  parentId: string,
+  kind: string
+): Promise<boolean> {
+  if (kind === 'docket') return false
+  if (parentType === 'job' || parentType === 'project') {
+    const { data } = await supabase
+      .from(parentType === 'job' ? 'jobs' : 'projects')
+      .select('client_shared')
+      .eq('id', parentId)
+      .maybeSingle()
+    return Boolean(data?.client_shared)
+  }
+  if (parentType === 'diary') {
+    const { data } = await supabase
+      .from('diaries')
+      .select('projects(client_shared)')
+      .eq('id', parentId)
+      .maybeSingle()
+    const project = data?.projects as unknown as { client_shared: boolean } | null
+    return Boolean(project?.client_shared)
+  }
+  return false
+}
+
+/**
  * Records a new attachment row after the file has been uploaded to storage.
  * Sets created_by to the currently signed-in user.
  */
@@ -127,6 +158,13 @@ export async function recordAttachment(
     .maybeSingle()
   if (!parent) return { error: 'Parent record not found' }
 
+  const clientVisible = await defaultClientVisible(
+    supabase,
+    parsed.data.parent_type,
+    parsed.data.parent_id,
+    parsed.data.kind
+  )
+
   const { data, error } = await supabase
     .from('attachments')
     .insert({
@@ -139,6 +177,7 @@ export async function recordAttachment(
       size: parsed.data.size,
       kind: parsed.data.kind,
       caption: parsed.data.caption ?? null,
+      client_visible: clientVisible,
       // meta is `jsonb NOT NULL DEFAULT '{}'` — an explicit null overrides the
       // default and violates the constraint, so fall back to an empty object.
       meta: parsed.data.meta ?? {},
@@ -156,9 +195,9 @@ export async function recordAttachment(
 
 /**
  * Client-portal curation: flips an attachment's client_visible flag.
- * Admin/office only, and only on job/project attachments — the portal's
- * Works tab is the only surface that ever reads the flag, and NOTHING is
- * visible until explicitly toggled here.
+ * Admin/office only, and only on job/project/diary attachments — the only
+ * parents the portal ever reads. The per-work "Share with client" switch
+ * (src/lib/work-sharing.ts) sets the starting state; this toggle wins after.
  */
 export async function setAttachmentClientVisible(
   id: string,
@@ -178,8 +217,8 @@ export async function setAttachmentClientVisible(
     .eq('id', id)
     .maybeSingle()
   if (!row) return { error: 'Attachment not found' }
-  if (row.parent_type !== 'job' && row.parent_type !== 'project') {
-    return { error: 'Only job and project attachments can be shared to the portal' }
+  if (row.parent_type !== 'job' && row.parent_type !== 'project' && row.parent_type !== 'diary') {
+    return { error: 'Only job, project and diary attachments can be shared to the portal' }
   }
 
   const { error } = await supabase
@@ -188,7 +227,16 @@ export async function setAttachmentClientVisible(
     .eq('id', id)
   if (error) return { error: error.message }
 
-  await revalidateParent(supabase, row.parent_type, row.parent_id)
+  if (row.parent_type === 'diary') {
+    const { data: diary } = await supabase
+      .from('diaries')
+      .select('project_id')
+      .eq('id', row.parent_id)
+      .maybeSingle()
+    if (diary?.project_id) revalidatePath(`/projects/${diary.project_id}/diary`)
+  } else {
+    await revalidateParent(supabase, row.parent_type, row.parent_id)
+  }
   return {}
 }
 

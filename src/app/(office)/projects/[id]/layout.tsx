@@ -6,6 +6,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { ProjectTabs } from './project-tabs'
 import { ProjectStatusSelect } from './project-status-select'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
+import { ShareWithClientSwitch } from '@/components/ShareWithClientSwitch'
 
 export default async function ProjectLayout({
   children,
@@ -22,7 +23,7 @@ export default async function ProjectLayout({
   const { data: project } = await supabase
     .from('projects')
     .select(
-      `id, number, name, status, archived,
+      `id, number, name, status, archived, client_shared,
        clients(id, name),
        sites(id, name),
        supervisor:profiles!projects_supervisor_id_fkey(id, full_name),
@@ -64,6 +65,14 @@ export default async function ProjectLayout({
             <ProjectStatusSelect projectId={project.id} status={project.status} />
           ) : (
             <StatusBadge status={project.status} />
+          )}
+          {canMutate && (
+            <ShareWithClientSwitch
+              kind="project"
+              id={project.id}
+              shared={Boolean(project.client_shared)}
+              clientName={clientRel?.name ?? 'the client'}
+            />
           )}
           {clientRel && (
             <Link

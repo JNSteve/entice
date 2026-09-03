@@ -341,7 +341,7 @@ function EntryCard({
                 onUploaded={() => router.refresh()}
               />
               {photos.length > 0 && (
-                <AttachmentList items={photos} canDelete />
+                <AttachmentList items={photos} canDelete canCurate={canManage} />
               )}
             </div>
           ) : (

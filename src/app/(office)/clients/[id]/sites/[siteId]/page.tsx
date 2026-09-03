@@ -4,6 +4,7 @@ import { requireRole } from '@/lib/auth'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
 import { StatusBadge } from '@/components/StatusBadge'
+import { Badge } from '@/components/ui/badge'
 import { buttonVariants } from '@/components/ui/button'
 import { QrCodeIcon } from 'lucide-react'
 import { fmtDate } from '@/lib/format'
@@ -75,13 +76,13 @@ export default async function SiteDetailPage({
       .order('title'),
     supabase
       .from('jobs')
-      .select('id, number, title, status, created_at')
+      .select('id, number, title, status, created_at, client_shared')
       .eq('site_id', siteId)
       .eq('archived', false)
       .order('created_at', { ascending: false }),
     supabase
       .from('projects')
-      .select('id, number, name, status, created_at')
+      .select('id, number, name, status, created_at, client_shared')
       .eq('site_id', siteId)
       .eq('archived', false)
       .order('created_at', { ascending: false }),
@@ -336,6 +337,7 @@ export default async function SiteDetailPage({
                   <TableHead>Title</TableHead>
                   <TableHead>Type</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Portal</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
               </TableHeader>
@@ -351,6 +353,15 @@ export default async function SiteDetailPage({
                     <TableCell className="text-muted-foreground">Project</TableCell>
                     <TableCell>
                       <StatusBadge status={p.status} />
+                    </TableCell>
+                    <TableCell>
+                      {p.client_shared ? (
+                        <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+                          Shared
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not shared</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {fmtDate(p.created_at)}
@@ -368,6 +379,15 @@ export default async function SiteDetailPage({
                     <TableCell className="text-muted-foreground">Job</TableCell>
                     <TableCell>
                       <StatusBadge status={j.status} />
+                    </TableCell>
+                    <TableCell>
+                      {j.client_shared ? (
+                        <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+                          Shared
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not shared</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-muted-foreground">
                       {fmtDate(j.created_at)}

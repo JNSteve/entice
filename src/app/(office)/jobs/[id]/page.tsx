@@ -16,6 +16,7 @@ import { docTotals } from '@/lib/money'
 import { PhotoUpload } from '@/components/PhotoUpload'
 import { AttachmentList } from '@/components/AttachmentList'
 import { HandoverPackButton } from '@/components/HandoverPackButton'
+import { ShareWithClientSwitch } from '@/components/ShareWithClientSwitch'
 import { handoverEligible } from '@/lib/feedback'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 import {
@@ -292,13 +293,23 @@ export default async function JobDetailPage({
           )}
         </div>
 
-        {/* Status stepper actions */}
+        {/* Status stepper actions + client portal sharing */}
         {canMutate && (
-          <StatusActions
-            jobId={job.id}
-            status={job.status}
-            scheduledStart={job.scheduled_start ?? null}
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusActions
+              jobId={job.id}
+              status={job.status}
+              scheduledStart={job.scheduled_start ?? null}
+            />
+            {canDeleteAttachment && (
+              <ShareWithClientSwitch
+                kind="job"
+                id={job.id}
+                shared={Boolean(job.client_shared)}
+                clientName={clientRel?.name ?? 'the client'}
+              />
+            )}
+          </div>
         )}
 
         {/* Description */}

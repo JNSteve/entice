@@ -65,8 +65,8 @@ export default async function ClientDetailPage({
     supabase.from('contacts').select('*').eq('client_id', id).order('name'),
     supabase.from('sites').select('*').eq('client_id', id).order('name'),
     supabase.from('quotes').select('id, number, title, status, created_at').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
-    supabase.from('jobs').select('id, number, title, status, created_at').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
-    supabase.from('projects').select('id, number, name, status, created_at').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
+    supabase.from('jobs').select('id, number, title, status, created_at, client_shared').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
+    supabase.from('projects').select('id, number, name, status, created_at, client_shared').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
     supabase.from('invoices').select('id, number, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('client_links').select('id, token, label, created_at, expires_at, revoked_at, show_financials, notifications_enabled').eq('client_id', id).order('created_at', { ascending: false }),
   ])
@@ -487,6 +487,7 @@ export default async function ClientDetailPage({
                   <TableHead>Number</TableHead>
                   <TableHead>Title</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Portal</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
               </TableHeader>
@@ -500,6 +501,15 @@ export default async function ClientDetailPage({
                     </TableCell>
                     <TableCell>{j.title ?? '—'}</TableCell>
                     <TableCell>{j.status ? <StatusBadge status={j.status} /> : '—'}</TableCell>
+                    <TableCell>
+                      {j.client_shared ? (
+                        <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+                          Shared
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not shared</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{fmtDate(j.created_at)}</TableCell>
                   </TableRow>
                 ))}
@@ -522,6 +532,7 @@ export default async function ClientDetailPage({
                   <TableHead>Number</TableHead>
                   <TableHead>Name</TableHead>
                   <TableHead>Status</TableHead>
+                  <TableHead>Portal</TableHead>
                   <TableHead>Created</TableHead>
                 </TableRow>
               </TableHeader>
@@ -535,6 +546,15 @@ export default async function ClientDetailPage({
                     </TableCell>
                     <TableCell>{p.name ?? '—'}</TableCell>
                     <TableCell>{p.status ? <StatusBadge status={p.status} /> : '—'}</TableCell>
+                    <TableCell>
+                      {p.client_shared ? (
+                        <Badge variant="outline" className="border-green-200 bg-green-50 text-green-700">
+                          Shared
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">Not shared</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-muted-foreground">{fmtDate(p.created_at)}</TableCell>
                   </TableRow>
                 ))}

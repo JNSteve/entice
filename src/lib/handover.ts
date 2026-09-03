@@ -9,10 +9,10 @@ import { HANDOVER_PACK_CAPTION, type HandoverKind } from '@/lib/feedback'
 /**
  * Generates the Handover Pack PDF for a COMPLETED job/closed project and
  * stores it as an ATTACHMENT on the work (kind 'pdf', caption
- * 'Handover pack'). It lands with client_visible = FALSE — the house rule
- * (CP1): nothing reaches the portal until office explicitly flips the
- * eye-toggle on the attachment. Once visible, the portal's works history
- * shows a dedicated "Handover pack" download through the logged file gate.
+ * 'Handover pack'). It lands visible when the work is shared with the client
+ * ("Share with client" switch) and hidden otherwise; office can flip the
+ * eye-toggle on the attachment either way. Once visible, the portal shows a
+ * dedicated "Close-out pack" download through the logged file gate.
  *
  * Regenerating creates a new attachment (packs are point-in-time records);
  * delete superseded ones through the normal attachment delete.
@@ -45,6 +45,13 @@ export async function generateHandoverPack(
     return { error: `Could not store the pack: ${uploadError.message}` }
   }
 
+  // The pack follows the work's "Share with client" switch.
+  const { data: work } = await supabase
+    .from(kind === 'job' ? 'jobs' : 'projects')
+    .select('client_shared')
+    .eq('id', id)
+    .maybeSingle()
+
   const { data: row, error: insertError } = await supabase
     .from('attachments')
     .insert({
@@ -57,6 +64,7 @@ export async function generateHandoverPack(
       size: result.buffer.byteLength,
       kind: 'pdf',
       caption: HANDOVER_PACK_CAPTION,
+      client_visible: Boolean(work?.client_shared),
       created_by: profile.id,
     })
     .select('id')
