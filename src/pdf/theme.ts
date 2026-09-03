@@ -1,4 +1,8 @@
-import { StyleSheet } from '@react-pdf/renderer'
+import { Font, StyleSheet } from '@react-pdf/renderer'
+
+// react-pdf hyphenates at line ends by default ("re-sponses"). Wrap on whole
+// words in every document instead. The callback is global to the renderer.
+Font.registerHyphenationCallback((word) => [word])
 
 /**
  * Shared look-and-feel for every generated PDF (quotes, invoices, claims, …).

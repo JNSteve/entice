@@ -1,20 +1,12 @@
 import { View, Text, Image, StyleSheet } from '@react-pdf/renderer'
-import { aud, pct } from '@/lib/format'
-import { lineTotal } from '@/lib/money'
+import { DEFAULT_PRICING, type PricingDisplay } from '@/lib/quote-doc'
+import { buildPricingModel, type PricingLine, type PricingSection } from '@/lib/quote-pricing'
 import { DocShell, type DocCompany } from './DocShell'
-import { palette, fontSize, font, tableStyles, totalsStyles } from './theme'
+import { PricingBlock } from './quote-pricing'
+import { palette, fontSize, font } from './theme'
 
-export type QuotePdfLine = {
-  description: string
-  qty: number
-  unit: string
-  unit_sell: number
-}
-
-export type QuotePdfSection = {
-  title: string
-  lines: QuotePdfLine[]
-}
+export type QuotePdfLine = PricingLine
+export type QuotePdfSection = PricingSection
 
 /** Sign-on-the-glass evidence rendered when the quote was accepted online. */
 export type QuotePdfAcceptance = {
@@ -47,6 +39,8 @@ export type QuotePdfProps = {
   acceptance?: QuotePdfAcceptance | null
   /** "Issued to {client} — {date}" banner for portal-issued copies. */
   watermark?: string | null
+  /** Pricing presentation (quotes.pdf_options); defaults to the itemised table. */
+  display?: PricingDisplay
 }
 
 const styles = StyleSheet.create({
@@ -124,57 +118,6 @@ const styles = StyleSheet.create({
   },
 })
 
-// Column widths — Description | Qty | Unit | Rate | Total
-const col = StyleSheet.create({
-  description: { width: '46%' },
-  qty: { width: '10%' },
-  unit: { width: '12%' },
-  rate: { width: '16%' },
-  total: { width: '16%' },
-})
-
-/** Trim trailing zeros from a qty (numeric 12,3): 2.000 → "2", 1.250 → "1.25". */
-function fmtQty(n: number): string {
-  return String(parseFloat(n.toFixed(3)))
-}
-
-function SectionTable({ section }: { section: QuotePdfSection }) {
-  const subtotal = section.lines.reduce(
-    (sum, l) => sum + lineTotal(l.qty, l.unit_sell),
-    0
-  )
-
-  return (
-    <View style={tableStyles.table} wrap>
-      <View style={tableStyles.sectionTitleRow} minPresenceAhead={60}>
-        <Text style={tableStyles.sectionTitle}>{section.title}</Text>
-      </View>
-      <View style={tableStyles.headRow}>
-        <Text style={[tableStyles.headCell, col.description]}>Description</Text>
-        <Text style={[tableStyles.headCell, col.qty, tableStyles.right]}>Qty</Text>
-        <Text style={[tableStyles.headCell, col.unit, tableStyles.right]}>Unit</Text>
-        <Text style={[tableStyles.headCell, col.rate, tableStyles.right]}>Rate</Text>
-        <Text style={[tableStyles.headCell, col.total, tableStyles.right]}>Total</Text>
-      </View>
-      {section.lines.map((line, i) => (
-        <View key={i} style={tableStyles.row} wrap={false}>
-          <Text style={[tableStyles.cell, col.description]}>{line.description}</Text>
-          <Text style={[tableStyles.cell, col.qty, tableStyles.right]}>{fmtQty(line.qty)}</Text>
-          <Text style={[tableStyles.cellMuted, col.unit, tableStyles.right]}>{line.unit}</Text>
-          <Text style={[tableStyles.cell, col.rate, tableStyles.right]}>{aud(line.unit_sell)}</Text>
-          <Text style={[tableStyles.cell, col.total, tableStyles.right]}>
-            {aud(lineTotal(line.qty, line.unit_sell))}
-          </Text>
-        </View>
-      ))}
-      <View style={tableStyles.subtotalRow} wrap={false}>
-        <Text style={tableStyles.subtotalLabel}>Section subtotal</Text>
-        <Text style={tableStyles.subtotalValue}>{aud(subtotal)}</Text>
-      </View>
-    </View>
-  )
-}
-
 /**
  * Client-facing quotation. Sell side only — costs and markup are never
  * rendered anywhere in this document.
@@ -190,6 +133,7 @@ export function QuotePdf({
   footerText,
   acceptance,
   watermark,
+  display = DEFAULT_PRICING,
 }: QuotePdfProps) {
   return (
     <DocShell
@@ -214,24 +158,7 @@ export function QuotePdf({
       <Text style={styles.subject}>{quote.title}</Text>
       {description ? <Text style={styles.description}>{description}</Text> : null}
 
-      {sections.map((section, i) => (
-        <SectionTable key={i} section={section} />
-      ))}
-
-      <View style={totalsStyles.block} wrap={false}>
-        <View style={totalsStyles.row}>
-          <Text style={totalsStyles.label}>Subtotal (ex GST)</Text>
-          <Text style={totalsStyles.value}>{aud(totals.subtotal)}</Text>
-        </View>
-        <View style={totalsStyles.row}>
-          <Text style={totalsStyles.label}>GST {pct(totals.gstRate)}</Text>
-          <Text style={totalsStyles.value}>{aud(totals.gst)}</Text>
-        </View>
-        <View style={totalsStyles.grandRow}>
-          <Text style={totalsStyles.grandLabel}>Total inc GST</Text>
-          <Text style={totalsStyles.grandValue}>{aud(totals.total)}</Text>
-        </View>
-      </View>
+      <PricingBlock model={buildPricingModel(sections, totals, display)} />
 
       <Text style={styles.validity}>
         This quotation is valid for {validDays} days from the date above.
