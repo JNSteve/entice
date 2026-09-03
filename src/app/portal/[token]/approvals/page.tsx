@@ -58,6 +58,9 @@ export default async function PortalApprovalsPage({
     pending: [],
     decided: [],
   }
+  // Signed on the glass vs decided in the office (migration 0062 adds source).
+  const signed = approvals.decided.filter((d) => d.source !== 'office')
+  const officeDecided = approvals.decided.filter((d) => d.source === 'office')
 
   return (
     <PortalShell branding={branding} token={token} active="quotes">
@@ -67,15 +70,15 @@ export default async function PortalApprovalsPage({
           className="flex min-h-6 w-fit items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900"
         >
           <ArrowLeftIcon className="size-3.5" />
-          All properties
+          Overview
         </Link>
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-bold tracking-tight text-slate-900">
-            Approvals
+            Quotes &amp; approvals
           </h1>
           <p className="text-sm text-slate-500">
-            Quotes and variations awaiting your sign-off — review and sign
-            right here.
+            Quotes and variations to review and sign, plus everything already
+            decided.
           </p>
         </div>
       </div>
@@ -133,14 +136,14 @@ export default async function PortalApprovalsPage({
         )}
       </div>
 
-      {/* Decided */}
-      {approvals.decided.length > 0 && (
+      {/* Signed through the portal */}
+      {signed.length > 0 && (
         <div className="flex flex-col gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
             Signed through the portal
           </h2>
           <PortalCard className="divide-y">
-            {approvals.decided.map((item) => (
+            {signed.map((item) => (
               <div
                 key={`${item.kind}-${item.id}-${item.action}`}
                 className="flex items-center gap-3 px-4 py-3"
@@ -171,6 +174,40 @@ export default async function PortalApprovalsPage({
                   </a>
                 )}
               </div>
+            ))}
+          </PortalCard>
+        </div>
+      )}
+
+      {/* Decided in the office (accepted/lost without a portal signature) */}
+      {officeDecided.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Decided
+          </h2>
+          <PortalCard className="divide-y">
+            {officeDecided.map((item) => (
+              <Link
+                key={`${item.kind}-${item.id}`}
+                href={`/portal/${token}/approvals/${item.kind}/${item.id}`}
+                className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-slate-50"
+              >
+                {item.action === 'accepted' ? (
+                  <CircleCheckIcon className="size-5 shrink-0 text-green-600" />
+                ) : (
+                  <XCircleIcon className="size-5 shrink-0 text-red-500" />
+                )}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-medium text-slate-900">
+                    {item.number} — {item.title}
+                  </p>
+                  <p className="truncate text-xs text-slate-500">
+                    {item.action === 'accepted' ? 'Accepted' : 'Declined'}
+                    {item.signed_on ? ` on ${fmtDate(item.signed_on)}` : ''}
+                  </p>
+                </div>
+                <ChevronRightIcon className="size-4 shrink-0 text-slate-300" />
+              </Link>
             ))}
           </PortalCard>
         </div>

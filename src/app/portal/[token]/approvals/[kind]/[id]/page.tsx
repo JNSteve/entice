@@ -71,7 +71,7 @@ export default async function PortalApprovalDetailPage({
           className="flex min-h-6 w-fit items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900"
         >
           <ArrowLeftIcon className="size-3.5" />
-          All approvals
+          All quotes
         </Link>
         <div className="flex flex-col gap-1">
           <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -135,14 +135,18 @@ export default async function PortalApprovalDetailPage({
           )}
           <div>
             <p className="text-sm font-semibold text-slate-900">
-              {decided.action === 'accepted' ? 'Accepted' : 'Declined'} by{' '}
-              {decided.signer_name}
+              {decided.action === 'accepted' ? 'Accepted' : 'Declined'}
+              {decided.signer_name ? ` by ${decided.signer_name}` : ''}
               {decided.signed_on ? ` on ${fmtDate(decided.signed_on)}` : ''}
             </p>
             <p className="text-sm text-slate-500">
-              {decided.action === 'accepted'
-                ? 'This document has been signed through the portal.'
-                : 'Our team has been notified and will be in touch.'}
+              {decided.source === 'office'
+                ? decided.action === 'accepted'
+                  ? 'This quotation was accepted and is on record.'
+                  : 'This quotation was not proceeded with.'
+                : decided.action === 'accepted'
+                  ? 'This document has been signed through the portal.'
+                  : 'Our team has been notified and will be in touch.'}
             </p>
           </div>
         </PortalCard>
