@@ -4,6 +4,17 @@ import { docTotals } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
 import { QuotePdf, type QuotePdfAcceptance, type QuotePdfSection } from '@/pdf/QuotePdf'
 import type { DocCompany } from '@/pdf/DocShell'
+import {
+  DEFAULT_PRICING,
+  buildDetailsRows,
+  buildMergeContext,
+  mergeDoc,
+  pricingDisplaySchema,
+  quoteDocSchema,
+  type MergeSource,
+} from '@/lib/quote-doc'
+import { buildPricingModel } from '@/lib/quote-pricing'
+import { QuoteDocPdf } from '@/pdf/QuoteDocPdf'
 
 /**
  * Shared quote-PDF builder used by BOTH the office route
@@ -11,7 +22,9 @@ import type { DocCompany } from '@/pdf/DocShell'
  * (/portal/[token]/approval-pdf, service-role client after the token-gated
  * entitlement check). Fetches everything itself, including the
  * portal-acceptance evidence block (rendered when the quote was accepted via
- * the client portal). Sell side only — costs and markup never appear.
+ * the client portal). Renders the templated QuoteDocPdf when the quote
+ * carries a doc snapshot (quotes.doc), otherwise the standard QuotePdf; both
+ * honour quotes.pdf_options. Sell side only — costs and markup never appear.
  */
 export async function buildQuotePdfResponse(
   supabase: SupabaseClient,
@@ -28,7 +41,7 @@ export async function buildQuotePdfResponse(
     supabase
       .from('quotes')
       .select(
-        '*, clients(name), sites(name, address, suburb, state, postcode), contacts(name)'
+        '*, clients(name, abn, address), sites(name, address, suburb, state, postcode), contacts(name, role, email, phone), profiles!quotes_pm_id_fkey(full_name, phone, position)'
       )
       .eq('id', id)
       .single(),
@@ -115,27 +128,90 @@ export async function buildQuotePdfResponse(
         }
       : null
 
-  const buffer = await renderToBuffer(
-    <QuotePdf
-      quote={{
+  const displayParsed = pricingDisplaySchema.safeParse(quote.pdf_options)
+  const display = displayParsed.success ? displayParsed.data : DEFAULT_PRICING
+  const docParsed = quote.doc ? quoteDocSchema.safeParse(quote.doc) : null
+  const gstRate = Number(quote.gst_rate)
+  const quoteFooter = (settings?.quote_footer as string | null) ?? null
+  const company = toDocCompany(settings)
+
+  let buffer: Buffer
+  if (docParsed?.success) {
+    const client = quote.clients as { name: string; abn: string | null; address: string | null } | null
+    const contact = quote.contacts as {
+      name: string
+      role: string | null
+      email: string | null
+      phone: string | null
+    } | null
+    const pm = quote.profiles as {
+      full_name: string
+      phone: string | null
+      position: string | null
+    } | null
+    const src: MergeSource = {
+      quote: {
         number: quote.number,
         title: quote.title,
-        date: fmtDate(quote.sent_at ?? quote.created_at),
-        clientName: (quote.clients as { name: string } | null)?.name ?? '—',
-        contactName: (quote.contacts as { name: string } | null)?.name ?? null,
-        siteName: site?.name ?? null,
-        siteAddress,
-      }}
-      company={toDocCompany(settings)}
-      sections={pdfSections}
-      totals={{ ...totals, gstRate: Number(quote.gst_rate) }}
-      validDays={quote.valid_days}
-      description={quote.description}
-      quoteFooter={(settings?.quote_footer as string | null) ?? null}
-      acceptance={acceptance}
-      watermark={opts.watermark ?? null}
-    />
-  )
+        date: (quote.sent_at ?? quote.created_at) as string,
+        valid_days: quote.valid_days,
+        subtotal: totals.subtotal,
+        gst: totals.gst,
+        total: totals.total,
+      },
+      client,
+      contact,
+      site: site ? { name: site.name, address: siteAddress } : null,
+      pm,
+      company: {
+        name: company.name,
+        abn: company.abn,
+        address: company.address,
+        phone: company.phone,
+        email: company.email,
+      },
+    }
+    const ctx = buildMergeContext(src)
+    buffer = await renderToBuffer(
+      <QuoteDocPdf
+        quote={{
+          number: quote.number,
+          title: quote.title,
+          date: fmtDate(quote.sent_at ?? quote.created_at),
+        }}
+        company={company}
+        doc={mergeDoc(docParsed.data, ctx)}
+        details={buildDetailsRows(src, docParsed.data.validity_text)}
+        pricing={buildPricingModel(pdfSections, { ...totals, gstRate }, display)}
+        quoteFooter={quoteFooter}
+        acceptance={acceptance}
+        watermark={opts.watermark ?? null}
+      />
+    )
+  } else {
+    buffer = await renderToBuffer(
+      <QuotePdf
+        quote={{
+          number: quote.number,
+          title: quote.title,
+          date: fmtDate(quote.sent_at ?? quote.created_at),
+          clientName: (quote.clients as { name: string } | null)?.name ?? '—',
+          contactName: (quote.contacts as { name: string } | null)?.name ?? null,
+          siteName: site?.name ?? null,
+          siteAddress,
+        }}
+        company={company}
+        sections={pdfSections}
+        totals={{ ...totals, gstRate }}
+        validDays={quote.valid_days}
+        description={quote.description}
+        quoteFooter={quoteFooter}
+        acceptance={acceptance}
+        watermark={opts.watermark ?? null}
+        display={display}
+      />
+    )
+  }
 
   return new Response(new Uint8Array(buffer), {
     headers: {
