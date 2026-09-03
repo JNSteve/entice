@@ -39,17 +39,23 @@ interface ProfileOption {
   full_name: string
 }
 
+interface TemplateOption extends Option {
+  is_default: boolean
+}
+
 export function NewQuoteDialog({
   clients,
   sites,
   contacts,
   pmOptions,
+  templates,
   currentProfileId,
 }: {
   clients: Option[]
   sites: ClientScopedOption[]
   contacts: ClientScopedOption[]
   pmOptions: ProfileOption[]
+  templates: TemplateOption[]
   currentProfileId: string
 }) {
   const router = useRouter()
@@ -61,6 +67,9 @@ export function NewQuoteDialog({
   const [contactId, setContactId] = useState(NONE)
   const [pmId, setPmId] = useState(currentProfileId)
   const [title, setTitle] = useState('')
+  const [templateId, setTemplateId] = useState(
+    templates.find((t) => t.is_default)?.id ?? NONE
+  )
 
   const clientSites = sites.filter((s) => s.client_id === clientId)
   const clientContacts = contacts.filter((c) => c.client_id === clientId)
@@ -78,6 +87,7 @@ export function NewQuoteDialog({
     setContactId(NONE)
     setPmId(currentProfileId)
     setTitle('')
+    setTemplateId(templates.find((t) => t.is_default)?.id ?? NONE)
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -93,6 +103,7 @@ export function NewQuoteDialog({
         contact_id: contactId === NONE ? null : contactId,
         pm_id: pmId,
         title,
+        template_id: templateId === NONE ? null : templateId,
       })
       if (result.error) {
         toast.error(result.error)
@@ -202,6 +213,22 @@ export function NewQuoteDialog({
                 placeholder="Driveway crossover — 12 Smith St"
                 required
               />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="nq-template">Template</Label>
+              <Select value={templateId} onValueChange={(v) => v && setTemplateId(v)}>
+                <SelectTrigger id="nq-template" className="w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE}>Standard layout</SelectItem>
+                  {templates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={pending || !clientId}>

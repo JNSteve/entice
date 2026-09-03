@@ -3,7 +3,7 @@
 import React, { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -21,6 +21,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
+import type { PricingDisplay, QuoteDoc } from '@/lib/quote-doc'
 import { cn } from '@/lib/utils'
 import {
   addLine,
@@ -42,6 +43,8 @@ import {
 } from './line-row'
 import { RatePickerDialog } from './rate-picker-dialog'
 import { DuplicateQuoteButton } from './duplicate-quote-button'
+import { QuoteDocCard } from './quote-doc-card'
+import { QuotePdfDialog } from './quote-pdf-dialog'
 
 export type { LineData }
 import {
@@ -50,7 +53,6 @@ import {
   BriefcaseIcon,
   CheckIcon,
   ExternalLinkIcon,
-  FileDownIcon,
   FolderOpenIcon,
   GlobeIcon,
   LayersIcon,
@@ -96,6 +98,17 @@ export interface QuoteData {
   archived: boolean
   portal_published: boolean
   portal_acceptance: QuotePortalAcceptance | null
+  template_id: string | null
+  template_name: string | null
+  doc: QuoteDoc | null
+  pdf_options: PricingDisplay | null
+}
+
+/** Active quote template, offered on the PDF dialog. */
+export interface TemplateOption {
+  id: string
+  name: string
+  is_default: boolean
 }
 
 export interface SectionData {
@@ -124,12 +137,14 @@ export function QuoteBuilder({
   lines,
   rateItems,
   pmOptions,
+  templates,
 }: {
   quote: QuoteData
   sections: SectionData[]
   lines: LineData[]
   rateItems: RateItemData[]
   pmOptions: PmOption[]
+  templates: TemplateOption[]
 }) {
   const editable = quote.status === 'draft' || quote.status === 'sent'
 
@@ -140,7 +155,19 @@ export function QuoteBuilder({
     <div className="flex flex-col gap-6">
       {quote.archived && <ArchiveBanner kind="quote" id={quote.id} />}
 
-      <HeaderCard quote={quote} editable={editable} pmOptions={pmOptions} />
+      <HeaderCard
+        quote={quote}
+        editable={editable}
+        pmOptions={pmOptions}
+        templates={templates}
+      />
+
+      <QuoteDocCard
+        quoteId={quote.id}
+        doc={quote.doc}
+        templateName={quote.template_name}
+        editable={editable}
+      />
 
       {sections.map((section, i) => (
         <SectionCard
@@ -194,10 +221,12 @@ function HeaderCard({
   quote,
   editable,
   pmOptions,
+  templates,
 }: {
   quote: QuoteData
   editable: boolean
   pmOptions: PmOption[]
+  templates: TemplateOption[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -371,15 +400,7 @@ function HeaderCard({
                 </Button>
               </>
             )}
-            <a
-              href={`/api/pdf/quote/${quote.id}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className={cn(buttonVariants({ variant: 'outline' }))}
-            >
-              <FileDownIcon />
-              PDF
-            </a>
+            <QuotePdfDialog quote={quote} templates={templates} editable={editable} />
             <DuplicateQuoteButton id={quote.id} />
             {!quote.archived && <ArchiveButton kind="quote" id={quote.id} />}
           </div>

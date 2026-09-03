@@ -63,6 +63,7 @@ export default async function QuotesPage({
     { data: sites },
     { data: contacts },
     { data: pmOptions },
+    { data: quoteTemplates },
   ] = await Promise.all([
     quotesQuery,
     supabase.from('clients').select('id, name').eq('archived', false).order('name'),
@@ -74,6 +75,11 @@ export default async function QuotesPage({
       .in('role', ['admin', 'office'])
       .eq('active', true)
       .order('full_name'),
+    supabase
+      .from('quote_templates')
+      .select('id, name, is_default')
+      .eq('active', true)
+      .order('name'),
   ])
 
   const rows: QuoteRow[] = (quotes ?? []).map((q) => {
@@ -112,6 +118,7 @@ export default async function QuotesPage({
             sites={sites ?? []}
             contacts={contacts ?? []}
             pmOptions={pmOptions ?? []}
+            templates={quoteTemplates ?? []}
             currentProfileId={profile.id}
           />
         }

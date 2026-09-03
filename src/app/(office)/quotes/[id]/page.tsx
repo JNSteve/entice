@@ -4,6 +4,7 @@ import { RulerIcon } from 'lucide-react'
 import { requireRole } from '@/lib/auth'
 import { buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
+import { pricingDisplaySchema, quoteDocSchema } from '@/lib/quote-doc'
 import {
   QuoteBuilder,
   type QuoteData,
@@ -28,11 +29,12 @@ export default async function QuoteBuilderPage({
     { data: lines },
     { data: rateItems },
     { data: pmOptions },
+    { data: templates },
   ] = await Promise.all([
       supabase
         .from('quotes')
         .select(
-          '*, clients(name), sites(name), contacts(name), profiles!quotes_pm_id_fkey(id, full_name)'
+          '*, clients(name), sites(name), contacts(name), profiles!quotes_pm_id_fkey(id, full_name), quote_templates(name)'
         )
         .eq('id', id)
         .single(),
@@ -59,6 +61,11 @@ export default async function QuoteBuilderPage({
         .in('role', ['admin', 'office'])
         .eq('active', true)
         .order('full_name'),
+      supabase
+        .from('quote_templates')
+        .select('id, name, is_default')
+        .eq('active', true)
+        .order('name'),
     ])
 
   if (!quote) notFound()
@@ -124,6 +131,16 @@ export default async function QuoteBuilderPage({
           ip: (acceptanceRow.ip as string | null) ?? null,
         }
       : null,
+    template_id: (quote.template_id as string | null) ?? null,
+    template_name: (quote.quote_templates as { name: string } | null)?.name ?? null,
+    doc: (() => {
+      const p = quoteDocSchema.safeParse(quote.doc)
+      return p.success ? p.data : null
+    })(),
+    pdf_options: (() => {
+      const p = pricingDisplaySchema.safeParse(quote.pdf_options)
+      return p.success ? p.data : null
+    })(),
   }
 
   const sectionData: SectionData[] = (sections ?? []).map((s) => ({
@@ -171,6 +188,11 @@ export default async function QuoteBuilderPage({
         lines={lineData}
         rateItems={rateItemData}
         pmOptions={pmOptions ?? []}
+        templates={(templates ?? []).map((t) => ({
+          id: t.id,
+          name: t.name,
+          is_default: Boolean(t.is_default),
+        }))}
       />
     </div>
   )
