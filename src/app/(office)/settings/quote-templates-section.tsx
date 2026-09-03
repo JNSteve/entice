@@ -66,7 +66,6 @@ export function QuoteTemplatesSection({
   templates: QuoteTemplateRow[]
   importEnabled: boolean
 }) {
-  const router = useRouter()
   const [editing, setEditing] = useState<{
     draft: Draft
     notes: string[]
@@ -145,25 +144,7 @@ export function QuoteTemplatesSection({
                 <TableCell>
                   <div className="flex justify-end gap-1">
                     {t.source_path && <ViewOriginalButton id={t.id} />}
-                    {!t.is_default && t.active && (
-                      <Button
-                        variant="ghost"
-                        size="icon-sm"
-                        title="Set as default"
-                        onClick={async () => {
-                          const r = await setDefaultQuoteTemplate(t.id)
-                          if (r.error) {
-                            toast.error(r.error)
-                          } else {
-                            toast.success('Default template set')
-                            router.refresh()
-                          }
-                        }}
-                      >
-                        <StarIcon />
-                        <span className="sr-only">Set as default</span>
-                      </Button>
-                    )}
+                    {!t.is_default && t.active && <SetDefaultButton id={t.id} />}
                     <Button
                       variant="ghost"
                       size="icon-sm"
@@ -206,6 +187,34 @@ export function QuoteTemplatesSection({
         />
       )}
     </div>
+  )
+}
+
+/** Pending-guarded so a double click cannot race the server's two-step default swap. */
+function SetDefaultButton({ id }: { id: string }) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      title="Set as default"
+      disabled={pending}
+      onClick={() =>
+        startTransition(async () => {
+          const r = await setDefaultQuoteTemplate(id)
+          if (r.error) {
+            toast.error(r.error)
+            return
+          }
+          toast.success('Default template set')
+          router.refresh()
+        })
+      }
+    >
+      <StarIcon />
+      <span className="sr-only">Set as default</span>
+    </Button>
   )
 }
 
@@ -275,11 +284,18 @@ function UploadDialog({
         return
       }
 
-      const result = await importQuoteTemplate({
-        path,
-        filename: file.name,
-        name: name.trim(),
-      })
+      let result: Awaited<ReturnType<typeof importQuoteTemplate>>
+      try {
+        result = await importQuoteTemplate({
+          path,
+          filename: file.name,
+          name: name.trim(),
+        })
+      } catch (err) {
+        await removeUploadedObject(supabase, path)
+        toast.error(err instanceof Error ? err.message : 'Import failed')
+        return
+      }
       if (result.error || !result.draft) {
         await removeUploadedObject(supabase, path)
         toast.error(result.error ?? 'Import failed')
@@ -293,7 +309,15 @@ function UploadDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && !pending && onClose()}>
+    <Dialog
+      open={open}
+      onOpenChange={(o) => {
+        if (o || pending) return
+        setName('')
+        setFile(null)
+        onClose()
+      }}
+    >
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Upload template</DialogTitle>
