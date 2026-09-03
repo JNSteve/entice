@@ -110,6 +110,12 @@ describe('block schemas', () => {
     expect(docBlocksSchema.safeParse([{ ...pricing, heading: '  ' }]).success).toBe(false)
   })
 
+  test('quoteDocSchema rejects an unknown merge token in the heading', () => {
+    const r = quoteDocSchema.safeParse({ ...starterDoc(), heading: 'Works for {{cilent.name}}' })
+    expect(r.success).toBe(false)
+    if (!r.success) expect(r.error.issues[0].message).toContain('{{cilent.name}}')
+  })
+
   test('quoteTemplateSchema requires a name and pricing defaults', () => {
     const base = { ...starterDoc(), pricing_defaults: DEFAULT_PRICING }
     expect(quoteTemplateSchema.safeParse({ ...base, name: 'Asbestos inspection' }).success).toBe(true)

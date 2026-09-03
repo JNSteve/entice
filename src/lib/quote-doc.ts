@@ -130,7 +130,7 @@ export const docBlocksSchema = z
 
 export const quoteDocSchema = z.object({
   doc_title: z.string().trim().min(1, 'Document title is required').max(60),
-  heading: z.string().trim().max(160).nullable(),
+  heading: mergedText(160).nullable(),
   validity_text: mergedText(300).refine((t) => t.trim().length > 0, 'Validity text is required'),
   number_headings: z.boolean(),
   blocks: docBlocksSchema,
