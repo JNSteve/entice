@@ -373,6 +373,57 @@ export async function notifyClientInvoiceSent(input: {
 }
 
 /**
+ * Client update: a quote was marked sent (and therefore published to the
+ * portal). Deep-links to the sign-on-the-glass page. Office action context.
+ */
+export async function notifyClientQuoteSent(input: { quoteId: string }): Promise<void> {
+  try {
+    const supabase = await createClient()
+    const { data: quote } = await supabase
+      .from('quotes')
+      .select('id, number, title, client_id')
+      .eq('id', input.quoteId)
+      .single()
+    if (!quote) return
+
+    const [{ data: contacts }, { data: links }, { data: settings }] = await Promise.all([
+      supabase.from('contacts').select('name, email').eq('client_id', quote.client_id).order('name'),
+      supabase
+        .from('client_links')
+        .select('id, token, revoked_at, expires_at')
+        .eq('client_id', quote.client_id)
+        .order('created_at', { ascending: false }),
+      supabase.from('settings').select('company_name').eq('id', 1).single(),
+    ])
+
+    const link = pickLiveLink((links ?? []) as LinkRow[])
+    const base = appBaseUrl()
+    const portalUrl =
+      base && link ? `${base}/portal/${link.token}/approvals/quote/${quote.id}` : null
+    const company = settings?.company_name ?? 'Entice'
+
+    await sendEmail({
+      to: primaryContactEmail((contacts ?? []) as ContactRow[]),
+      subject: `Quotation ${quote.number} from ${company}`,
+      template: 'client_quote_sent',
+      entityKind: 'quote',
+      entityId: quote.id as string,
+      html: renderEmail({
+        companyName: company,
+        heading: 'Your quotation is ready',
+        intro: `${company} has issued quotation ${quote.number} — ${quote.title}. You can review the full document and accept it online.`,
+        cta: portalUrl ? { label: 'Review and sign in your portal', url: portalUrl } : null,
+        footnote: portalUrl
+          ? null
+          : 'Ask us for a portal link to review and sign your quotations online.',
+      }),
+    })
+  } catch (err) {
+    console.error('[notify] client quote-sent email failed:', err)
+  }
+}
+
+/**
  * Client update: the office replied on a property's message thread.
  * Office action context.
  */

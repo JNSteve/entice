@@ -28,6 +28,8 @@ export const EMAIL_TEMPLATES = [
   'client_message_reply',
   'client_invoice_sent',
   'client_compliance_digest',
+  'client_quote_sent',
+  'client_portal_invite',
   'office_daily_digest',
   'test',
 ] as const
@@ -42,6 +44,8 @@ export const EMAIL_TEMPLATE_LABELS: Record<EmailTemplate, string> = {
   client_message_reply: 'Client — office replied',
   client_invoice_sent: 'Client — invoice issued',
   client_compliance_digest: 'Client — compliance digest',
+  client_quote_sent: 'Client — quote ready to sign',
+  client_portal_invite: 'Client — portal invite',
   office_daily_digest: 'Office — daily digest',
   test: 'Test email',
 }

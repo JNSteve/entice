@@ -7,7 +7,7 @@ import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { lineSell } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
-import { syncRequestsForQuote } from '@/lib/notify'
+import { notifyClientQuoteSent, syncRequestsForQuote } from '@/lib/notify'
 import { canPublishQuote } from '@/lib/portal-interactions'
 import { jobPayloadFromQuote, projectPayloadFromQuote } from '@/lib/convert'
 import { copyQuoteAttachments, seedConvertChecklist } from '@/lib/convert-side-effects'
@@ -304,7 +304,8 @@ export async function setQuoteStatus(
   // Legal transitions: draft→sent, sent→accepted, sent→lost.
   let update: Record<string, unknown>
   if (target === 'sent' && quote.status === 'draft') {
-    update = { status: 'sent', sent_at: now }
+    // Sent quotes go straight onto the client portal (Unpublish opts out).
+    update = { status: 'sent', sent_at: now, portal_published: true }
   } else if (target === 'accepted' && quote.status === 'sent') {
     update = { status: 'accepted', decided_at: now }
   } else if (target === 'lost' && quote.status === 'sent') {
@@ -316,14 +317,21 @@ export async function setQuoteStatus(
   const { error } = await supabase.from('quotes').update(update).eq('id', id)
   if (error) return { error: error.message }
 
+  if (target === 'sent') {
+    // Fire-and-forget after the response; the email engine skip-logs until
+    // sending is configured.
+    after(() => notifyClientQuoteSent({ quoteId: id }))
+  }
+
   revalidateQuote(id)
   return {}
 }
 
 /**
- * Portal publishing (CP2b sign-on-the-glass): only a SENT quote can be
- * published — the portal offers accept/decline while it stays sent, and the
- * definer fn re-checks both flags. Unpublishing is allowed anytime.
+ * Portal publishing (CP2b sign-on-the-glass): sent quotes publish
+ * automatically on send; office can unpublish anytime and re-publish sent or
+ * accepted quotes (canPublishQuote). The definer fn re-checks status +
+ * published before a signature is accepted.
  */
 export async function setQuotePortalPublished(
   id: string,

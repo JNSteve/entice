@@ -23,6 +23,7 @@ import { aud, fmtDate, pct } from '@/lib/format'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import type { PricingDisplay, QuoteDoc } from '@/lib/quote-doc'
 import { cn } from '@/lib/utils'
+import { canPublishQuote } from '@/lib/portal-interactions'
 import {
   addLine,
   addSection,
@@ -494,22 +495,24 @@ function HeaderCard({
         )}
 
         {/* Client portal: publish-for-signing toggle + acceptance evidence */}
-        {quote.status === 'sent' && (
+        {canPublishQuote(quote.status) && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
             <div className="flex items-center gap-2 text-sm">
               <GlobeIcon className="size-4 text-muted-foreground" />
               {quote.portal_published ? (
                 <span>
-                  <span className="font-medium">Published to the client portal</span>
+                  <span className="font-medium">On the client portal</span>
                   {' — '}
                   <span className="text-muted-foreground">
-                    {quote.client_name} can view the PDF and sign on the glass.
+                    {quote.status === 'sent'
+                      ? `${quote.client_name} can view the PDF and sign online.`
+                      : `${quote.client_name} can view the accepted quotation.`}
                   </span>
                 </span>
               ) : (
                 <span className="text-muted-foreground">
-                  Not on the client portal — publish to let {quote.client_name}{' '}
-                  view and sign this quote online.
+                  Not on the client portal — publish so {quote.client_name} can view
+                  {quote.status === 'sent' ? ' and sign' : ''} this quote online.
                 </span>
               )}
             </div>

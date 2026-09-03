@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   alreadySentToday,
+  EMAIL_TEMPLATE_LABELS,
+  EMAIL_TEMPLATES,
   emailConfig,
   escapeHtml,
   renderEmail,
@@ -248,5 +250,14 @@ describe('averageRating (customer_satisfaction_avg)', () => {
   it('ignores non-finite junk; all-junk is null', () => {
     expect(averageRating([NaN, 4, Infinity])).toBe(4)
     expect(averageRating([NaN])).toBe(null)
+  })
+})
+
+describe('email template registry', () => {
+  it('registers the quote-sent and portal-invite client templates with labels', () => {
+    expect(EMAIL_TEMPLATES).toContain('client_quote_sent')
+    expect(EMAIL_TEMPLATES).toContain('client_portal_invite')
+    expect(EMAIL_TEMPLATE_LABELS.client_quote_sent).toBe('Client — quote ready to sign')
+    expect(EMAIL_TEMPLATE_LABELS.client_portal_invite).toBe('Client — portal invite')
   })
 })
