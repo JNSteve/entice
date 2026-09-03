@@ -128,6 +128,16 @@ The app generates PDFs server-side using `@react-pdf/renderer`, streamed from th
 
 ---
 
+## Client portal
+
+Each client organisation gets a no-login portal link (`/portal/{token}`, issued and revoked from the client page, delivered by the **Send invite** email or the copy-ready message). The portal opens on an **Overview** of the client's works and quotes, with **Works** (one page per job/project: status timeline, dates, photos, documents, close-out pack, feedback), **Quotes** (sign on the glass; office-decided quotes stay on record), **Properties** (compliance register, documents, maintenance, messages, requests, optional billing) and a **Calendar**. Properties without a register show a neutral state, never a warning.
+
+**Sharing.** Nothing reaches the portal until office acts. The **Share with client** switch on a job or project publishes its photos, documents and close-out pack in one go (dockets never share, project diary photos ride the project switch); the per-attachment eye toggle still hides single items. Marking a quote **sent** publishes it automatically and emails the client; **Unpublish** opts out.
+
+**Security model.** Anonymous portal reads go through `SECURITY DEFINER` RPCs validated by `portal_live_link(token)`; every page view and download is logged to `portal_views`. Client emails go through `src/lib/email.ts`, which logs as *skipped* until `RESEND_API_KEY` and `EMAIL_FROM` are set.
+
+---
+
 ## WHS & Traceability
 
 The WHS module lives at `/whs` (office hub: Overview / Forms / Incidents / Subbie SWMS / Audit), on each project's **WHS tab**, and in the field app's **Safety tab**.
@@ -247,6 +257,5 @@ From the product specification §5 — planned for a future phase:
 - Subcontractor portal (self-service docket submission)
 - Approval workflows (multi-level sign-off for variations, POs, claims)
 - Offline PWA (service worker + background sync for no-signal field use)
-- Client portal (read-only claim/variation visibility)
 - SMS notifications (claim submissions, approvals)
 - Payroll export (integration with payroll providers)
