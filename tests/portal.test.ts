@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import {
   clientLinkState,
+  derivePortalPropertyStatus,
   derivePropertyItemStatus,
   derivePropertyStatus,
   isClientLinkActive,
+  portalInviteMessage,
 } from '@/lib/portal'
 
 const TODAY = '2026-07-05'
@@ -84,5 +86,26 @@ describe('client link validity', () => {
     expect(
       isClientLinkActive({ revoked_at: null, expires_at: '2026-07-06T00:00:00Z' }, NOW)
     ).toBe(true)
+  })
+})
+
+describe('derivePortalPropertyStatus (portal-only aggregate)', () => {
+  it('no items → none (works-only clients are not red)', () => {
+    expect(derivePortalPropertyStatus([], TODAY)).toBe('none')
+  })
+
+  it('otherwise mirrors derivePropertyStatus', () => {
+    expect(derivePortalPropertyStatus([null], TODAY)).toBe('green')
+    expect(derivePortalPropertyStatus(['2026-07-20'], TODAY)).toBe('amber')
+    expect(derivePortalPropertyStatus(['2026-07-01'], TODAY)).toBe('red')
+  })
+})
+
+describe('portalInviteMessage', () => {
+  it('names the company, the client and the URL, and asks to keep it private', () => {
+    const msg = portalInviteMessage('Entice', 'Damon Constructions', 'https://x.test/portal/abc')
+    expect(msg).toBe(
+      'Entice has set up a secure client portal for Damon Constructions. Open it here: https://x.test/portal/abc. Please keep this link private.'
+    )
   })
 })

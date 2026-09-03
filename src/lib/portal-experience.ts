@@ -4,9 +4,10 @@
 // Date handling follows the house convention: 'YYYY-MM-DD' string compares
 // against the Australian (Brisbane) calendar day (src/lib/tz.ts / portal.ts).
 
-import { addDaysISO, type ComplianceStatus } from '@/lib/compliance'
+import { addDaysISO } from '@/lib/compliance'
 import {
   PROPERTY_COMPLIANCE_KIND_LABELS,
+  type PortalPropertyStatus,
   type PropertyComplianceKind,
 } from '@/lib/portal'
 
@@ -314,9 +315,9 @@ export function summarisePortfolio(
 export function propertyStatusPhrase(
   reviewDues: (string | null)[],
   today: string
-): { status: ComplianceStatus; phrase: string } {
+): { status: PortalPropertyStatus; phrase: string } {
   if (reviewDues.length === 0) {
-    return { status: 'red', phrase: 'No compliance records' }
+    return { status: 'none', phrase: 'No compliance register on file' }
   }
 
   const in30 = addDaysISO(today, 30)
@@ -349,6 +350,40 @@ export function workGroupForJob(status: string): WorkGroup {
 /** Projects: only closed is history — PC/DLP projects are still live works. */
 export function workGroupForProject(status: string): WorkGroup {
   return status === 'closed' ? 'history' : 'live'
+}
+
+// ─── Work timeline (client-facing status steps) ──────────────────────────────
+
+export const JOB_TIMELINE = ['quote', 'scheduled', 'in_progress', 'completed'] as const
+export const PROJECT_TIMELINE = [
+  'active',
+  'practical_completion',
+  'defects_liability',
+  'closed',
+] as const
+
+export const WORK_STEP_LABELS: Record<string, string> = {
+  quote: 'Quoted',
+  scheduled: 'Scheduled',
+  in_progress: 'In progress',
+  completed: 'Completed',
+  active: 'Active',
+  practical_completion: 'Practical completion',
+  defects_liability: 'Defects liability',
+  closed: 'Closed',
+}
+
+/**
+ * Step index of a work's status on its client timeline; -1 when the status
+ * is not on the timeline (job 'lost' never reaches the portal anyway).
+ * invoiced/paid are "Completed" to the client — money stages are internal.
+ */
+export function workTimelineIndex(kind: 'job' | 'project', status: string): number {
+  if (kind === 'job') {
+    if (status === 'invoiced' || status === 'paid') return JOB_TIMELINE.length - 1
+    return (JOB_TIMELINE as readonly string[]).indexOf(status)
+  }
+  return (PROJECT_TIMELINE as readonly string[]).indexOf(status)
 }
 
 /** Human label for a compliance item kind, safe for unknown values. */

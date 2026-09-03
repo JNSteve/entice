@@ -91,10 +91,7 @@ describe('approval gating', () => {
     expect(canSignApproval('variation', 'rejected', true)).toBe(false)
   })
 
-  it('office may only publish signable statuses', () => {
-    expect(canPublishQuote('sent')).toBe(true)
-    expect(canPublishQuote('draft')).toBe(false)
-    expect(canPublishQuote('accepted')).toBe(false)
+  it('office may only publish signable variations', () => {
     expect(canPublishVariation('submitted')).toBe(true)
     expect(canPublishVariation('priced')).toBe(false)
     expect(canPublishVariation('approved')).toBe(false)
@@ -188,5 +185,14 @@ describe('photo upload constraints', () => {
 
   it('rejects an empty selection', () => {
     expect(photoUploadProblem([])).toMatch(/no files/i)
+  })
+})
+
+describe('canPublishQuote', () => {
+  it('sent and accepted quotes can sit on the portal; drafts and lost cannot', () => {
+    expect(canPublishQuote('sent')).toBe(true)
+    expect(canPublishQuote('accepted')).toBe(true)
+    expect(canPublishQuote('draft')).toBe(false)
+    expect(canPublishQuote('lost')).toBe(false)
   })
 })

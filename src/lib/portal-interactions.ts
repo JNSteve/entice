@@ -115,11 +115,12 @@ export function canSignApproval(
   return published && status === APPROVAL_SIGNABLE_STATUS[kind]
 }
 
-/** Office may publish only while the item is signable; unpublish anytime. */
+/** Sent quotes go on the portal to be signed; accepted ones stay as records. */
 export function canPublishQuote(status: string): boolean {
-  return status === APPROVAL_SIGNABLE_STATUS.quote
+  return status === APPROVAL_SIGNABLE_STATUS.quote || status === 'accepted'
 }
 
+/** Office may publish only while the item is signable; unpublish anytime. */
 export function canPublishVariation(status: string): boolean {
   return status === APPROVAL_SIGNABLE_STATUS.variation
 }

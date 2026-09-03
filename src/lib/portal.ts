@@ -76,6 +76,33 @@ export function derivePropertyStatus(
   return hasAmber ? 'amber' : 'green'
 }
 
+/**
+ * Portal-only aggregate: a property with NO register items is 'none'
+ * (neutral) rather than red. Office keeps derivePropertyStatus's "untracked
+ * = red" for the recall business; the client-facing shopfront must not open
+ * on warnings for builders who never keep a register.
+ */
+export type PortalPropertyStatus = ComplianceStatus | 'none'
+
+export function derivePortalPropertyStatus(
+  reviewDues: (string | null)[],
+  today: string
+): PortalPropertyStatus {
+  if (reviewDues.length === 0) return 'none'
+  return derivePropertyStatus(reviewDues, today)
+}
+
+// ─── Invite copy ─────────────────────────────────────────────────────────────
+
+/** Paste-ready invite text for office (copied from the Issue-link dialog). */
+export function portalInviteMessage(
+  companyName: string,
+  clientName: string,
+  url: string
+): string {
+  return `${companyName} has set up a secure client portal for ${clientName}. Open it here: ${url}. Please keep this link private.`
+}
+
 // ─── Client link validity ────────────────────────────────────────────────────
 
 export interface ClientLinkLike {

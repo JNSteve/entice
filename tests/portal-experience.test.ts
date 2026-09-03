@@ -16,6 +16,7 @@ import {
   summarisePortfolio,
   workGroupForJob,
   workGroupForProject,
+  workTimelineIndex,
   type PortalCalendarEvent,
   type PortalDocEntry,
 } from '@/lib/portal-experience'
@@ -288,10 +289,10 @@ describe('summarisePortfolio', () => {
 })
 
 describe('propertyStatusPhrase', () => {
-  it('no records → red', () => {
-    expect(propertyStatusPhrase([], TODAY)).toEqual({
-      status: 'red',
-      phrase: 'No compliance records',
+  it('no items → none with the register phrase', () => {
+    expect(propertyStatusPhrase([], '2026-07-05')).toEqual({
+      status: 'none',
+      phrase: 'No compliance register on file',
     })
   })
 
@@ -338,5 +339,27 @@ describe('work grouping', () => {
     expect(workGroupForProject('practical_completion')).toBe('live')
     expect(workGroupForProject('defects_liability')).toBe('live')
     expect(workGroupForProject('closed')).toBe('history')
+  })
+})
+
+// ─── Work timeline ──────────────────────────────────────────────────────
+
+describe('workTimelineIndex', () => {
+  it('maps job statuses onto the four-step client timeline', () => {
+    expect(workTimelineIndex('job', 'quote')).toBe(0)
+    expect(workTimelineIndex('job', 'scheduled')).toBe(1)
+    expect(workTimelineIndex('job', 'in_progress')).toBe(2)
+    expect(workTimelineIndex('job', 'completed')).toBe(3)
+    expect(workTimelineIndex('job', 'invoiced')).toBe(3)
+    expect(workTimelineIndex('job', 'paid')).toBe(3)
+    expect(workTimelineIndex('job', 'lost')).toBe(-1)
+  })
+
+  it('maps project statuses onto their four steps', () => {
+    expect(workTimelineIndex('project', 'active')).toBe(0)
+    expect(workTimelineIndex('project', 'practical_completion')).toBe(1)
+    expect(workTimelineIndex('project', 'defects_liability')).toBe(2)
+    expect(workTimelineIndex('project', 'closed')).toBe(3)
+    expect(workTimelineIndex('project', 'junk')).toBe(-1)
   })
 })
