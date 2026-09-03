@@ -97,7 +97,7 @@ export default async function PortalHomePage({
   const summary = summarisePortfolio(sites, today)
 
   return (
-    <PortalShell branding={branding} token={token} active="properties">
+    <PortalShell branding={branding} token={token} active="overview">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">

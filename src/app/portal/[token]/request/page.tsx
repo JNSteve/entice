@@ -90,7 +90,7 @@ export default async function PortalRequestPage({
   }
 
   return (
-    <PortalShell branding={branding} token={token} active="properties">
+    <PortalShell branding={branding} token={token} active="overview">
       <div className="flex flex-col gap-3">
         <Link
           href={`/portal/${token}`}

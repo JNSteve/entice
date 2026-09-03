@@ -44,11 +44,13 @@ import {
   WorkStatusBadge,
   type PortalApprovalsPayload,
   isRegisterScope,
+  type PortalAttachment,
   type PortalBillingRow,
   type PortalBranding,
   type PortalMessageRow,
   type PortalRequestRow,
 } from '../../portal-ui'
+import { DocRows, isPhoto, PhotoGallery } from '../../work-ui'
 import { HANDOVER_PACK_CAPTION } from '@/lib/feedback'
 import { DocumentBrowser } from './document-browser'
 import { FeedbackCard } from './feedback-card'
@@ -59,26 +61,6 @@ import { UploadDocumentCard } from './upload-document'
 export const dynamic = 'force-dynamic'
 
 // ─── portal_site_detail payload shapes ───────────────────────────────────────
-
-interface PortalAttachment {
-  id: string
-  filename: string
-  kind: string
-  content_type: string | null
-  caption: string | null
-  size: number | null
-  created_at: string
-  created_on: string | null
-}
-
-/** Minimal shape the thumbnail row + doc links need — satisfied by both the
- * works PortalAttachment and the leaner maintenance attachment payload. */
-interface PortalFileRef {
-  id: string
-  filename: string
-  content_type: string | null
-  caption: string | null
-}
 
 /** Maintenance evidence: parent_type 'maintenance' attachments, portal-visible
  * off the ENTRY's client_visible (no size/timestamps in this payload). */
@@ -175,71 +157,6 @@ interface PortalFeedbackRow {
   project_id: string | null
   rating: number
 }
-
-// ─── Building blocks ─────────────────────────────────────────────────────────
-
-function PhotoGallery({
-  token,
-  photos,
-}: {
-  token: string
-  photos: PortalFileRef[]
-}) {
-  if (photos.length === 0) return null
-  return (
-    <div className="grid grid-cols-3 gap-2 sm:grid-cols-4">
-      {photos.map((p) => (
-        <a
-          key={p.id}
-          href={`/portal/${token}/file/attachment/${p.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block aspect-square overflow-hidden rounded-xl border bg-slate-100"
-          aria-label={`View ${p.filename}`}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={`/portal/${token}/file/attachment/${p.id}`}
-            alt={p.caption ?? p.filename}
-            className="h-full w-full object-cover transition-transform hover:scale-105"
-            loading="lazy"
-          />
-        </a>
-      ))}
-    </div>
-  )
-}
-
-function DocRows({
-  token,
-  docs,
-}: {
-  token: string
-  docs: PortalFileRef[]
-}) {
-  if (docs.length === 0) return null
-  return (
-    <div className="flex flex-col gap-1.5">
-      {docs.map((d) => (
-        <a
-          key={d.id}
-          href={`/portal/${token}/file/attachment/${d.id}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex min-h-11 items-center gap-2.5 rounded-xl border px-3 py-2 text-sm transition-colors hover:bg-slate-50"
-        >
-          <FileTextIcon className="size-4 shrink-0 text-slate-400" />
-          <span className="min-w-0 flex-1 truncate font-medium text-slate-700">
-            {d.filename}
-          </span>
-          <DownloadIcon className="size-3.5 shrink-0 text-slate-300" />
-        </a>
-      ))}
-    </div>
-  )
-}
-
-const isPhoto = (a: PortalFileRef) => a.content_type?.startsWith('image/')
 
 const MAINTENANCE_KIND_LABELS: Record<string, string> = {
   make_safe: 'Make-safe',

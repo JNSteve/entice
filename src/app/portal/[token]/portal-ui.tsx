@@ -1,9 +1,13 @@
 import Link from 'next/link'
 import {
   Building2Icon,
+  BuildingIcon,
   CalendarDaysIcon,
   CheckIcon,
   ClockIcon,
+  FileSignatureIcon,
+  HardHatIcon,
+  LayoutDashboardIcon,
   MailIcon,
   MapPinIcon,
   PhoneIcon,
@@ -12,7 +16,14 @@ import {
 } from 'lucide-react'
 import { fmtDate } from '@/lib/format'
 import { todayAU } from '@/lib/tz'
-import { complianceTitle, type ComplianceStatus } from '@/lib/compliance'
+import { complianceTitle } from '@/lib/compliance'
+import { type PortalPropertyStatus } from '@/lib/portal'
+import {
+  JOB_TIMELINE,
+  PROJECT_TIMELINE,
+  WORK_STEP_LABELS,
+  workTimelineIndex,
+} from '@/lib/portal-experience'
 import {
   REQUEST_STATUS_LABELS,
   REQUEST_TIMELINE,
@@ -92,8 +103,11 @@ export interface PortalApprovalItem {
 
 export interface PortalDecidedItem extends PortalApprovalItem {
   action: 'accepted' | 'declined'
-  signer_name: string
+  /** null when decided in the office rather than signed on the portal. */
+  signer_name: string | null
   signed_on: string | null
+  /** Present once migration 0062 runs. */
+  source?: 'portal' | 'office'
 }
 
 export interface PortalApprovalsPayload {
@@ -112,6 +126,80 @@ export interface PortalBillingRow {
   status: string
 }
 
+// ─── Works payloads (portal_works / portal_work_detail, migration 0062) ──────
+
+export interface PortalAttachment {
+  id: string
+  filename: string
+  kind: string
+  content_type: string | null
+  caption: string | null
+  size: number | null
+  created_at: string
+  created_on: string | null
+}
+
+/** Minimal shape the thumbnail row + doc links need. */
+export interface PortalFileRef {
+  id: string
+  filename: string
+  content_type: string | null
+  caption: string | null
+}
+
+export interface PortalWorkSummary {
+  kind: 'job' | 'project'
+  id: string
+  number: string
+  title: string
+  status: string
+  site_id: string | null
+  site_name: string | null
+  from: string | null
+  to: string | null
+  completed_on: string | null
+  progress_pct: number | null
+  photo_count: number
+  doc_count: number
+  has_handover: boolean
+  quote_id: string | null
+  quote_number: string | null
+}
+
+export interface PortalSiteRow {
+  id: string
+  name: string
+  address: string | null
+  suburb: string | null
+  state: string | null
+  postcode: string | null
+  review_dues: (string | null)[]
+  open_works: number
+}
+
+export interface PortalWorkDetail {
+  kind: 'job' | 'project'
+  id: string
+  number: string
+  title: string
+  status: string
+  description: string | null
+  site_id: string | null
+  site_name: string | null
+  site_address: string | null
+  from: string | null
+  to: string | null
+  completed_on: string | null
+  progress_pct: number | null
+  quote: {
+    id: string
+    number: string
+    status: string
+    decided: 'accepted' | 'declined' | null
+  } | null
+  attachments: PortalAttachment[]
+}
+
 // ECR brand navy (#162040) — matches the app-wide primary token.
 const BRAND_BG = 'bg-[#162040]'
 // Signature gold accent, used sparingly for the brand band underline/divider.
@@ -125,7 +213,7 @@ export function PortalShell({
 }: {
   branding: PortalBranding
   token: string
-  active: 'properties' | 'calendar'
+  active: 'overview' | 'works' | 'quotes' | 'properties' | 'calendar'
   children: React.ReactNode
 }) {
   return (
@@ -163,9 +251,27 @@ export function PortalShell({
       {/* Nav — register-scope links are a single-property register view */}
       {!isRegisterScope(branding) && (
         <nav className="border-b bg-white">
-          <div className="mx-auto flex w-full max-w-4xl gap-1 px-4">
+          <div className="mx-auto flex w-full max-w-4xl gap-1 overflow-x-auto px-4 [scrollbar-width:none]">
             <PortalNavLink
               href={`/portal/${token}`}
+              label="Overview"
+              icon={<LayoutDashboardIcon className="size-4" />}
+              active={active === 'overview'}
+            />
+            <PortalNavLink
+              href={`/portal/${token}/works`}
+              label="Works"
+              icon={<HardHatIcon className="size-4" />}
+              active={active === 'works'}
+            />
+            <PortalNavLink
+              href={`/portal/${token}/approvals`}
+              label="Quotes"
+              icon={<FileSignatureIcon className="size-4" />}
+              active={active === 'quotes'}
+            />
+            <PortalNavLink
+              href={`/portal/${token}/properties`}
               label="Properties"
               icon={<Building2Icon className="size-4" />}
               active={active === 'properties'}
@@ -245,7 +351,7 @@ function PortalNavLink({
     <Link
       href={href}
       aria-current={active ? 'page' : undefined}
-      className={`flex min-h-11 items-center gap-2 border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
+      className={`flex min-h-11 shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
         active
           ? 'border-[#c9a868] text-[#162040]'
           : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -277,16 +383,22 @@ export function LinkInactivePage() {
 
 // ─── Status language ─────────────────────────────────────────────────────────
 
-export const STATUS_DOT: Record<ComplianceStatus, string> = {
+export const STATUS_DOT: Record<PortalPropertyStatus, string> = {
   green: 'bg-green-500',
   amber: 'bg-amber-400',
   red: 'bg-red-500',
+  none: 'bg-slate-300',
 }
 
-const STATUS_LABELS: Record<ComplianceStatus, string> = {
+const STATUS_LABELS: Record<PortalPropertyStatus, string> = {
   green: 'Current',
   amber: 'Review due soon',
   red: 'Attention required',
+  none: 'No compliance register on file',
+}
+
+function statusTitle(status: PortalPropertyStatus): string {
+  return status === 'none' ? STATUS_LABELS.none : complianceTitle(status)
 }
 
 /** Traffic-light dot + label, sized for compliance rows. */
@@ -294,13 +406,13 @@ export function PortalLight({
   status,
   label,
 }: {
-  status: ComplianceStatus
+  status: PortalPropertyStatus
   label?: string
 }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 text-xs font-medium text-slate-600"
-      title={complianceTitle(status)}
+      title={statusTitle(status)}
     >
       <span
         className={`inline-block size-2.5 shrink-0 rounded-full ${STATUS_DOT[status]}`}
@@ -312,20 +424,27 @@ export function PortalLight({
 
 /**
  * At-a-glance compliance ring for property cards: a circled status icon in
- * the property's aggregate colour.
+ * the property's aggregate colour. 'none' = no register kept (neutral).
  */
-export function StatusRing({ status }: { status: ComplianceStatus }) {
-  const styles: Record<ComplianceStatus, string> = {
+export function StatusRing({ status }: { status: PortalPropertyStatus }) {
+  const styles: Record<PortalPropertyStatus, string> = {
     green: 'bg-green-50 text-green-600 ring-green-500/40',
     amber: 'bg-amber-50 text-amber-600 ring-amber-500/50',
     red: 'bg-red-50 text-red-600 ring-red-500/40',
+    none: 'bg-slate-50 text-slate-400 ring-slate-300/60',
   }
   const Icon =
-    status === 'green' ? CheckIcon : status === 'amber' ? ClockIcon : TriangleAlertIcon
+    status === 'green'
+      ? CheckIcon
+      : status === 'amber'
+        ? ClockIcon
+        : status === 'red'
+          ? TriangleAlertIcon
+          : BuildingIcon
   return (
     <span
       className={`flex size-11 shrink-0 items-center justify-center rounded-full ring-2 ${styles[status]}`}
-      title={complianceTitle(status)}
+      title={statusTitle(status)}
     >
       <Icon className="size-5" strokeWidth={2.5} />
     </span>
@@ -392,6 +511,56 @@ export function ProgressBar({ pct }: { pct: number }) {
         {clamped}%
       </span>
     </div>
+  )
+}
+
+/**
+ * Where a work sits on its client-facing timeline (jobs: Quoted → Scheduled →
+ * In progress → Completed; projects: Active → Practical completion → Defects
+ * liability → Closed). Same visual language as RequestTimeline.
+ */
+export function WorkTimeline({
+  kind,
+  status,
+}: {
+  kind: 'job' | 'project'
+  status: string
+}) {
+  const steps: readonly string[] = kind === 'job' ? JOB_TIMELINE : PROJECT_TIMELINE
+  const index = workTimelineIndex(kind, status)
+  if (index < 0) return null
+  return (
+    <ol className="flex items-center" aria-label="Work progress">
+      {steps.map((step, i) => {
+        const reached = i <= index
+        const isCurrent = i === index
+        return (
+          <li key={step} className="flex min-w-0 flex-1 items-center last:flex-none">
+            <span className="flex flex-col items-center gap-1">
+              <span
+                className={`flex size-4 items-center justify-center rounded-full ring-2 ${
+                  reached ? 'bg-blue-600 ring-blue-600' : 'bg-white ring-slate-300'
+                }`}
+              >
+                {reached && <CheckIcon className="size-2.5 text-white" strokeWidth={3.5} />}
+              </span>
+              <span
+                className={`whitespace-nowrap text-[10px] leading-none ${
+                  isCurrent ? 'font-semibold text-blue-700' : 'text-slate-400'
+                }`}
+              >
+                {WORK_STEP_LABELS[step]}
+              </span>
+            </span>
+            <span
+              className={`mx-1 mb-4 h-0.5 flex-1 rounded ${
+                i < index ? 'bg-blue-600' : 'bg-slate-200'
+              } ${i === steps.length - 1 ? 'hidden' : ''}`}
+            />
+          </li>
+        )
+      })}
+    </ol>
   )
 }
 

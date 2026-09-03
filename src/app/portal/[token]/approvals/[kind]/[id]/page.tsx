@@ -64,7 +64,7 @@ export default async function PortalApprovalDetailPage({
   if (!item) notFound()
 
   return (
-    <PortalShell branding={branding} token={token} active="properties">
+    <PortalShell branding={branding} token={token} active="quotes">
       <div className="flex flex-col gap-3">
         <Link
           href={`/portal/${token}/approvals`}
