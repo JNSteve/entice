@@ -21,6 +21,8 @@ import {
   takeoffAssemblyComponentSchema,
 } from '@/lib/zod'
 import { swmsTemplateV2Schema } from '@/lib/swms'
+import { normaliseBlocks, quoteTemplateSchema, type DocBlock } from '@/lib/quote-doc'
+import { signedUrl } from '@/lib/attachment-urls'
 
 // ─── Company settings ────────────────────────────────────────────────────────
 
@@ -775,4 +777,147 @@ export async function deleteAssemblyComponent(
 
   revalidatePath('/settings')
   return {}
+}
+
+// ─── Quote templates ─────────────────────────────────────────────────────────
+
+/**
+ * Validates editor output. Blocks are normalised (trimmed, empties dropped)
+ * and the free-text header fields trimmed before the schema runs, so a
+ * heading of "   " saves as null and stray whitespace never reaches the PDF.
+ */
+function parseTemplate(data: unknown) {
+  const raw = (data && typeof data === 'object' ? data : {}) as Record<string, unknown>
+  const cleaned = {
+    ...raw,
+    heading: typeof raw.heading === 'string' ? raw.heading.trim() || null : raw.heading,
+    validity_text:
+      typeof raw.validity_text === 'string' ? raw.validity_text.trim() : raw.validity_text,
+    blocks: Array.isArray(raw.blocks) ? normaliseBlocks(raw.blocks as DocBlock[]) : raw.blocks,
+  }
+  return quoteTemplateSchema.safeParse(cleaned)
+}
+
+export async function createQuoteTemplate(
+  data: unknown
+): Promise<{ error?: string; id?: string }> {
+  const profile = await requireRole('admin')
+
+  const parsed = parseTemplate(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { data: row, error } = await supabase
+    .from('quote_templates')
+    .insert({ ...parsed.data, created_by: profile.id })
+    .select('id')
+    .single()
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  revalidatePath('/quotes')
+  return { id: row.id as string }
+}
+
+export async function updateQuoteTemplate(
+  id: string,
+  data: unknown
+): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const parsed = parseTemplate(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  // The uploaded original (source_path / source_filename) never changes
+  // through an edit — only the document fields are written.
+  const { name, doc_title, heading, validity_text, number_headings, blocks, pricing_defaults } =
+    parsed.data
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('quote_templates')
+    .update({
+      name,
+      doc_title,
+      heading,
+      validity_text,
+      number_headings,
+      blocks,
+      pricing_defaults,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  revalidatePath('/quotes')
+  return {}
+}
+
+export async function setQuoteTemplateActive(
+  id: string,
+  active: boolean
+): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const supabase = await createSupabaseClient()
+  // A deactivated template cannot stay the default (partial unique index).
+  const patch = active ? { active } : { active, is_default: false }
+  const { error } = await supabase.from('quote_templates').update(patch).eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  revalidatePath('/quotes')
+  return {}
+}
+
+export async function setDefaultQuoteTemplate(id: string): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const supabase = await createSupabaseClient()
+  const { data: target } = await supabase
+    .from('quote_templates')
+    .select('id, active')
+    .eq('id', id)
+    .maybeSingle()
+  if (!target) return { error: 'Template not found' }
+  if (!target.active) return { error: 'Activate the template before making it the default' }
+
+  const { error: clearErr } = await supabase
+    .from('quote_templates')
+    .update({ is_default: false })
+    .eq('is_default', true)
+  if (clearErr) return { error: clearErr.message }
+
+  const { error } = await supabase
+    .from('quote_templates')
+    .update({ is_default: true })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidatePath('/settings')
+  revalidatePath('/quotes')
+  return {}
+}
+
+/** Short-lived signed URL for the PDF a template was imported from. */
+export async function quoteTemplateOriginalUrl(
+  id: string
+): Promise<{ url?: string; error?: string }> {
+  await requireRole('admin')
+
+  const supabase = await createSupabaseClient()
+  const { data } = await supabase
+    .from('quote_templates')
+    .select('source_path')
+    .eq('id', id)
+    .maybeSingle()
+  if (!data?.source_path) return { error: 'This template was not imported from a file' }
+
+  const url = await signedUrl(supabase, data.source_path as string, 600)
+  return url ? { url } : { error: 'Could not sign the file URL' }
 }
