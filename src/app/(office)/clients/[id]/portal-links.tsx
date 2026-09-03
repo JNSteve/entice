@@ -2,7 +2,7 @@
 
 import React, { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { CopyIcon, LinkIcon, PlusIcon } from 'lucide-react'
+import { CopyIcon, LinkIcon, MailIcon, PlusIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -13,6 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Textarea } from '@/components/ui/textarea'
 import {
   Table,
   TableBody,
@@ -24,10 +25,15 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Checkbox } from '@/components/ui/checkbox'
 import { fmtDate } from '@/lib/format'
-import { clientLinkState, type ClientLinkState } from '@/lib/portal'
+import {
+  clientLinkState,
+  portalInviteMessage,
+  type ClientLinkState,
+} from '@/lib/portal'
 import {
   createClientLink,
   revokeClientLink,
+  sendClientLinkInvite,
   setClientLinkFinancials,
   setClientLinkNotifications,
 } from '@/lib/client-links'
@@ -41,6 +47,12 @@ export interface ClientLinkRow {
   revoked_at: string | null
   show_financials: boolean
   notifications_enabled: boolean
+}
+
+export interface ClientContactOption {
+  id: string
+  name: string
+  email: string | null
 }
 
 function portalUrl(token: string): string {
@@ -72,18 +84,131 @@ const STATE_BADGE: Record<ClientLinkState, { label: string; className: string }>
   },
 }
 
+/**
+ * Invite step: pick a contact with an email, add an optional note, send the
+ * branded invite through the email engine (skip-logged until sending is
+ * configured) — or copy a paste-ready message for office's own email/SMS.
+ */
+function InvitePanel({
+  linkId,
+  clientId,
+  clientName,
+  companyName,
+  url,
+  contacts,
+  onDone,
+}: {
+  linkId: string
+  clientId: string
+  clientName: string
+  companyName: string
+  url: string
+  contacts: ClientContactOption[]
+  onDone?: () => void
+}) {
+  const [pending, startTransition] = useTransition()
+  const withEmail = contacts.filter((c) => c.email && c.email.trim() !== '')
+  const [contactId, setContactId] = useState(withEmail[0]?.id ?? '')
+  const [note, setNote] = useState('')
+
+  function copyMessage() {
+    navigator.clipboard
+      .writeText(portalInviteMessage(companyName, clientName, url))
+      .then(() => toast.success('Invite message copied'))
+      .catch(() => toast.error('Could not copy — copy it manually'))
+  }
+
+  function send(e: React.FormEvent) {
+    e.preventDefault()
+    startTransition(async () => {
+      const result = await sendClientLinkInvite({
+        link_id: linkId,
+        client_id: clientId,
+        contact_id: contactId,
+        note: note || null,
+        origin: window.location.origin,
+      })
+      if ('error' in result) {
+        toast.error(result.error)
+        return
+      }
+      if (result.status === 'sent') toast.success(`Invite emailed to ${result.to}`)
+      else if (result.status === 'skipped')
+        toast.warning(
+          "Invite logged but not sent — email sending isn't configured yet (Settings → Email). Copy the invite message instead."
+        )
+      else toast.error('The email provider rejected the invite — see Settings → Email')
+      onDone?.()
+    })
+  }
+
+  return (
+    <form onSubmit={send} className="flex flex-col gap-3">
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="invite-contact">Send to</Label>
+        {withEmail.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            No contacts with an email address — add one under Contacts, or copy the
+            message.
+          </p>
+        ) : (
+          <select
+            id="invite-contact"
+            value={contactId}
+            onChange={(e) => setContactId(e.target.value)}
+            className="h-9 rounded-md border bg-background px-2 text-base md:text-sm"
+          >
+            {withEmail.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name} — {c.email}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <Label htmlFor="invite-note">Personal note (optional)</Label>
+        <Textarea
+          id="invite-note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          maxLength={1000}
+          rows={3}
+          placeholder="Hi Sam, here's the portal we talked about — your quote is ready to sign."
+        />
+      </div>
+      <DialogFooter className="gap-2">
+        <Button type="button" variant="outline" onClick={copyMessage}>
+          <CopyIcon />
+          Copy invite message
+        </Button>
+        <Button type="submit" disabled={pending || withEmail.length === 0}>
+          <MailIcon />
+          {pending ? 'Sending…' : 'Send invite'}
+        </Button>
+      </DialogFooter>
+    </form>
+  )
+}
+
 function IssueLinkDialog({
   clientId,
+  clientName,
+  companyName,
+  contacts,
   defaultLabel,
 }: {
   clientId: string
+  clientName: string
+  companyName: string
+  contacts: ClientContactOption[]
   defaultLabel: string
 }) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [label, setLabel] = useState(defaultLabel)
   const [expiresDays, setExpiresDays] = useState('')
-  const [issuedUrl, setIssuedUrl] = useState<string | null>(null)
+  const [issued, setIssued] = useState<{ id: string; url: string } | null>(null)
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -99,7 +224,7 @@ function IssueLinkDialog({
         return
       }
       if ('url' in result) {
-        setIssuedUrl(result.url)
+        setIssued({ id: result.id, url: result.url })
         copyUrl(result.url)
       }
     })
@@ -107,7 +232,7 @@ function IssueLinkDialog({
 
   function close() {
     setOpen(false)
-    setIssuedUrl(null)
+    setIssued(null)
     setLabel(defaultLabel)
     setExpiresDays('')
   }
@@ -121,32 +246,41 @@ function IssueLinkDialog({
       <Dialog open={open} onOpenChange={(o) => !o && close()}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Issue portal link</DialogTitle>
+            <DialogTitle>{issued ? 'Send the invite' : 'Issue portal link'}</DialogTitle>
           </DialogHeader>
-          {issuedUrl ? (
-            <div className="flex flex-col gap-3">
+          {issued ? (
+            <div className="flex flex-col gap-4">
               <p className="text-sm text-muted-foreground">
                 Link issued and copied. Anyone with this URL can view the
-                client&apos;s properties, compliance register and shared works
-                evidence — treat it like a password.
+                client&apos;s quotes, works, photos and property records — treat it
+                like a password.
               </p>
               <div className="flex items-center gap-2">
-                <Input readOnly value={issuedUrl} className="font-mono text-xs" />
+                <Input readOnly value={issued.url} className="font-mono text-xs" />
                 <Button
                   type="button"
                   variant="outline"
                   size="icon-sm"
-                  onClick={() => copyUrl(issuedUrl)}
+                  onClick={() => copyUrl(issued.url)}
                   aria-label="Copy portal link"
                 >
                   <CopyIcon />
                 </Button>
               </div>
-              <DialogFooter>
-                <Button type="button" onClick={close}>
+              <InvitePanel
+                linkId={issued.id}
+                clientId={clientId}
+                clientName={clientName}
+                companyName={companyName}
+                url={issued.url}
+                contacts={contacts}
+                onDone={close}
+              />
+              <div className="flex justify-end">
+                <Button type="button" variant="ghost" onClick={close}>
                   Done
                 </Button>
-              </DialogFooter>
+              </div>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -189,12 +323,18 @@ function IssueLinkDialog({
 export function PortalLinks({
   clientId,
   clientName,
+  companyName,
+  contacts,
   links,
   canManage,
   unreadMessages = 0,
 }: {
   clientId: string
   clientName: string
+  /** Settings company name — used in the invite email and message. */
+  companyName: string
+  /** Client contacts (the invite picks one with an email). */
+  contacts: ClientContactOption[]
   links: ClientLinkRow[]
   canManage: boolean
   /** Unread client portal messages across this client's properties. */
@@ -202,6 +342,7 @@ export function PortalLinks({
 }) {
   const [pending, startTransition] = useTransition()
   const [revokingId, setRevokingId] = useState<string | null>(null)
+  const [inviteLink, setInviteLink] = useState<ClientLinkRow | null>(null)
 
   function handleRevoke(link: ClientLinkRow) {
     if (
@@ -259,14 +400,22 @@ export function PortalLinks({
             </Badge>
           )}
         </h2>
-        {canManage && <IssueLinkDialog clientId={clientId} defaultLabel={clientName} />}
+        {canManage && (
+          <IssueLinkDialog
+            clientId={clientId}
+            clientName={clientName}
+            companyName={companyName}
+            contacts={contacts}
+            defaultLabel={clientName}
+          />
+        )}
       </div>
 
       {links.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          No portal links issued. A portal link gives this client a read-only,
-          no-login window onto their properties, compliance register and the
-          works evidence you explicitly share.
+          No portal links issued. A portal link gives this client a no-login
+          window onto their quotes, works, photos, close-out packs and property
+          records — nothing shows until you share it.
         </p>
       ) : (
         <div className="rounded-xl border">
@@ -279,7 +428,7 @@ export function PortalLinks({
                 <TableHead>Expires</TableHead>
                 <TableHead>Billing</TableHead>
                 <TableHead>Digest</TableHead>
-                <TableHead className="w-32" />
+                <TableHead className="w-40" />
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -331,6 +480,17 @@ export function PortalLinks({
                     <TableCell>
                       {state === 'active' && (
                         <div className="flex items-center justify-end gap-1">
+                          {canManage && (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => setInviteLink(link)}
+                              aria-label={`Send invite for ${link.label ?? 'this link'}`}
+                            >
+                              <MailIcon />
+                            </Button>
+                          )}
                           <Button
                             type="button"
                             variant="ghost"
@@ -362,6 +522,25 @@ export function PortalLinks({
           </Table>
         </div>
       )}
+
+      <Dialog open={!!inviteLink} onOpenChange={(o) => !o && setInviteLink(null)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Send portal invite</DialogTitle>
+          </DialogHeader>
+          {inviteLink && (
+            <InvitePanel
+              linkId={inviteLink.id}
+              clientId={clientId}
+              clientName={clientName}
+              companyName={companyName}
+              url={portalUrl(inviteLink.token)}
+              contacts={contacts}
+              onDone={() => setInviteLink(null)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </section>
   )
 }

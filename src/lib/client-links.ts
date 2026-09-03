@@ -4,7 +4,9 @@ import crypto from 'node:crypto'
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { clientLinkCreateSchema } from '@/lib/zod'
+import { clientLinkCreateSchema, clientLinkInviteSchema } from '@/lib/zod'
+import { renderEmail, sendEmail } from '@/lib/email'
+import { isClientLinkActive } from '@/lib/portal'
 
 /**
  * Staff-side management of client portal links (client_links table), cloned
@@ -185,4 +187,71 @@ export async function setClientLinkNotifications(
 
   revalidatePath(`/clients/${clientId}`)
   return {}
+}
+
+/**
+ * Emails a client contact their portal invite (branded, through the email
+ * engine — logged as 'skipped' until RESEND_API_KEY/EMAIL_FROM exist).
+ * The link must be live and both link and contact must belong to the client.
+ */
+export async function sendClientLinkInvite(
+  data: unknown
+): Promise<{ status: 'sent' | 'skipped' | 'failed'; to: string } | { error: string }> {
+  await requireRole('admin', 'office')
+
+  const parsed = clientLinkInviteSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+  const { link_id, client_id, contact_id, note } = parsed.data
+
+  const supabase = await createClient()
+  const [{ data: link }, { data: contact }, { data: client }, { data: settings }] =
+    await Promise.all([
+      supabase
+        .from('client_links')
+        .select('id, token, client_id, revoked_at, expires_at, scope')
+        .eq('id', link_id)
+        .eq('client_id', client_id)
+        .maybeSingle(),
+      supabase
+        .from('contacts')
+        .select('id, name, email')
+        .eq('id', contact_id)
+        .eq('client_id', client_id)
+        .maybeSingle(),
+      supabase.from('clients').select('name').eq('id', client_id).single(),
+      supabase.from('settings').select('company_name').eq('id', 1).single(),
+    ])
+
+  if (!link || !isClientLinkActive(link)) return { error: 'That portal link is not active' }
+  if (link.scope === 'register') {
+    return { error: 'Register-scope links are for QR posters, not invites' }
+  }
+  if (!contact) return { error: 'Contact not found' }
+  const to = contact.email?.trim()
+  if (!to) return { error: `${contact.name} has no email address on record` }
+
+  const company = settings?.company_name ?? 'Entice'
+  const clientName = client?.name ?? 'your organisation'
+  const url = `${safeOrigin(parsed.data.origin ?? null)}/portal/${link.token}`
+
+  const result = await sendEmail({
+    to,
+    subject: `Your ${company} client portal`,
+    template: 'client_portal_invite',
+    entityKind: 'client_link',
+    entityId: link.id as string,
+    html: renderEmail({
+      companyName: company,
+      heading: `Your ${company} client portal`,
+      intro: `${company} has set up a secure online portal for ${clientName}. Use it to review and sign quotes, follow works in progress, view photos and close-out reports, and request new work.`,
+      quote: note?.trim() || null,
+      cta: { label: 'Open your portal', url },
+      footnote: 'Keep this link private — anyone with it can view your portal.',
+    }),
+  })
+
+  revalidatePath(`/clients/${client_id}`)
+  return { status: result.status, to }
 }

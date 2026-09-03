@@ -60,6 +60,7 @@ export default async function ClientDetailPage({
     { data: projects },
     { data: invoices },
     { data: portalLinks },
+    { data: settings },
   ] = await Promise.all([
     supabase.from('clients').select('*').eq('id', id).single(),
     supabase.from('contacts').select('*').eq('client_id', id).order('name'),
@@ -69,6 +70,7 @@ export default async function ClientDetailPage({
     supabase.from('projects').select('id, number, name, status, created_at, client_shared').eq('client_id', id).eq('archived', false).order('created_at', { ascending: false }).limit(10),
     supabase.from('invoices').select('id, number, status, created_at').eq('client_id', id).order('created_at', { ascending: false }).limit(10),
     supabase.from('client_links').select('id, token, label, created_at, expires_at, revoked_at, show_financials, notifications_enabled').eq('client_id', id).order('created_at', { ascending: false }),
+    supabase.from('settings').select('company_name').eq('id', 1).single(),
   ])
 
   if (!client) notFound()
@@ -337,6 +339,12 @@ export default async function ClientDetailPage({
         links={(portalLinks ?? []) as ClientLinkRow[]}
         canManage={canEdit}
         unreadMessages={unreadMessages ?? 0}
+        contacts={(contacts ?? []).map((c) => ({
+          id: c.id as string,
+          name: c.name as string,
+          email: (c.email as string | null) ?? null,
+        }))}
+        companyName={settings?.company_name ?? 'Entice'}
       />
       {canEdit && (
         <section>

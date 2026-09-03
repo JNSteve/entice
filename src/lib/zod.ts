@@ -2803,6 +2803,15 @@ export const clientLinkCreateSchema = z.object({
 
 export type ClientLinkCreateInput = z.infer<typeof clientLinkCreateSchema>
 
+export const clientLinkInviteSchema = z.object({
+  link_id: z.uuid(),
+  client_id: z.uuid(),
+  contact_id: z.uuid('Pick a contact'),
+  note: z.string().max(1000).nullish(),
+  origin: z.string().nullish(),
+})
+export type ClientLinkInviteInput = z.infer<typeof clientLinkInviteSchema>
+
 // ─── Access reviews (go-live hardening — ISO 27001-aligned access control) ──
 
 export const accessReviewSchema = z
