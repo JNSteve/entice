@@ -42,6 +42,11 @@ import {
   LINE_GRID_COLS_READONLY,
   type LineData,
 } from './line-row'
+import {
+  ChangeClientDialog,
+  type ClientOption,
+  type ClientScopedOption,
+} from './change-client-dialog'
 import { RatePickerDialog } from './rate-picker-dialog'
 import { DuplicateQuoteButton } from './duplicate-quote-button'
 import { QuoteDocCard } from './quote-doc-card'
@@ -88,6 +93,9 @@ export interface QuoteData {
   sent_at: string | null
   decided_at: string | null
   lost_reason: string | null
+  client_id: string
+  site_id: string | null
+  contact_id: string | null
   client_name: string
   site_name: string | null
   contact_name: string | null
@@ -141,6 +149,9 @@ export function QuoteBuilder({
   rateItems,
   pmOptions,
   templates,
+  clients,
+  sites,
+  contacts,
 }: {
   quote: QuoteData
   sections: SectionData[]
@@ -148,6 +159,9 @@ export function QuoteBuilder({
   rateItems: RateItemData[]
   pmOptions: PmOption[]
   templates: TemplateOption[]
+  clients: ClientOption[]
+  sites: ClientScopedOption[]
+  contacts: ClientScopedOption[]
 }) {
   const editable = quote.status === 'draft' || quote.status === 'sent'
 
@@ -163,6 +177,9 @@ export function QuoteBuilder({
         editable={editable}
         pmOptions={pmOptions}
         templates={templates}
+        clients={clients}
+        sites={sites}
+        contacts={contacts}
       />
 
       <QuoteDocCard
@@ -225,11 +242,17 @@ function HeaderCard({
   editable,
   pmOptions,
   templates,
+  clients,
+  sites,
+  contacts,
 }: {
   quote: QuoteData
   editable: boolean
   pmOptions: PmOption[]
   templates: TemplateOption[]
+  clients: ClientOption[]
+  sites: ClientScopedOption[]
+  contacts: ClientScopedOption[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -414,7 +437,21 @@ function HeaderCard({
         <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
           <div>
             <dt className="text-muted-foreground">Client</dt>
-            <dd className="font-medium">{quote.client_name}</dd>
+            <dd className="flex items-center gap-1 font-medium">
+              <span className="truncate">{quote.client_name}</span>
+              {editable && (
+                <ChangeClientDialog
+                  quoteId={quote.id}
+                  clientId={quote.client_id}
+                  siteId={quote.site_id}
+                  contactId={quote.contact_id}
+                  portalPublished={quote.portal_published}
+                  clients={clients}
+                  sites={sites}
+                  contacts={contacts}
+                />
+              )}
+            </dd>
           </div>
           <div>
             <dt className="text-muted-foreground">Site</dt>

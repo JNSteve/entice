@@ -30,6 +30,9 @@ export default async function QuoteBuilderPage({
     { data: rateItems },
     { data: pmOptions },
     { data: templates },
+    { data: clients },
+    { data: sites },
+    { data: contacts },
   ] = await Promise.all([
       supabase
         .from('quotes')
@@ -66,6 +69,9 @@ export default async function QuoteBuilderPage({
         .select('id, name, is_default, pricing_defaults')
         .eq('active', true)
         .order('name'),
+      supabase.from('clients').select('id, name').eq('archived', false).order('name'),
+      supabase.from('sites').select('id, client_id, name').order('name'),
+      supabase.from('contacts').select('id, client_id, name').order('name'),
     ])
 
   if (!quote) notFound()
@@ -105,6 +111,9 @@ export default async function QuoteBuilderPage({
     sent_at: quote.sent_at,
     decided_at: quote.decided_at,
     lost_reason: quote.lost_reason,
+    client_id: quote.client_id as string,
+    site_id: (quote.site_id as string | null) ?? null,
+    contact_id: (quote.contact_id as string | null) ?? null,
     client_name: (quote.clients as { name: string } | null)?.name ?? '—',
     site_name: (quote.sites as { name: string } | null)?.name ?? null,
     contact_name: (quote.contacts as { name: string } | null)?.name ?? null,
@@ -197,6 +206,9 @@ export default async function QuoteBuilderPage({
             pricing_defaults: p.success ? p.data : DEFAULT_PRICING,
           }
         })}
+        clients={clients ?? []}
+        sites={sites ?? []}
+        contacts={contacts ?? []}
       />
     </div>
   )

@@ -279,6 +279,21 @@ export const quoteHeaderSchema = z.object({
 
 export type QuoteHeaderInput = z.infer<typeof quoteHeaderSchema>
 
+/** Moving a quote to another client: site and contact are re-picked with it. */
+export const quoteClientSchema = z.object({
+  client_id: z.uuid('Pick a client'),
+  site_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+  contact_id: z
+    .uuid()
+    .nullish()
+    .transform((v) => v ?? null),
+})
+
+export type QuoteClientInput = z.infer<typeof quoteClientSchema>
+
 export const quoteStatusSchema = z.object({
   status: z.enum(['sent', 'accepted', 'lost']),
   lost_reason: optionalText.optional(),
