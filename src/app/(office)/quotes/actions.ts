@@ -14,6 +14,7 @@ import { copyQuoteAttachments, seedConvertChecklist } from '@/lib/convert-side-e
 import {
   quoteCreateSchema,
   quoteHeaderSchema,
+  quoteClientSchema,
   quoteStatusSchema,
   quoteSectionSchema,
   quoteLineCreateSchema,
@@ -276,6 +277,65 @@ export async function updateQuoteHeader(
   if (error) return { error: error.message }
 
   revalidateQuote(id)
+  return {}
+}
+
+/**
+ * Moves a quote to a different client. The site and contact belong to the
+ * client, so they are re-picked together and verified against the new one — a
+ * quote pointing at another client's site would print that name on the PDF.
+ * Portal publication is withdrawn: the previous client must lose sight of it,
+ * and the new one should only see it when someone republishes deliberately.
+ */
+export async function changeQuoteClient(quoteId: string, data: unknown): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const parsed = quoteClientSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createClient()
+  const editable = await assertEditable(supabase, quoteId)
+  if (editable.error) return editable
+
+  const { client_id, site_id, contact_id } = parsed.data
+
+  const { data: client } = await supabase
+    .from('clients')
+    .select('id')
+    .eq('id', client_id)
+    .eq('archived', false)
+    .maybeSingle()
+  if (!client) return { error: 'Client not found or archived' }
+
+  if (site_id) {
+    const { data: site } = await supabase
+      .from('sites')
+      .select('id')
+      .eq('id', site_id)
+      .eq('client_id', client_id)
+      .maybeSingle()
+    if (!site) return { error: 'That site belongs to a different client' }
+  }
+
+  if (contact_id) {
+    const { data: contact } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('id', contact_id)
+      .eq('client_id', client_id)
+      .maybeSingle()
+    if (!contact) return { error: 'That contact belongs to a different client' }
+  }
+
+  const { error } = await supabase
+    .from('quotes')
+    .update({ client_id, site_id, contact_id, portal_published: false })
+    .eq('id', quoteId)
+  if (error) return { error: error.message }
+
+  revalidateQuote(quoteId)
   return {}
 }
 
