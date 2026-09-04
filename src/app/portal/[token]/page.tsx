@@ -15,7 +15,7 @@ import {
 } from 'lucide-react'
 import { createPublicClient } from '@/lib/supabase/public'
 import { todayAU } from '@/lib/tz'
-import { aud, fmtDate } from '@/lib/format'
+import { fmtDate } from '@/lib/format'
 import { derivePortalPropertyStatus } from '@/lib/portal'
 import {
   propertyStatusPhrase,
@@ -265,11 +265,6 @@ export default async function PortalHomePage({
                     {item.date ? ` · ${fmtDate(item.date)}` : ''}
                   </p>
                 </div>
-                {item.amount != null && (
-                  <span className="text-sm font-semibold tabular-nums text-slate-900">
-                    {aud(item.amount)}
-                  </span>
-                )}
                 <ChevronRightIcon className="size-4 shrink-0 text-slate-300" />
               </Link>
             ))}

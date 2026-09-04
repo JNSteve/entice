@@ -210,8 +210,9 @@ export default async function PortalWorkPage({
         </div>
       )}
 
-      {/* Feedback once completed */}
+      {/* Feedback once completed (the feedback RPC is site-scoped) */}
       {completed &&
+        work.site_id &&
         (givenRating ? (
           <p className="text-xs font-medium text-slate-500">
             {'★'.repeat(givenRating)}

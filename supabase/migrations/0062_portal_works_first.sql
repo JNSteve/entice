@@ -152,7 +152,8 @@ begin
 end $$;
 
 ------------------------------------------------------------------------------
--- portal_site_detail — 0053 definition + diary photos on projects
+-- portal_site_detail — 0053 definition + diary photos on projects; archived
+-- jobs/projects are now excluded (they were never meant to show).
 ------------------------------------------------------------------------------
 create or replace function portal_site_detail(p_token text, p_site uuid) returns jsonb
 language plpgsql stable security definer set search_path = public as $$
@@ -259,8 +260,10 @@ begin
 end $$;
 
 ------------------------------------------------------------------------------
--- portal_file_path — 0026 definition + diary parents + siteless works.
--- Entitlement is the WORK's client, not the site (works may have no site).
+-- portal_file_path — 0051 definition (job/project/maintenance) + diary
+-- parents + siteless works. Work attachments are entitled through the WORK's
+-- client (works may have no site); maintenance evidence keeps riding the
+-- entry's client_visible on full-scope links, entitled through its site.
 ------------------------------------------------------------------------------
 create or replace function portal_file_path(p_token text, p_kind text, p_id uuid)
 returns jsonb
@@ -285,15 +288,22 @@ begin
      where i.id = p_id and i.status = 'active';
   elsif p_kind = 'attachment' then
     select a.path, a.filename,
-           coalesce(j.site_id, p.site_id, dp.site_id)
+           coalesce(j.site_id, p.site_id, dp.site_id, m.site_id)
       into v_path, v_filename, v_site
       from attachments a
       left join jobs j on a.parent_type = 'job' and j.id = a.parent_id
       left join projects p on a.parent_type = 'project' and p.id = a.parent_id
       left join diaries d on a.parent_type = 'diary' and d.id = a.parent_id
       left join projects dp on dp.id = d.project_id
-     where a.id = p_id and a.client_visible
-       and coalesce(j.client_id, p.client_id, dp.client_id) = l.client_id;
+      left join maintenance_entries m on a.parent_type = 'maintenance' and m.id = a.parent_id
+      left join sites ms on ms.id = m.site_id
+     where a.id = p_id
+       and (
+         (a.parent_type in ('job','project','diary') and a.client_visible
+           and coalesce(j.client_id, p.client_id, dp.client_id) = l.client_id)
+         or (a.parent_type = 'maintenance' and m.client_visible and l.scope = 'full'
+           and ms.client_id = l.client_id)
+       );
   end if;
 
   if v_path is null then return null; end if;
@@ -317,7 +327,7 @@ begin
   if l.id is null or coalesce(l.scope, 'full') <> 'full' then return null; end if;
 
   return coalesce((
-    select jsonb_agg(w order by w->>'sort_date' desc nulls last, w->>'number')
+    select jsonb_agg(w - 'sort_date' order by w->>'sort_date' desc nulls last, w->>'number')
     from (
       select jsonb_build_object(
         'kind', 'job', 'id', j.id, 'number', j.number, 'title', j.title,

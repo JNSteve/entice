@@ -60,7 +60,8 @@ export function ShareWithClientSwitch({
       size="sm"
       disabled={pending}
       onClick={toggle}
-      title="Photos, documents and the close-out pack appear in the client portal. Dockets never do."
+      aria-pressed={shared}
+      title={`Photos, documents and the close-out pack appear in ${clientName}'s portal. Dockets never do.`}
     >
       {shared ? <GlobeIcon /> : <GlobeLockIcon />}
       {pending ? 'Saving…' : shared ? 'Shared with client' : 'Share with client'}

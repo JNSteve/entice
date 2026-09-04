@@ -18,6 +18,9 @@ export async function setWorkClientShared(
 ): Promise<{ error?: string; photos?: number; documents?: number }> {
   await requireRole('admin', 'office')
   if (kind !== 'job' && kind !== 'project') return { error: 'Unknown work kind' }
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return { error: 'Work not found' }
+  }
 
   const supabase = await createClient()
   const table = kind === 'job' ? 'jobs' : 'projects'

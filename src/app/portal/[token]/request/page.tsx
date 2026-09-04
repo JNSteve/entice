@@ -97,7 +97,7 @@ export default async function PortalRequestPage({
           className="flex min-h-6 w-fit items-center gap-1 text-sm text-slate-500 transition-colors hover:text-slate-900"
         >
           <ArrowLeftIcon className="size-3.5" />
-          All properties
+          Overview
         </Link>
         <div className="flex flex-col gap-1">
           <h1 className="text-xl font-bold tracking-tight text-slate-900">

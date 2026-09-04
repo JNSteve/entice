@@ -392,6 +392,7 @@ export async function notifyClientQuoteSent(input: { quoteId: string }): Promise
         .from('client_links')
         .select('id, token, revoked_at, expires_at')
         .eq('client_id', quote.client_id)
+        .eq('scope', 'full')
         .order('created_at', { ascending: false }),
       supabase.from('settings').select('company_name').eq('id', 1).single(),
     ])

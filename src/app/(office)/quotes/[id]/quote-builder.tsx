@@ -495,7 +495,7 @@ function HeaderCard({
         )}
 
         {/* Client portal: publish-for-signing toggle + acceptance evidence */}
-        {canPublishQuote(quote.status) && (
+        {(quote.portal_published || canPublishQuote(quote.status)) && (
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-muted/40 px-3 py-2.5">
             <div className="flex items-center gap-2 text-sm">
               <GlobeIcon className="size-4 text-muted-foreground" />
@@ -506,7 +506,9 @@ function HeaderCard({
                   <span className="text-muted-foreground">
                     {quote.status === 'sent'
                       ? `${quote.client_name} can view the PDF and sign online.`
-                      : `${quote.client_name} can view the accepted quotation.`}
+                      : quote.status === 'accepted'
+                        ? `${quote.client_name} can view the accepted quotation.`
+                        : `${quote.client_name} can still see this quotation as declined.`}
                   </span>
                 </span>
               ) : (

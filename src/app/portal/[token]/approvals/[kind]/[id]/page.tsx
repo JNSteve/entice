@@ -142,8 +142,8 @@ export default async function PortalApprovalDetailPage({
             <p className="text-sm text-slate-500">
               {decided.source === 'office'
                 ? decided.action === 'accepted'
-                  ? 'This quotation was accepted and is on record.'
-                  : 'This quotation was not proceeded with.'
+                  ? `This ${decided.kind === 'quote' ? 'quotation' : 'variation'} was accepted and is on record.`
+                  : `This ${decided.kind === 'quote' ? 'quotation' : 'variation'} was not proceeded with.`
                 : decided.action === 'accepted'
                   ? 'This document has been signed through the portal.'
                   : 'Our team has been notified and will be in touch.'}

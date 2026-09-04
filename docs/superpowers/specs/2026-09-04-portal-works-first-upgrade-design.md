@@ -1,6 +1,6 @@
 # Client portal — works-first upgrade
 
-**Date:** 2026-09-04 · **Status:** Approved for planning · **Module:** Client portal (`/portal/[token]`) + office sharing surfaces
+**Date:** 2026-09-04 · **Status:** Implemented on `feat/portal-works-first` (2026-09-04); awaiting migration 0062 on the live DB, then merge + deploy · **Module:** Client portal (`/portal/[token]`) + office sharing surfaces
 
 ## 1. Why
 

@@ -348,7 +348,7 @@ export async function setQuotePortalPublished(
   if (fetchError || !quote) return { error: 'Quote not found' }
 
   if (published && !canPublishQuote(quote.status)) {
-    return { error: 'Only a sent quote can be published to the portal' }
+    return { error: 'Only a sent or accepted quote can be published to the portal' }
   }
 
   const { error } = await supabase
