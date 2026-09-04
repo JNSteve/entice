@@ -21,7 +21,7 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
-import type { PricingDisplay, QuoteDoc } from '@/lib/quote-doc'
+import type { PricingDisplay, QuoteDoc, TemplateState } from '@/lib/quote-doc'
 import { cn } from '@/lib/utils'
 import { canPublishQuote } from '@/lib/portal-interactions'
 import {
@@ -110,6 +110,7 @@ export interface QuoteData {
   template_id: string | null
   template_name: string | null
   doc: QuoteDoc | null
+  template_state: TemplateState
   pdf_options: PricingDisplay | null
 }
 
@@ -185,7 +186,10 @@ export function QuoteBuilder({
       <QuoteDocCard
         quoteId={quote.id}
         doc={quote.doc}
+        templateId={quote.template_id}
         templateName={quote.template_name}
+        templateState={quote.template_state}
+        status={quote.status}
         editable={editable}
       />
 

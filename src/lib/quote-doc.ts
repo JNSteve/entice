@@ -142,6 +142,12 @@ export const quoteDocSchema = z.object({
   validity_text: mergedText(300).refine((t) => t.trim().length > 0, 'Validity text is required'),
   number_headings: z.boolean(),
   blocks: docBlocksSchema,
+  /**
+   * Fingerprint of the template snapshot this copy was taken from (see
+   * docSourceHash). Present only while the copy is untouched: a per-quote
+   * save drops it, which is how "customised" is recognised.
+   */
+  source_hash: z.string().max(40).optional(),
 })
 export type QuoteDoc = z.infer<typeof quoteDocSchema>
 
@@ -278,6 +284,64 @@ export function snapshotFromTemplate(t: QuoteDoc): QuoteDoc {
     number_headings: t.number_headings,
     blocks: t.blocks,
   }
+}
+
+/** The document without its provenance fingerprint. */
+export function stripSourceHash(doc: QuoteDoc): QuoteDoc {
+  const { source_hash: _omit, ...rest } = doc
+  void _omit
+  return rest
+}
+
+/**
+ * Stable 64-bit fingerprint (cyrb53 over canonical JSON) of a document's
+ * content, ignoring its own source_hash. Pure JS so it runs in the browser,
+ * in server actions and in tests alike.
+ */
+export function docSourceHash(doc: QuoteDoc): string {
+  const str = canonicalJson(stripSourceHash(doc))
+  let h1 = 0xdeadbeef
+  let h2 = 0x41c6ce57
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charCodeAt(i)
+    h1 = Math.imul(h1 ^ ch, 2654435761)
+    h2 = Math.imul(h2 ^ ch, 1597334677)
+  }
+  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909)
+  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909)
+  return (h2 >>> 0).toString(16).padStart(8, '0') + (h1 >>> 0).toString(16).padStart(8, '0')
+}
+
+/** A template snapshot ready to be stored on a quote: content + its fingerprint. */
+export function stampSourceHash(snapshot: QuoteDoc): QuoteDoc {
+  const clean = stripSourceHash(snapshot)
+  return { ...clean, source_hash: docSourceHash(clean) }
+}
+
+/** True while the copy still matches the snapshot it was taken from. */
+export function isDocUntouched(doc: QuoteDoc): boolean {
+  return Boolean(doc.source_hash) && docSourceHash(doc) === doc.source_hash
+}
+
+export type TemplateState = 'standard' | 'current' | 'template_changed' | 'customised' | 'differs'
+
+/**
+ * How a quote's copy relates to its template right now:
+ *  - standard: no document (standard layout)
+ *  - current: the copy matches the template as it is today
+ *  - template_changed: the copy is untouched but the template has moved on
+ *  - customised: the copy was edited on the quote
+ *  - differs: the copy differs but carries no fingerprint (taken before
+ *    fingerprints existed), so which side moved cannot be told
+ */
+export function docTemplateState(doc: QuoteDoc | null, template: QuoteDoc | null): TemplateState {
+  if (!doc) return 'standard'
+  if (!template) return 'current'
+  if (canonicalJson(stripSourceHash(doc)) === canonicalJson(stripSourceHash(template))) {
+    return 'current'
+  }
+  if (!doc.source_hash) return 'differs'
+  return isDocUntouched(doc) ? 'template_changed' : 'customised'
 }
 
 const trimOrUndefined = (s: string | undefined) => {
@@ -457,6 +521,8 @@ function cleanDocInput(data: unknown): Record<string, unknown> {
     heading: typeof raw.heading === 'string' ? raw.heading.trim() || null : raw.heading,
     validity_text:
       typeof raw.validity_text === 'string' ? raw.validity_text.trim() : raw.validity_text,
+    // An edit saved on the quote is by definition no longer the template's copy.
+    source_hash: undefined,
   }
 }
 

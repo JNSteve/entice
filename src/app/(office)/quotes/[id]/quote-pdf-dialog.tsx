@@ -86,6 +86,7 @@ export function QuotePdfDialog({
               toast.error(r.error)
               return
             }
+            if (r.refreshed) toast.success('Updated from the template')
           }
           const r2 = await updateQuotePdfOptions(quote.id, display)
           if (r2.error) {

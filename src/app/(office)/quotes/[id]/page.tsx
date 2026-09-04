@@ -4,7 +4,7 @@ import { RulerIcon } from 'lucide-react'
 import { requireRole } from '@/lib/auth'
 import { buttonVariants } from '@/components/ui/button'
 import { createClient } from '@/lib/supabase/server'
-import { pricingDisplaySchema, quoteDocSchema, DEFAULT_PRICING } from '@/lib/quote-doc'
+import { pricingDisplaySchema, quoteDocSchema, DEFAULT_PRICING, docTemplateState, snapshotFromTemplate } from '@/lib/quote-doc'
 import {
   QuoteBuilder,
   type QuoteData,
@@ -37,7 +37,7 @@ export default async function QuoteBuilderPage({
       supabase
         .from('quotes')
         .select(
-          '*, clients(name), sites(name), contacts(name), profiles!quotes_pm_id_fkey(id, full_name), quote_templates(name)'
+          '*, clients(name), sites(name), contacts(name), profiles!quotes_pm_id_fkey(id, full_name), quote_templates(name, doc_title, heading, validity_text, number_headings, blocks)'
         )
         .eq('id', id)
         .single(),
@@ -100,6 +100,15 @@ export default async function QuoteBuilderPage({
     (acceptances ?? [])[0] ??
     null
 
+  const quoteDocParsed = quoteDocSchema.safeParse(quote.doc)
+  const quoteDoc = quoteDocParsed.success ? quoteDocParsed.data : null
+  const templateRow = quote.quote_templates as Record<string, unknown> | null
+  const templateParsed = templateRow ? quoteDocSchema.safeParse(templateRow) : null
+  const templateState = docTemplateState(
+    quoteDoc,
+    templateParsed?.success ? snapshotFromTemplate(templateParsed.data) : null
+  )
+
   const quoteData: QuoteData = {
     id: quote.id,
     number: quote.number,
@@ -142,10 +151,8 @@ export default async function QuoteBuilderPage({
       : null,
     template_id: (quote.template_id as string | null) ?? null,
     template_name: (quote.quote_templates as { name: string } | null)?.name ?? null,
-    doc: (() => {
-      const p = quoteDocSchema.safeParse(quote.doc)
-      return p.success ? p.data : null
-    })(),
+    doc: quoteDoc,
+    template_state: templateState,
     pdf_options: (() => {
       const p = pricingDisplaySchema.safeParse(quote.pdf_options)
       return p.success ? p.data : null

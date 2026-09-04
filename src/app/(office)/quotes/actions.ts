@@ -27,7 +27,10 @@ import {
   canonicalJson,
   quoteDocSchema,
   quoteTemplateSchema,
+  isDocUntouched,
   snapshotFromTemplate,
+  stampSourceHash,
+  stripSourceHash,
 } from '@/lib/quote-doc'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
@@ -97,7 +100,7 @@ export async function createQuote(
     if ('error' in loaded) return { error: loaded.error }
     templatePatch = {
       template_id: parsed.data.template_id,
-      doc: snapshotFromTemplate(loaded.template),
+      doc: stampSourceHash(snapshotFromTemplate(loaded.template)),
       pdf_options: loaded.template.pricing_defaults,
     }
   }
@@ -1048,24 +1051,39 @@ async function loadTemplate(supabase: SupabaseClient, templateId: string) {
 /**
  * Snapshots a template onto the quote (doc + pricing defaults) or, with null,
  * returns the quote to the standard layout. Frozen quotes are refused.
+ *
+ * The quote holds its own copy of the template, stamped with a fingerprint of
+ * what it was taken from. That gives three cases when the stored copy differs
+ * from what would be written:
+ *  - the copy is untouched and the quote is still a draft: the template simply
+ *    moved on, so it is refreshed silently and `refreshed` is reported;
+ *  - the copy was customised on the quote, or the quote has been sent (its
+ *    wording is what the client saw): nothing is written until the caller
+ *    confirms with `force`, reported as `needsConfirm`;
+ *  - identical: nothing to write.
  */
 export async function applyQuoteTemplate(
   quoteId: string,
   templateId: string | null,
   opts: { force?: boolean } = {}
-): Promise<Result & { needsConfirm?: boolean }> {
+): Promise<Result & { needsConfirm?: boolean; refreshed?: boolean }> {
   await requireRole('admin', 'office')
   const supabase = await createClient()
   const editable = await assertEditable(supabase, quoteId)
   if (editable.error) return editable
 
-  // The quote holds its own copy of the template. Re-applying the SAME template
-  // is how an edit made in Settings reaches a quote already using it; the copy
-  // is otherwise frozen, so a sent quote never changes under the client. Either
-  // way the write replaces wording, so it is refused until the caller confirms
-  // whenever the stored document differs from what would be written.
-  const { data: row } = await supabase.from('quotes').select('doc').eq('id', quoteId).single()
-  const currentDoc = row?.doc ?? null
+  const { data: row } = await supabase
+    .from('quotes')
+    .select('doc, status')
+    .eq('id', quoteId)
+    .single()
+  const currentRaw = row?.doc ?? null
+  const currentParsed = currentRaw ? quoteDocSchema.safeParse(currentRaw) : null
+  const current = currentParsed?.success ? currentParsed.data : null
+  // A copy we cannot parse is treated as customised: never overwrite it silently.
+  const mayReplaceSilently =
+    row?.status === 'draft' && (currentRaw === null || (current !== null && isDocUntouched(current)))
+  let refreshed = false
 
   let patch: Record<string, unknown>
   if (templateId) {
@@ -1073,28 +1091,31 @@ export async function applyQuoteTemplate(
     if ('error' in loaded) return { error: loaded.error }
     const snapshot = snapshotFromTemplate(loaded.template)
 
-    if (currentDoc) {
-      const parsed = quoteDocSchema.safeParse(currentDoc)
-      const same = parsed.success && canonicalJson(parsed.data) === canonicalJson(snapshot)
-      // Already identical: nothing to write, and nothing to ask about.
+    if (currentRaw) {
+      const same =
+        current !== null &&
+        canonicalJson(stripSourceHash(current)) === canonicalJson(snapshot)
       if (same) return {}
-      if (!opts.force) return { needsConfirm: true }
+      if (!opts.force) {
+        if (!mayReplaceSilently) return { needsConfirm: true }
+        refreshed = true
+      }
     }
 
     patch = {
       template_id: templateId,
-      doc: snapshot,
+      doc: stampSourceHash(snapshot),
       pdf_options: loaded.template.pricing_defaults,
     }
   } else {
-    if (currentDoc && !opts.force) return { needsConfirm: true }
+    if (currentRaw && !opts.force && !mayReplaceSilently) return { needsConfirm: true }
     patch = { template_id: null, doc: null }
   }
 
   const { error } = await supabase.from('quotes').update(patch).eq('id', quoteId)
   if (error) return { error: error.message }
   revalidateQuote(quoteId)
-  return {}
+  return refreshed ? { refreshed: true } : {}
 }
 
 /** Saves per-quote edits to the document snapshot (heading, validity, blocks). */

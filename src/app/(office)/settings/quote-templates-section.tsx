@@ -55,7 +55,8 @@ import {
   setQuoteTemplateActive,
   updateQuoteTemplate,
 } from './actions'
-import { FileTextIcon, PencilIcon, PlusIcon, StarIcon, UploadIcon } from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { EyeIcon, FileTextIcon, PencilIcon, PlusIcon, StarIcon, UploadIcon } from 'lucide-react'
 
 type Draft = QuoteTemplateInput & { id?: string }
 
@@ -385,6 +386,47 @@ function TemplateEditorDialog({
   const [pending, startTransition] = useTransition()
   const [draft, setDraft] = useState<Draft>(initial)
   const isNew = !initial.id
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null)
+  const [previewing, setPreviewing] = useState(false)
+
+  /**
+   * Renders the draft as a quote would print it (real company block, sample
+   * job data) into a pane beside the editor. Unsaved edits are fine: the
+   * draft is posted, nothing is stored.
+   */
+  async function preview() {
+    setPreviewing(true)
+    try {
+      const res = await fetch('/api/pdf/quote-template-preview', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          doc: {
+            doc_title: draft.doc_title,
+            heading: draft.heading,
+            validity_text: draft.validity_text,
+            number_headings: draft.number_headings,
+            blocks: draft.blocks,
+          },
+          pricing_defaults: draft.pricing_defaults,
+        }),
+      })
+      if (!res.ok) {
+        toast.error((await res.text()) || 'Could not render the preview')
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      setPreviewUrl((old) => {
+        if (old) URL.revokeObjectURL(old)
+        return url
+      })
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not render the preview')
+    } finally {
+      setPreviewing(false)
+    }
+  }
 
   function patch(p: Partial<Draft>) {
     setDraft((d) => ({ ...d, ...p }))
@@ -417,7 +459,9 @@ function TemplateEditorDialog({
 
   return (
     <Dialog open onOpenChange={(o) => !o && !pending && void cancel()}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent
+        className={cn('max-h-[90vh] overflow-y-auto', previewUrl ? 'sm:max-w-6xl' : 'sm:max-w-3xl')}
+      >
         <DialogHeader>
           <DialogTitle>{isNew ? 'New quote template' : `Edit ${initial.name}`}</DialogTitle>
           {notes.length > 0 && (
@@ -427,6 +471,8 @@ function TemplateEditorDialog({
           )}
         </DialogHeader>
 
+        <div className={cn(previewUrl && 'grid gap-6 lg:grid-cols-2')}>
+        <div className="flex min-w-0 flex-col gap-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="qte-name">Name</Label>
@@ -522,8 +568,31 @@ function TemplateEditorDialog({
 
         <h3 className="mt-2 text-sm font-semibold">Sections</h3>
         <DocBlocksEditor value={draft.blocks} onChange={(blocks) => patch({ blocks })} />
+        </div>
+        {previewUrl && (
+          <div className="flex min-w-0 flex-col gap-2">
+            <p className="text-xs text-muted-foreground">
+              Preview with sample job data. Click Preview again after editing to refresh it.
+            </p>
+            <iframe
+              title="Template preview"
+              src={previewUrl}
+              className="h-[70vh] w-full rounded-md border bg-white"
+            />
+          </div>
+        )}
+        </div>
 
         <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void preview()}
+            disabled={pending || previewing}
+          >
+            <EyeIcon />
+            {previewing ? 'Rendering…' : previewUrl ? 'Refresh preview' : 'Preview'}
+          </Button>
           <Button
             type="button"
             variant="outline"

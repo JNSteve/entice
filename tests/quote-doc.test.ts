@@ -2,6 +2,11 @@ import { describe, expect, test } from 'vitest'
 import {
   canonicalJson,
   DEFAULT_PRICING,
+  docSourceHash,
+  docTemplateState,
+  isDocUntouched,
+  stampSourceHash,
+  stripSourceHash,
   MERGE_FIELDS,
   buildDetailsRows,
   buildMergeContext,
@@ -316,5 +321,47 @@ describe('pdfSafeText', () => {
       { id: 'p', type: 'pricing', heading: 'Fee' },
     ])
     expect(out[0]).toMatchObject({ items: ['asbestos-in-soil'] })
+  })
+})
+
+describe('template provenance', () => {
+  const template = starterDoc()
+
+  test('docSourceHash is stable, ignores key order and ignores its own field', () => {
+    const a = docSourceHash(template)
+    const reordered = JSON.parse(JSON.stringify({ ...template, blocks: template.blocks }))
+    expect(docSourceHash(reordered)).toBe(a)
+    expect(docSourceHash({ ...template, source_hash: 'anything' })).toBe(a)
+    expect(a).toMatch(/^[0-9a-f]{16}$/)
+  })
+
+  test('stampSourceHash marks a fresh copy as untouched; an edit is detected', () => {
+    const copy = stampSourceHash(template)
+    expect(isDocUntouched(copy)).toBe(true)
+    const edited = { ...copy, blocks: copy.blocks.map((b, i) => (i === 0 ? { ...b, heading: 'Changed' } : b)) }
+    expect(isDocUntouched(edited)).toBe(false)
+    expect(isDocUntouched(stripSourceHash(copy))).toBe(false)
+  })
+
+  test('docTemplateState covers every case', () => {
+    const copy = stampSourceHash(template)
+    expect(docTemplateState(null, template)).toBe('standard')
+    expect(docTemplateState(copy, null)).toBe('current')
+    expect(docTemplateState(copy, template)).toBe('current')
+    const newerTemplate = { ...template, heading: 'Newer wording' }
+    expect(docTemplateState(copy, newerTemplate)).toBe('template_changed')
+    const customised = { ...copy, heading: 'My own wording' }
+    expect(docTemplateState(customised, template)).toBe('customised')
+    expect(docTemplateState(customised, newerTemplate)).toBe('customised')
+    // A copy taken before fingerprints existed: differs, but nobody can say which side moved.
+    const legacy = { ...stripSourceHash(copy), heading: 'Older wording' }
+    expect(docTemplateState(legacy, template)).toBe('differs')
+  })
+
+  test('a per-quote save drops the fingerprint', () => {
+    const copy = stampSourceHash(template)
+    const r = parseQuoteDocInput(copy)
+    expect(r.success).toBe(true)
+    if (r.success) expect(r.data.source_hash).toBeUndefined()
   })
 })
