@@ -5,6 +5,7 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { addDays, format } from 'date-fns'
 import { requireRole } from '@/lib/auth'
+import { deriveJobStatusFromInvoices, issueProblem } from '@/lib/issue-guards'
 import { notifyClientInvoiceSent } from '@/lib/notify'
 import { createClient } from '@/lib/supabase/server'
 import { docTotals, round2 } from '@/lib/money'
@@ -60,9 +61,12 @@ async function assertDraft(
  *   Forward:
  *     - any non-void invoice sent/paid + job completed  → job invoiced
  *     - ALL non-void invoices paid (and ≥1 exists)      → job paid
- *   Reversal (e.g. a settling payment is deleted, reverting paid→sent):
+ *   Reversal (a settling payment is deleted, or the last issued invoice is
+ *   voided):
  *     - job 'paid' but NOT all non-void invoices paid    → back to invoiced
  *       (if ≥1 is issued) or completed (if none are issued)
+ *     - job 'invoiced' with no non-void issued invoice   → back to completed
+ *   Rules live in deriveJobStatusFromInvoices (src/lib/issue-guards.ts).
  * Void invoices are ignored entirely. Only the invoicing lifecycle statuses
  * (completed → invoiced → paid) are touched; earlier statuses are left alone.
  */
@@ -74,35 +78,16 @@ async function syncJobStatus(
 
   const [{ data: job }, { data: invoices }] = await Promise.all([
     supabase.from('jobs').select('id, status').eq('id', jobId).single(),
-    supabase
-      .from('invoices')
-      .select('status')
-      .eq('job_id', jobId)
-      .neq('status', 'void'),
+    supabase.from('invoices').select('status').eq('job_id', jobId),
   ])
-  if (!job || !invoices || invoices.length === 0) return
+  if (!job) return
 
-  const allPaid = invoices.every((i) => i.status === 'paid')
-  const anyIssued = invoices.some((i) => i.status === 'sent' || i.status === 'paid')
-
-  // Reversal: a 'paid' job whose invoices are no longer all-paid drops back to
-  // the correct prior invoicing state. Without this, deleting the settling
-  // payment reverts the invoice to 'sent' but strands the job on 'paid'.
-  if (job.status === 'paid' && !allPaid) {
-    await supabase
-      .from('jobs')
-      .update({ status: anyIssued ? 'invoiced' : 'completed' })
-      .eq('id', jobId)
-    return
-  }
-
-  if (allPaid && ['completed', 'invoiced'].includes(job.status)) {
-    await supabase.from('jobs').update({ status: 'paid' }).eq('id', jobId)
-    return
-  }
-
-  if (anyIssued && job.status === 'completed') {
-    await supabase.from('jobs').update({ status: 'invoiced' }).eq('id', jobId)
+  const next = deriveJobStatusFromInvoices(
+    job.status as string,
+    (invoices ?? []).map((i) => i.status as string)
+  )
+  if (next) {
+    await supabase.from('jobs').update({ status: next }).eq('id', jobId)
   }
 }
 
@@ -279,6 +264,17 @@ export async function markInvoiceSent(id: string): Promise<Result> {
   if (invoice.status !== 'draft') {
     return { error: `Can't mark a ${invoice.status} invoice as sent` }
   }
+
+  // Never issue an empty or $0 invoice (lines freeze once sent).
+  const { data: lines } = await supabase
+    .from('invoice_lines')
+    .select('qty, unit_sell')
+    .eq('invoice_id', id)
+  const problem = issueProblem(
+    (lines ?? []).map((l) => ({ qty: Number(l.qty), unitSell: Number(l.unit_sell) })),
+    'invoice'
+  )
+  if (problem) return { error: problem }
 
   const { error } = await supabase
     .from('invoices')

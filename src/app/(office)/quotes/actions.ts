@@ -9,6 +9,7 @@ import { lineSell } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
 import { notifyClientQuoteSent, syncRequestsForQuote } from '@/lib/notify'
 import { canPublishQuote } from '@/lib/portal-interactions'
+import { issueProblem } from '@/lib/issue-guards'
 import { jobPayloadFromQuote, projectPayloadFromQuote } from '@/lib/convert'
 import { copyQuoteAttachments, seedConvertChecklist } from '@/lib/convert-side-effects'
 import {
@@ -304,6 +305,16 @@ export async function setQuoteStatus(
   // Legal transitions: draft→sent, sent→accepted, sent→lost.
   let update: Record<string, unknown>
   if (target === 'sent' && quote.status === 'draft') {
+    // Never issue an empty or $0 quote — it publishes straight to the portal.
+    const { data: lines } = await supabase
+      .from('quote_lines')
+      .select('qty, unit_sell')
+      .eq('quote_id', id)
+    const problem = issueProblem(
+      (lines ?? []).map((l) => ({ qty: Number(l.qty), unitSell: Number(l.unit_sell) })),
+      'quote'
+    )
+    if (problem) return { error: problem }
     // Sent quotes go straight onto the client portal (Unpublish opts out).
     update = { status: 'sent', sent_at: now, portal_published: true }
   } else if (target === 'accepted' && quote.status === 'sent') {
