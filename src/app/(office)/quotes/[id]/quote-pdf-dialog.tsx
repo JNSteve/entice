@@ -48,44 +48,57 @@ export function QuotePdfDialog({
   const [pending, startTransition] = useTransition()
   const [templateId, setTemplateId] = useState(quote.template_id ?? STANDARD)
   const [display, setDisplay] = useState<PricingDisplay>(quote.pdf_options ?? DEFAULT_PRICING)
+  const [confirmSwitch, setConfirmSwitch] = useState(false)
 
   function patch(p: Partial<PricingDisplay>) {
     setDisplay((d) => ({ ...d, ...p }))
   }
 
-  function openPdf() {
+  const templateChanged = editable && templateId !== (quote.template_id ?? STANDARD)
+
+  function openPdf(confirmed = false) {
+    // Switching replaces the saved document text, so ask first — and ask HERE,
+    // not with window.confirm: the blank tab below takes focus, and browsers
+    // suppress dialogs in a background tab (confirm returns false immediately,
+    // which silently cancelled every template switch).
+    if (templateChanged && quote.doc && !confirmed) {
+      setConfirmSwitch(true)
+      return
+    }
+
     // Open the tab synchronously so popup blockers allow it; point it after saving.
     const tab = window.open('', '_blank')
     startTransition(async () => {
-      if (editable) {
-        const templateChanged = templateId !== (quote.template_id ?? STANDARD)
-        if (templateChanged) {
-          if (
-            quote.doc &&
-            !confirm("Switching templates replaces this quote's document text. Continue?")
-          ) {
+      try {
+        if (editable) {
+          if (templateChanged) {
+            const r = await applyQuoteTemplate(
+              quote.id,
+              templateId === STANDARD ? null : templateId
+            )
+            if (r.error) {
+              tab?.close()
+              toast.error(r.error)
+              return
+            }
+          }
+          const r2 = await updateQuotePdfOptions(quote.id, display)
+          if (r2.error) {
             tab?.close()
+            toast.error(r2.error)
             return
           }
-          const r = await applyQuoteTemplate(quote.id, templateId === STANDARD ? null : templateId)
-          if (r.error) {
-            tab?.close()
-            toast.error(r.error)
-            return
-          }
+          router.refresh()
         }
-        const r2 = await updateQuotePdfOptions(quote.id, display)
-        if (r2.error) {
-          tab?.close()
-          toast.error(r2.error)
-          return
-        }
-        router.refresh()
+        const url = `/api/pdf/quote/${quote.id}`
+        if (tab) tab.location.href = url
+        else window.open(url, '_blank')
+        setConfirmSwitch(false)
+        setOpen(false)
+      } catch (err) {
+        tab?.close()
+        toast.error(err instanceof Error ? err.message : 'Could not open the PDF')
       }
-      const url = `/api/pdf/quote/${quote.id}`
-      if (tab) tab.location.href = url
-      else window.open(url, '_blank')
-      setOpen(false)
     })
   }
 
@@ -96,7 +109,14 @@ export function QuotePdfDialog({
         <FileDownIcon />
         PDF
       </Button>
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog
+        open={open}
+        onOpenChange={(o) => {
+          if (pending) return
+          setConfirmSwitch(false)
+          setOpen(o)
+        }}
+      >
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Quote PDF</DialogTitle>
@@ -114,6 +134,7 @@ export function QuotePdfDialog({
                 onValueChange={(v) => {
                   if (!v) return
                   setTemplateId(v)
+                  setConfirmSwitch(false)
                   // A template brings its own pricing defaults (applyQuoteTemplate
                   // saves them); show them so the dialog matches what will print.
                   const picked = templates.find((t) => t.id === v)
@@ -200,11 +221,33 @@ export function QuotePdfDialog({
               Cost price and markup are never printed.
             </p>
           </div>
+          {confirmSwitch && (
+            <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              Changing the template replaces this quote&apos;s document text, including any
+              edits made in the Document card.
+            </p>
+          )}
           <DialogFooter>
-            <Button onClick={openPdf} disabled={pending}>
-              <FileDownIcon />
-              {pending ? 'Preparing…' : 'Open PDF'}
-            </Button>
+            {confirmSwitch ? (
+              <>
+                <Button
+                  variant="outline"
+                  onClick={() => setConfirmSwitch(false)}
+                  disabled={pending}
+                >
+                  Keep current
+                </Button>
+                <Button onClick={() => openPdf(true)} disabled={pending}>
+                  <FileDownIcon />
+                  {pending ? 'Preparing…' : 'Replace and open'}
+                </Button>
+              </>
+            ) : (
+              <Button onClick={() => openPdf()} disabled={pending}>
+                <FileDownIcon />
+                {pending ? 'Preparing…' : 'Open PDF'}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
