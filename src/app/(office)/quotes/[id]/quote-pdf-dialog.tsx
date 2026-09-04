@@ -56,26 +56,31 @@ export function QuotePdfDialog({
 
   const templateChanged = editable && templateId !== (quote.template_id ?? STANDARD)
 
-  function openPdf(confirmed = false) {
-    // Switching replaces the saved document text, so ask first — and ask HERE,
-    // not with window.confirm: the blank tab below takes focus, and browsers
-    // suppress dialogs in a background tab (confirm returns false immediately,
-    // which silently cancelled every template switch).
-    if (templateChanged && quote.doc && !confirmed) {
-      setConfirmSwitch(true)
-      return
-    }
-
-    // Open the tab synchronously so popup blockers allow it; point it after saving.
+  /**
+   * `apply` decides what to do about the quote's copy of the template:
+   *  - 'auto'  save it if the wording matches, ask if it would change
+   *  - 'force' take the template's wording, replacing this quote's
+   *  - 'keep'  leave this quote's wording alone and just open the PDF
+   */
+  function openPdf(apply: 'auto' | 'force' | 'keep' = 'auto') {
+    // Open the tab synchronously so popup blockers allow it; point it after
+    // saving. Any question must be asked BEFORE this: the new tab takes focus,
+    // and browsers suppress dialogs in a background tab.
     const tab = window.open('', '_blank')
     startTransition(async () => {
       try {
         if (editable) {
-          if (templateChanged) {
+          if (apply !== 'keep') {
             const r = await applyQuoteTemplate(
               quote.id,
-              templateId === STANDARD ? null : templateId
+              templateId === STANDARD ? null : templateId,
+              { force: apply === 'force' }
             )
+            if (r.needsConfirm) {
+              tab?.close()
+              setConfirmSwitch(true)
+              return
+            }
             if (r.error) {
               tab?.close()
               toast.error(r.error)
@@ -223,8 +228,9 @@ export function QuotePdfDialog({
           </div>
           {confirmSwitch && (
             <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-200">
-              Changing the template replaces this quote&apos;s document text, including any
-              edits made in the Document card.
+              {templateChanged
+                ? "Changing the template replaces this quote's wording, including any edits made in the Document card."
+                : "This quote's wording differs from the template. Either the template was edited in Settings, or this quote was. Take the template's wording, or keep this quote's."}
             </p>
           )}
           <DialogFooter>
@@ -232,14 +238,20 @@ export function QuotePdfDialog({
               <>
                 <Button
                   variant="outline"
-                  onClick={() => setConfirmSwitch(false)}
+                  onClick={() =>
+                    templateChanged ? setConfirmSwitch(false) : openPdf('keep')
+                  }
                   disabled={pending}
                 >
-                  Keep current
+                  {templateChanged ? 'Keep current' : "Keep this quote's wording"}
                 </Button>
-                <Button onClick={() => openPdf(true)} disabled={pending}>
+                <Button onClick={() => openPdf('force')} disabled={pending}>
                   <FileDownIcon />
-                  {pending ? 'Preparing…' : 'Replace and open'}
+                  {pending
+                    ? 'Preparing…'
+                    : templateChanged
+                      ? 'Replace and open'
+                      : 'Use the template'}
                 </Button>
               </>
             ) : (

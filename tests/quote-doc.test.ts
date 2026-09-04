@@ -1,5 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import {
+  canonicalJson,
   DEFAULT_PRICING,
   MERGE_FIELDS,
   buildDetailsRows,
@@ -246,5 +247,30 @@ describe('stripLeadingOrdinal', () => {
     expect(stripLeadingOrdinal('5 Year Warranty')).toBe('5 Year Warranty')
     expect(stripLeadingOrdinal('2026 Compliance Review')).toBe('2026 Compliance Review')
     expect(stripLeadingOrdinal('Fixed Fee')).toBe('Fixed Fee')
+  })
+})
+
+describe('canonicalJson', () => {
+  test('ignores key order so a stored document compares equal to a fresh one', () => {
+    expect(canonicalJson({ b: 1, a: 2 })).toBe(canonicalJson({ a: 2, b: 1 }))
+    expect(canonicalJson({ x: { q: 1, p: [{ n: 2, m: 3 }] } })).toBe(
+      canonicalJson({ x: { p: [{ m: 3, n: 2 }], q: 1 } })
+    )
+  })
+
+  test('respects array order, because block order is meaningful', () => {
+    expect(canonicalJson([1, 2])).not.toBe(canonicalJson([2, 1]))
+  })
+
+  test('treats an absent key and an undefined value alike', () => {
+    expect(canonicalJson({ a: 1, note: undefined })).toBe(canonicalJson({ a: 1 }))
+  })
+
+  test('a starter document matches itself and differs once edited', () => {
+    const doc = starterDoc()
+    const copy = JSON.parse(JSON.stringify(doc))
+    expect(canonicalJson(copy)).toBe(canonicalJson(doc))
+    copy.blocks[0].heading = 'Changed'
+    expect(canonicalJson(copy)).not.toBe(canonicalJson(doc))
   })
 })

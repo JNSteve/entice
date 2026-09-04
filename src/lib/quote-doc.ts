@@ -179,6 +179,29 @@ export function stripLeadingOrdinal(text: string): string {
   return text.replace(LEADING_ORDINAL_RE, '')
 }
 
+/**
+ * Order-independent JSON for comparing two documents. Postgres returns jsonb
+ * with its own key order, so a plain JSON.stringify of a stored document never
+ * matches the same document built in JS. Keys are sorted recursively; arrays
+ * keep their order, because block order is meaningful.
+ */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonical(value))
+}
+
+function canonical(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonical)
+  if (value && typeof value === 'object') {
+    const source = value as Record<string, unknown>
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(source).sort()) {
+      if (source[key] !== undefined) out[key] = canonical(source[key])
+    }
+    return out
+  }
+  return value
+}
+
 export function newBlockId(): string {
   return crypto.randomUUID()
 }

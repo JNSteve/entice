@@ -103,6 +103,11 @@ export function QuoteDocCard({
                 />
               </div>
             </div>
+            <p className="text-xs text-muted-foreground">
+              This is the quote&apos;s own copy of the template, so editing the template in
+              Settings does not change it. To take a template edit, open the PDF dialog and
+              choose to use the template&apos;s wording.
+            </p>
             <DocBlocksEditor
               value={draft.blocks}
               onChange={(blocks) => setDraft({ ...draft, blocks })}

@@ -24,6 +24,8 @@ import {
 import {
   parseQuoteDocInput,
   pricingDisplaySchema,
+  canonicalJson,
+  quoteDocSchema,
   quoteTemplateSchema,
   snapshotFromTemplate,
 } from '@/lib/quote-doc'
@@ -1049,23 +1051,43 @@ async function loadTemplate(supabase: SupabaseClient, templateId: string) {
  */
 export async function applyQuoteTemplate(
   quoteId: string,
-  templateId: string | null
-): Promise<Result> {
+  templateId: string | null,
+  opts: { force?: boolean } = {}
+): Promise<Result & { needsConfirm?: boolean }> {
   await requireRole('admin', 'office')
   const supabase = await createClient()
   const editable = await assertEditable(supabase, quoteId)
   if (editable.error) return editable
 
+  // The quote holds its own copy of the template. Re-applying the SAME template
+  // is how an edit made in Settings reaches a quote already using it; the copy
+  // is otherwise frozen, so a sent quote never changes under the client. Either
+  // way the write replaces wording, so it is refused until the caller confirms
+  // whenever the stored document differs from what would be written.
+  const { data: row } = await supabase.from('quotes').select('doc').eq('id', quoteId).single()
+  const currentDoc = row?.doc ?? null
+
   let patch: Record<string, unknown>
   if (templateId) {
     const loaded = await loadTemplate(supabase, templateId)
     if ('error' in loaded) return { error: loaded.error }
+    const snapshot = snapshotFromTemplate(loaded.template)
+
+    if (currentDoc) {
+      const parsed = quoteDocSchema.safeParse(currentDoc)
+      const same = parsed.success && canonicalJson(parsed.data) === canonicalJson(snapshot)
+      // Already identical: nothing to write, and nothing to ask about.
+      if (same) return {}
+      if (!opts.force) return { needsConfirm: true }
+    }
+
     patch = {
       template_id: templateId,
-      doc: snapshotFromTemplate(loaded.template),
+      doc: snapshot,
       pdf_options: loaded.template.pricing_defaults,
     }
   } else {
+    if (currentDoc && !opts.force) return { needsConfirm: true }
     patch = { template_id: null, doc: null }
   }
 
