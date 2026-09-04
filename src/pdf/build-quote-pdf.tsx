@@ -9,6 +9,8 @@ import {
   buildDetailsRows,
   buildMergeContext,
   mergeDoc,
+  pdfSafeDeep,
+  pdfSafeText,
   pricingDisplaySchema,
   quoteDocSchema,
   type MergeSource,
@@ -132,8 +134,9 @@ export async function buildQuotePdfResponse(
   const display = displayParsed.success ? displayParsed.data : DEFAULT_PRICING
   const docParsed = quote.doc ? quoteDocSchema.safeParse(quote.doc) : null
   const gstRate = Number(quote.gst_rate)
-  const quoteFooter = (settings?.quote_footer as string | null) ?? null
-  const company = toDocCompany(settings)
+  const quoteFooterRaw = (settings?.quote_footer as string | null) ?? null
+  const quoteFooter = quoteFooterRaw ? pdfSafeText(quoteFooterRaw) : null
+  const company = pdfSafeDeep(toDocCompany(settings))
 
   let buffer: Buffer
   if (docParsed?.success) {
@@ -180,9 +183,9 @@ export async function buildQuotePdfResponse(
           date: fmtDate(quote.sent_at ?? quote.created_at),
         }}
         company={company}
-        doc={mergeDoc(docParsed.data, ctx)}
-        details={buildDetailsRows(src, docParsed.data.validity_text)}
-        pricing={buildPricingModel(pdfSections, { ...totals, gstRate }, display)}
+        doc={pdfSafeDeep(mergeDoc(docParsed.data, ctx))}
+        details={pdfSafeDeep(buildDetailsRows(src, docParsed.data.validity_text))}
+        pricing={buildPricingModel(pdfSafeDeep(pdfSections), { ...totals, gstRate }, display)}
         quoteFooter={quoteFooter}
         acceptance={acceptance}
         watermark={opts.watermark ?? null}
@@ -201,7 +204,7 @@ export async function buildQuotePdfResponse(
           siteAddress,
         }}
         company={company}
-        sections={pdfSections}
+        sections={pdfSafeDeep(pdfSections)}
         totals={{ ...totals, gstRate }}
         validDays={quote.valid_days}
         description={quote.description}

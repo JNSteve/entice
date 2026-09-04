@@ -202,6 +202,46 @@ function canonical(value: unknown): unknown {
   return value
 }
 
+/**
+ * The built-in PDF fonts carry WinAnsi glyphs only. A character outside that
+ * set is written as a control code and draws NOTHING, so "asbestos\u2011in\u2011soil"
+ * (non-breaking hyphens) silently prints as "asbestosinsoil" on a client's
+ * quote. Imported templates pick these up from the source document, and pasted
+ * text brings them in too, so every string is mapped to the plain characters it
+ * stands for before it reaches the renderer.
+ */
+const PDF_SUBSTITUTIONS: [RegExp, string][] = [
+  // Hyphens and dashes with no WinAnsi glyph (en/em dash DO have one, so stay).
+  [/[\u2010\u2011\u2012\u2015\u2043\u2212]/g, '-'],
+  // Soft hyphen: a break hint, invisible unless the word breaks there.
+  [/\u00AD/g, ''],
+  // Figure, thin and narrow spaces.
+  [/[\u2007\u2008\u2009\u200A\u202F\u2060]/g, ' '],
+  // Zero-width joiners and the byte-order mark.
+  [/[\u200B\u200C\u200D\uFEFF]/g, ''],
+  // Primes, sometimes pasted for feet and inches.
+  [/\u2032/g, "'"],
+  [/\u2033/g, '"'],
+]
+
+/** Replaces characters the built-in PDF fonts cannot draw. */
+export function pdfSafeText(text: string): string {
+  return PDF_SUBSTITUTIONS.reduce((out, [re, to]) => out.replace(re, to), text)
+}
+
+/** pdfSafeText applied to every string in a value, keeping its shape. */
+export function pdfSafeDeep<T>(value: T): T {
+  if (typeof value === 'string') return pdfSafeText(value) as unknown as T
+  if (Array.isArray(value)) return value.map(pdfSafeDeep) as unknown as T
+  if (value && typeof value === 'object') {
+    const source = value as Record<string, unknown>
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(source)) out[key] = pdfSafeDeep(source[key])
+    return out as unknown as T
+  }
+  return value
+}
+
 export function newBlockId(): string {
   return crypto.randomUUID()
 }
@@ -247,7 +287,8 @@ const trimOrUndefined = (s: string | undefined) => {
 
 /** Editor output → clean blocks: trimmed strings, no empty bullets or rows. */
 export function normaliseBlocks(blocks: DocBlock[]): DocBlock[] {
-  return blocks.map((b) => {
+  // pdfSafeText here as well as at render, so what Settings shows is what prints.
+  return pdfSafeDeep(blocks).map((b) => {
     const h = b.heading.trim()
     switch (b.type) {
       case 'text':

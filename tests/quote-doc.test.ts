@@ -9,6 +9,8 @@ import {
   mergeDoc,
   mergeText,
   normaliseBlocks,
+  pdfSafeDeep,
+  pdfSafeText,
   parseQuoteDocInput,
   parseQuoteTemplateInput,
   quoteDocSchema,
@@ -272,5 +274,47 @@ describe('canonicalJson', () => {
     expect(canonicalJson(copy)).toBe(canonicalJson(doc))
     copy.blocks[0].heading = 'Changed'
     expect(canonicalJson(copy)).not.toBe(canonicalJson(doc))
+  })
+})
+
+describe('pdfSafeText', () => {
+  test('maps hyphens the built-in fonts cannot draw to a plain hyphen', () => {
+    // U+2011 is what broke a real quote: it printed as "asbestosinsoil".
+    expect(pdfSafeText('asbestos\u2011in\u2011soil')).toBe('asbestos-in-soil')
+    expect(pdfSafeText('re\u2010lining')).toBe('re-lining')
+    expect(pdfSafeText('minus \u2212 sign')).toBe('minus - sign')
+  })
+
+  test('drops invisible characters', () => {
+    expect(pdfSafeText('as\u00ADbestos')).toBe('asbestos')
+    expect(pdfSafeText('a\u200Bb\uFEFFc')).toBe('abc')
+  })
+
+  test('normalises exotic spaces', () => {
+    expect(pdfSafeText('4\u2009m2')).toBe('4 m2')
+  })
+
+  test('leaves characters the fonts can draw alone', () => {
+    const keep = 'Two-storey — 40m2 · "quoted" \u2018single\u2019 …'
+    expect(pdfSafeText(keep)).toBe(keep)
+  })
+
+  test('pdfSafeDeep walks a document without changing its shape', () => {
+    const doc = {
+      heading: 'Close\u2011out',
+      blocks: [{ items: ['re\u2011lining', 'plain'], n: 3, ok: true, nil: null }],
+    }
+    expect(pdfSafeDeep(doc)).toEqual({
+      heading: 'Close-out',
+      blocks: [{ items: ['re-lining', 'plain'], n: 3, ok: true, nil: null }],
+    })
+  })
+
+  test('normaliseBlocks cleans the text it stores', () => {
+    const out = normaliseBlocks([
+      { id: 'b', type: 'bullets', heading: 'Exclusions', items: ['asbestos\u2011in\u2011soil'] },
+      { id: 'p', type: 'pricing', heading: 'Fee' },
+    ])
+    expect(out[0]).toMatchObject({ items: ['asbestos-in-soil'] })
   })
 })
