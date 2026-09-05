@@ -224,6 +224,28 @@ async function main() {
     check('insert portal_feedback rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(feedbackInserted)}`)
   }
 
+  // ─── Xero (0063) ──────────────────────────────────────────────────────────
+  // xero_connection holds encrypted tokens: NO role may read it. Caches and the
+  // register are admin/office only.
+  {
+    const { data: connRows, error: connErr } = await supabase.from('xero_connection').select('id').limit(1)
+    if (connErr) check('xero_connection SELECT blocked for field', true, `error: ${connErr.message}`)
+    else check('xero_connection SELECT blocked for field', (connRows ?? []).length === 0, `field can see ${(connRows ?? []).length} row(s)`)
+
+    for (const table of ['xero_sync_runs', 'xero_sync_events', 'xero_accounts', 'xero_contacts']) {
+      const { data, error } = await supabase.from(table).select('*').limit(1)
+      if (error) check(`${table} SELECT blocked for field`, true, `error: ${error.message}`)
+      else check(`${table} SELECT blocked for field`, (data ?? []).length === 0, `field can see ${(data ?? []).length} row(s)`)
+    }
+
+    const { error: runInsertErr, data: runInserted } = await supabase
+      .from('xero_sync_runs')
+      .insert({ trigger: 'manual', status: 'running' })
+      .select('id')
+    if (runInsertErr) check('insert xero_sync_runs rejected (field)', true, runInsertErr.message)
+    else check('insert xero_sync_runs rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(runInserted)}`)
+  }
+
   await supabase.auth.signOut()
 
   // ─── Audit log immutability checks ─────────────────────────────────────
@@ -262,6 +284,10 @@ async function main() {
         `supervisor can see ${(superEmailRows ?? []).length} email row(s)`
       )
     }
+
+    const { data: superConn, error: superConnErr } = await adminClient.from('xero_connection').select('id').limit(1)
+    if (superConnErr) check('xero_connection SELECT blocked for supervisor', true, `error: ${superConnErr.message}`)
+    else check('xero_connection SELECT blocked for supervisor', (superConn ?? []).length === 0, `supervisor can see ${(superConn ?? []).length} row(s)`)
 
     // Pick any existing audit_log row.
     const { data: auditSample } = await adminClient
