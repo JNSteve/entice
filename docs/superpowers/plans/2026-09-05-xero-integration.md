@@ -3170,8 +3170,13 @@ function zero(): SyncSummary {
 async function* pages<T>(api: XeroApi, base: string, key: string, since: string | null): AsyncGenerator<T[]> {
   for (let page = 1; ; page++) {
     const sep = base.includes('?') ? '&' : '?'
-    const path = `${base}${sep}page=${page}` + (since ? `&If-Modified-Since=${ifModifiedSinceHeader(since)}` : '')
-    const body = await api.get<Record<string, T[] | undefined>>(path)
+    const path = `${base}${sep}page=${page}`
+    // If-Modified-Since is an HTTP header on the Xero API, never a query param
+    // (client.ts get() takes { headers } as its second argument).
+    const body = await api.get<Record<string, T[] | undefined>>(
+      path,
+      since ? { headers: { 'If-Modified-Since': ifModifiedSinceHeader(since) } } : undefined
+    )
     const rows = body[key] ?? []
     yield rows
     if (rows.length < PAGE) return
