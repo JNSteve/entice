@@ -5,10 +5,10 @@ import { syncContacts } from './contacts'
 import {
   deriveInvoiceStatusFromXero,
   ifModifiedSinceHeader,
+  mirrorLinesFromXero,
   parseXeroDate,
   parseXeroInstant,
   workNumberFromReference,
-  xeroLinesToInvoiceLines,
 } from './map'
 import { finishRun, logEvent, runInProgress, startRun, type Admin } from './register'
 import { syncReferenceData } from './reference'
@@ -39,7 +39,7 @@ function zero(): SyncSummary {
 async function* pages<T>(api: XeroApi, base: string, key: string, since: string | null): AsyncGenerator<T[]> {
   for (let page = 1; ; page++) {
     const sep = base.includes('?') ? '&' : '?'
-    const path = `${base}${sep}page=${page}`
+    const path = `${base}${sep}page=${page}&pageSize=${PAGE}`
     // If-Modified-Since is an HTTP header on the Xero API, never a query param
     // (client.ts get() takes { headers } as its second argument).
     const body = await api.get<Record<string, T[] | undefined>>(
@@ -146,11 +146,13 @@ export async function runXeroSync(
     errors: s.errors,
     error: fatal,
   })
-  // Only advance the watermark when the run got through the invoice/payment pages.
+  // Only advance the watermark on a fully clean run — a partial or failed run
+  // must not skip past changes it didn't get to (the 1-hour overlap plus
+  // idempotent upserts make re-processing safe on the next run).
   await admin
     .from('xero_connection')
     .update({
-      last_sync_at: status === 'failed' ? conn.last_sync_at : startedAt,
+      last_sync_at: status === 'success' ? startedAt : conn.last_sync_at,
       last_sync_status: status,
       updated_at: new Date().toISOString(),
     })
@@ -173,17 +175,30 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
     xero_synced_at: now,
   }
 
-  // Known ECR invoice (pushed, or matched earlier)?
-  const { data: known } = await admin
-    .from('invoices')
-    .select('id, status, job_id, number')
-    .or(`xero_invoice_id.eq.${x.InvoiceID},number.eq.${JSON.stringify(x.InvoiceNumber ?? '')}`)
-    .limit(1)
-    .maybeSingle()
+  // Known ECR invoice (pushed, or matched by number)?
+  const cols = 'id, status, job_id, number, origin, client_id, needs_review'
+  let known = (await admin.from('invoices').select(cols).eq('xero_invoice_id', x.InvoiceID).maybeSingle()).data
+  const xeroNumber = x.InvoiceNumber?.trim()
+  if (!known && xeroNumber) {
+    const { data: byNumber } = await admin
+      .from('invoices')
+      .select(`${cols}, clients(xero_contact_id)`)
+      .eq('number', xeroNumber)
+      .is('xero_invoice_id', null)
+      .eq('origin', 'ecr')
+      .in('status', ['sent', 'paid', 'void'])
+      .maybeSingle()
+    const linkedContact = (byNumber?.clients as unknown as { xero_contact_id: string | null } | null)?.xero_contact_id ?? null
+    const contactAgrees = !linkedContact || !x.Contact?.ContactID || linkedContact === x.Contact.ContactID
+    if (byNumber && contactAgrees) known = byNumber
+  }
 
   if (known) {
     const derived = deriveInvoiceStatusFromXero(x)
     const statusChanged = known.status !== 'draft' && known.status !== derived.status
+    const revertedToSent = known.status === 'paid' && derived.status === 'sent'
+    const isXeroMirror = known.origin === 'xero'
+    const m = isXeroMirror ? mirrorLinesFromXero(x) : null
     const { error } = await admin
       .from('invoices')
       .update({
@@ -191,23 +206,46 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
         xero_invoice_id: x.InvoiceID,
         xero_number: x.InvoiceNumber ?? null,
         ...(known.status !== 'draft' ? { status: derived.status, paid_at: derived.paid_at } : {}),
+        ...(m ? { gst_rate: m.gst_rate, ...(m.reconciles ? {} : { needs_review: true }) } : {}),
       })
       .eq('id', known.id)
     if (error) throw error
+    if (m) {
+      const { error: delErr } = await admin.from('invoice_lines').delete().eq('invoice_id', known.id)
+      if (delErr) throw delErr
+      if (m.lines.length > 0) {
+        const { error: linesErr } = await admin
+          .from('invoice_lines')
+          .insert(m.lines.map((l) => ({ ...l, invoice_id: known.id })))
+        if (linesErr) throw linesErr
+      }
+      if (!m.reconciles) {
+        await logEvent(admin, runId, {
+          direction: 'pull', entity: 'invoice', entityId: known.id as string, xeroId: x.InvoiceID,
+          action: 'warning', detail: 'ECR total does not reconcile with Xero Total',
+        })
+      }
+    }
     if (statusChanged) {
       await syncJobStatus(admin, known.job_id as string | null)
       await logEvent(admin, runId, {
         direction: 'pull', entity: 'invoice', entityId: known.id as string, xeroId: x.InvoiceID,
         action: derived.status === 'void' ? 'voided' : 'updated', detail: `${known.number}: ${known.status} → ${derived.status}`,
       })
+      if (revertedToSent) {
+        await logEvent(admin, runId, {
+          direction: 'pull', entity: 'invoice', entityId: known.id as string, xeroId: x.InvoiceID,
+          action: 'warning', detail: 'Reverted to sent — Xero shows an amount due',
+        })
+      }
     }
     return 'updated'
   }
 
-  // Known progress claim?
+  // Known progress claim? Payment itself arrives separately via applyPayment.
   const { data: claim } = await admin
     .from('claims')
-    .select('id, status, project_id')
+    .select('id, status')
     .eq('xero_invoice_id', x.InvoiceID)
     .maybeSingle()
   if (claim) {
@@ -215,17 +253,16 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
     const patch: Record<string, unknown> = {
       xero_status: x.Status, xero_amount_due: x.AmountDue ?? null, xero_synced_at: now,
     }
-    if (derived.status === 'paid' && claim.status === 'certified') {
+    const justPaid = derived.status === 'paid' && claim.status === 'certified'
+    if (justPaid) {
       patch.status = 'paid'
       patch.paid_at = derived.paid_at ?? now
-      const { data: c } = await admin.from('claims').select('certified_amount, total_inc_gst').eq('id', claim.id).single()
-      await admin.from('payments').insert({
-        claim_id: claim.id, amount: Number(c?.certified_amount ?? c?.total_inc_gst ?? 0),
-        date: (derived.paid_at ?? now).slice(0, 10), method: 'xero', reference: x.InvoiceNumber ?? null, source: 'xero',
-      })
     }
     const { error } = await admin.from('claims').update(patch).eq('id', claim.id)
     if (error) throw error
+    if (justPaid) {
+      await logEvent(admin, runId, { direction: 'pull', entity: 'claim', entityId: claim.id as string, xeroId: x.InvoiceID, action: 'updated', detail: 'Claim paid in Xero' })
+    }
     if (derived.status === 'void') {
       await logEvent(admin, runId, { direction: 'pull', entity: 'claim', entityId: claim.id as string, xeroId: x.InvoiceID, action: 'warning', detail: 'Voided in Xero — claim stays certified in ECR (no void state for claims)' })
       return 'warning'
@@ -281,6 +318,7 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
   const { data: clash } = await admin.from('invoices').select('id').eq('number', number).maybeSingle()
   if (clash) number = `${number} (Xero)` // VERIFY-1 fallback
 
+  const m = mirrorLinesFromXero(x)
   const { data: inv, error: invErr } = await admin
     .from('invoices')
     .insert({
@@ -290,23 +328,26 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
       status: derived.status,
       issue_date: parseXeroDate(x.DateString ?? x.Date) ?? now.slice(0, 10),
       due_date: parseXeroDate(x.DueDateString ?? x.DueDate),
-      gst_rate: 10,
+      gst_rate: m.gst_rate,
       sent_at: parseXeroInstant(x.UpdatedDateUTC) ?? now,
       paid_at: derived.paid_at,
       origin: 'xero',
       xero_invoice_id: x.InvoiceID,
       xero_number: x.InvoiceNumber ?? null,
-      needs_review: needsReview,
+      needs_review: needsReview || !m.reconciles,
       ...xeroCols,
     })
     .select('id')
     .single()
   if (invErr || !inv) throw new Error(`Could not mirror ${number}: ${invErr?.message}`)
 
-  const lines = xeroLinesToInvoiceLines(x.LineItems ?? []).map((l) => ({ ...l, invoice_id: inv.id }))
+  const lines = m.lines.map((l) => ({ ...l, invoice_id: inv.id }))
   if (lines.length > 0) {
     const { error } = await admin.from('invoice_lines').insert(lines)
-    if (error) throw error
+    if (error) {
+      await admin.from('invoices').delete().eq('id', inv.id)
+      throw new Error(`Could not mirror lines for ${number}: ${error.message}`)
+    }
   }
   await syncJobStatus(admin, jobId)
   await logEvent(admin, runId, {
@@ -314,29 +355,41 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
     action: jobId ? 'created' : 'unmatched',
     detail: jobId ? `Mirrored ${number} from Xero` : `Mirrored ${number} from Xero — needs matching to a job`,
   })
+  if (!m.reconciles) {
+    await logEvent(admin, runId, {
+      direction: 'pull', entity: 'invoice', entityId: inv.id as string, xeroId: x.InvoiceID,
+      action: 'warning', detail: 'ECR total does not reconcile with Xero Total — review',
+    })
+  }
   return 'created'
 }
 
 // ─── Payments ────────────────────────────────────────────────────────────────
 
+// Payments settle invoices AND pushed claims; claim status flips in applyInvoice.
 async function applyPayment(admin: Admin, runId: string, p: XeroPayment): Promise<boolean> {
   const xeroInvoiceId = p.Invoice?.InvoiceID
   if (!xeroInvoiceId) return false
   const { data: inv } = await admin.from('invoices').select('id').eq('xero_invoice_id', xeroInvoiceId).maybeSingle()
-  if (!inv) return false // claims settle via the invoice status path
+  const { data: claim } = inv
+    ? { data: null }
+    : await admin.from('claims').select('id').eq('xero_invoice_id', xeroInvoiceId).maybeSingle()
+  if (!inv && !claim) return false
+  const targetId = (inv?.id ?? claim?.id) as string
 
   if (p.Status === 'DELETED') {
     // Only rows the sync itself created may be removed (spec §5.4 step 4).
     const { count } = await admin.from('payments').delete({ count: 'exact' }).eq('xero_payment_id', p.PaymentID).eq('source', 'xero')
     if ((count ?? 0) > 0) {
-      await logEvent(admin, runId, { direction: 'pull', entity: 'payment', entityId: inv.id as string, xeroId: p.PaymentID, action: 'voided', detail: 'Payment deleted in Xero' })
+      await logEvent(admin, runId, { direction: 'pull', entity: 'payment', entityId: targetId, xeroId: p.PaymentID, action: 'voided', detail: 'Payment deleted in Xero' })
     }
     return (count ?? 0) > 0
   }
 
   const { error } = await admin.from('payments').upsert(
     {
-      invoice_id: inv.id,
+      invoice_id: inv?.id ?? null,
+      claim_id: claim?.id ?? null,
       xero_payment_id: p.PaymentID,
       source: 'xero',
       date: parseXeroDate(p.Date) ?? new Date().toISOString().slice(0, 10),

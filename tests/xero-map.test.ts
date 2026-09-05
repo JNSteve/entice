@@ -6,6 +6,7 @@ import {
   deriveInvoiceStatusFromXero,
   ifModifiedSinceHeader,
   matchContactToClient,
+  mirrorLinesFromXero,
   normaliseAbn,
   parseXeroDate,
   parseXeroInstant,
@@ -276,5 +277,51 @@ describe('misc', () => {
     expect(xeroErrorMessage({ Detail: 'TokenExpired' })).toBe('TokenExpired')
     expect(xeroErrorMessage({ Title: 'Forbidden' })).toBe('Forbidden')
     expect(xeroErrorMessage(null)).toBe('Xero request failed')
+  })
+})
+
+describe('mirrorLinesFromXero', () => {
+  test('Exclusive: lines copied as-is, rate from TotalTax/SubTotal, reconciles', () => {
+    const m = mirrorLinesFromXero({
+      LineAmountTypes: 'Exclusive',
+      LineItems: [{ Description: 'Labour', Quantity: 2, UnitAmount: 150 }],
+      SubTotal: 300, TotalTax: 30, Total: 330,
+    })
+    expect(m.gst_rate).toBe(10)
+    expect(m.lines).toEqual([{ description: 'Labour', qty: 2, unit: 'ea', unit_sell: 150, position: 0 }])
+    expect(m.reconciles).toBe(true)
+  })
+  test('Inclusive: unit prices are backed out to ex-GST', () => {
+    const m = mirrorLinesFromXero({
+      LineAmountTypes: 'Inclusive',
+      LineItems: [{ Description: 'Labour', Quantity: 2, UnitAmount: 165 }],
+      SubTotal: 300, TotalTax: 30, Total: 330,
+    })
+    expect(m.gst_rate).toBe(10)
+    expect(m.lines[0].unit_sell).toBe(150)
+    expect(m.reconciles).toBe(true)
+  })
+  test('NoTax: zero rate, prices untouched', () => {
+    const m = mirrorLinesFromXero({
+      LineAmountTypes: 'NoTax',
+      LineItems: [{ Description: 'Export', Quantity: 1, UnitAmount: 300 }],
+      SubTotal: 300, TotalTax: 0, Total: 300,
+    })
+    expect(m.gst_rate).toBe(0)
+    expect(m.lines[0].unit_sell).toBe(300)
+    expect(m.reconciles).toBe(true)
+  })
+  test('flags when ECR-derived total does not match Xero Total', () => {
+    const m = mirrorLinesFromXero({
+      LineAmountTypes: 'Exclusive',
+      LineItems: [{ Description: 'X', Quantity: 1, UnitAmount: 300 }],
+      SubTotal: 300, TotalTax: 30, Total: 350,
+    })
+    expect(m.reconciles).toBe(false)
+  })
+  test('missing totals: zero rate, does not throw', () => {
+    const m = mirrorLinesFromXero({ LineItems: [] })
+    expect(m.gst_rate).toBe(0)
+    expect(m.lines).toEqual([])
   })
 })

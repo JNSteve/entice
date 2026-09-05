@@ -1,4 +1,5 @@
 import { addDays, format, parseISO } from 'date-fns'
+import { docTotals, round2 } from '@/lib/money'
 import type {
   EcrClaimForPush,
   EcrInvoiceForPush,
@@ -209,6 +210,36 @@ export function xeroLinesToInvoiceLines(items: XeroLineItem[]) {
     unit_sell: l.UnitAmount ?? 0,
     position,
   }))
+}
+
+export type MirrorLines = {
+  lines: ReturnType<typeof xeroLinesToInvoiceLines>
+  gst_rate: number
+  /** false when sum(lines) × (1 + rate) is more than 2 cents off Xero's Total. */
+  reconciles: boolean
+}
+
+/**
+ * Mirror a Xero-raised invoice into ECR's ex-GST line model. ECR derives the
+ * total as Σ(qty × unit_sell) × (1 + gst_rate/100), so Inclusive prices are
+ * backed out and the rate comes from Xero's own SubTotal/TotalTax.
+ */
+export function mirrorLinesFromXero(
+  x: Pick<XeroInvoice, 'LineItems' | 'LineAmountTypes' | 'SubTotal' | 'TotalTax' | 'Total'>
+): MirrorLines {
+  const subTotal = x.SubTotal ?? 0
+  const totalTax = x.TotalTax ?? 0
+  const rate =
+    x.LineAmountTypes === 'NoTax' || subTotal <= 0 || totalTax <= 0
+      ? 0
+      : round2((totalTax / subTotal) * 100)
+  const raw = xeroLinesToInvoiceLines(x.LineItems ?? [])
+  const lines =
+    x.LineAmountTypes === 'Inclusive' && rate > 0
+      ? raw.map((l) => ({ ...l, unit_sell: round2(l.unit_sell / (1 + rate / 100)) }))
+      : raw
+  const { total } = docTotals(lines.map((l) => ({ qty: l.qty, unitSell: l.unit_sell })), rate)
+  return { lines, gst_rate: rate, reconciles: !totalsDiffer(total, x.Total) }
 }
 
 // ─── Errors ──────────────────────────────────────────────────────────────────

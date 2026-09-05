@@ -30,6 +30,8 @@ export type XeroInvoice = {
   Date?: string
   DueDate?: string
   LineAmountTypes?: 'Exclusive' | 'Inclusive' | 'NoTax'
+  SubTotal?: number
+  TotalTax?: number
   Total?: number
   AmountDue?: number
   AmountPaid?: number
