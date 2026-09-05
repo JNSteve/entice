@@ -5,7 +5,8 @@ import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
 import { addDays, format } from 'date-fns'
 import { requireRole } from '@/lib/auth'
-import { deriveJobStatusFromInvoices, issueProblem } from '@/lib/issue-guards'
+import { issueProblem } from '@/lib/issue-guards'
+import { syncJobStatus } from '@/lib/job-status'
 import { notifyClientInvoiceSent } from '@/lib/notify'
 import { createClient } from '@/lib/supabase/server'
 import { docTotals, round2 } from '@/lib/money'
@@ -52,43 +53,6 @@ async function assertDraft(
     return { error: `Invoice is ${invoice.status} and can no longer be edited` }
   }
   return { job_id: invoice.job_id }
-}
-
-/**
- * Server-side job status sync, called after every invoice status/payment
- * change. Reconciles the job's invoicing status against its non-void invoices
- * in BOTH directions:
- *   Forward:
- *     - any non-void invoice sent/paid + job completed  → job invoiced
- *     - ALL non-void invoices paid (and ≥1 exists)      → job paid
- *   Reversal (a settling payment is deleted, or the last issued invoice is
- *   voided):
- *     - job 'paid' but NOT all non-void invoices paid    → back to invoiced
- *       (if ≥1 is issued) or completed (if none are issued)
- *     - job 'invoiced' with no non-void issued invoice   → back to completed
- *   Rules live in deriveJobStatusFromInvoices (src/lib/issue-guards.ts).
- * Void invoices are ignored entirely. Only the invoicing lifecycle statuses
- * (completed → invoiced → paid) are touched; earlier statuses are left alone.
- */
-async function syncJobStatus(
-  supabase: SupabaseClient,
-  jobId: string | null
-): Promise<void> {
-  if (!jobId) return
-
-  const [{ data: job }, { data: invoices }] = await Promise.all([
-    supabase.from('jobs').select('id, status').eq('id', jobId).single(),
-    supabase.from('invoices').select('status').eq('job_id', jobId),
-  ])
-  if (!job) return
-
-  const next = deriveJobStatusFromInvoices(
-    job.status as string,
-    (invoices ?? []).map((i) => i.status as string)
-  )
-  if (next) {
-    await supabase.from('jobs').update({ status: next }).eq('id', jobId)
-  }
 }
 
 // ─── Create from job ─────────────────────────────────────────────────────────
