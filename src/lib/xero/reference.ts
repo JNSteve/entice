@@ -48,6 +48,11 @@ export async function syncReferenceData(
   if (taxRows.length > 0) {
     const { error } = await admin.from('xero_tax_rates').upsert(taxRows, { onConflict: 'tax_type' })
     if (error) throw new Error(`tax rates cache: ${error.message}`)
+    await admin
+      .from('xero_tax_rates')
+      .update({ status: 'ARCHIVED' })
+      .lt('synced_at', now)
+      .neq('status', 'ARCHIVED')
   }
 
   const { TrackingCategories = [] } = await api.get<{ TrackingCategories?: XeroTrackingCategory[] }>(
@@ -70,6 +75,18 @@ export async function syncReferenceData(
       const { error: optErr } = await admin.from('xero_tracking_options').upsert(options, { onConflict: 'id' })
       if (optErr) throw new Error(`tracking options cache: ${optErr.message}`)
     }
+  }
+  if (TrackingCategories.length > 0) {
+    await admin
+      .from('xero_tracking_options')
+      .update({ status: 'ARCHIVED' })
+      .lt('synced_at', now)
+      .neq('status', 'ARCHIVED')
+    await admin
+      .from('xero_tracking_categories')
+      .update({ status: 'ARCHIVED' })
+      .lt('synced_at', now)
+      .neq('status', 'ARCHIVED')
   }
 
   await logEvent(admin, runId, {

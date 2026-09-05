@@ -89,4 +89,16 @@ describe('createXeroApi', () => {
     })
     await expect(api.postNoContent('/Invoices/abc/Email')).resolves.toBeUndefined()
   })
+
+  test('get passes extra headers through (If-Modified-Since)', async () => {
+    const seen: RequestInit[] = []
+    const { api } = makeApi(async (_url, init) => {
+      seen.push(init)
+      return response(200, { Contacts: [] })
+    })
+    await api.get('/Contacts', { headers: { 'If-Modified-Since': '2026-09-05T00:00:00' } })
+    const h = seen[0].headers as Record<string, string>
+    expect(h['If-Modified-Since']).toBe('2026-09-05T00:00:00')
+    expect(h.Authorization).toBe('Bearer stale')
+  })
 })

@@ -41,8 +41,10 @@ export type XeroApiDeps = {
   sleep?: (ms: number) => Promise<void>
 }
 
+export type XeroRequestOptions = { headers?: Record<string, string> }
+
 export type XeroApi = {
-  get<T>(path: string): Promise<T>
+  get<T>(path: string, opts?: XeroRequestOptions): Promise<T>
   post<T>(path: string, body: unknown): Promise<T>
   put<T>(path: string, body: unknown): Promise<T>
   postNoContent(path: string): Promise<void>
@@ -55,7 +57,12 @@ export function createXeroApi(deps: XeroApiDeps): XeroApi {
   const doFetch = deps.fetch ?? fetch
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)))
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  async function request<T>(
+    method: string,
+    path: string,
+    body?: unknown,
+    opts?: XeroRequestOptions
+  ): Promise<T> {
     let auth = await deps.getAuth()
     let refreshed = false
     let waited = false
@@ -68,6 +75,7 @@ export function createXeroApi(deps: XeroApiDeps): XeroApi {
           'xero-tenant-id': auth.tenantId,
           Accept: 'application/json',
           ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+          ...(opts?.headers ?? {}),
         },
         ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
         signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -99,7 +107,7 @@ export function createXeroApi(deps: XeroApiDeps): XeroApi {
   }
 
   return {
-    get: (path) => request('GET', path),
+    get: (path, opts) => request('GET', path, undefined, opts),
     post: (path, body) => request('POST', path, body),
     put: (path, body) => request('PUT', path, body),
     postNoContent: (path) => request<void>('POST', path),

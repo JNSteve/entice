@@ -19,8 +19,11 @@ export async function syncContacts(
   const now = new Date().toISOString()
   const all: XeroContact[] = []
   for (let page = 1; ; page++) {
-    const path = `/Contacts?page=${page}` + (since ? `&If-Modified-Since=${ifModifiedSinceHeader(since)}` : '')
-    const { Contacts = [] } = await api.get<{ Contacts?: XeroContact[] }>(path)
+    const path = `/Contacts?page=${page}`
+    const { Contacts = [] } = await api.get<{ Contacts?: XeroContact[] }>(
+      path,
+      since ? { headers: { 'If-Modified-Since': ifModifiedSinceHeader(since) } } : undefined
+    )
     all.push(...Contacts)
     if (Contacts.length < PAGE) break
   }
@@ -56,7 +59,8 @@ export async function syncContacts(
       .is('xero_contact_id', null)
     if (error) continue
     linked++
-    unlinked.splice(unlinked.findIndex((u) => u.id === clientId), 1)
+    const idx = unlinked.findIndex((u) => u.id === clientId)
+    if (idx >= 0) unlinked.splice(idx, 1)
     await logEvent(admin, runId, {
       direction: 'pull', entity: 'contact', entityId: clientId, xeroId: c.ContactID,
       action: 'matched', detail: `Linked client to Xero contact "${c.Name}"`,
@@ -99,8 +103,15 @@ export async function ensureContactForClient(
     candidates.push(...Contacts)
   }
   let contactId: string
+  let hasEmail = false
+  if (candidates.length > 1) {
+    throw new Error(
+      `Several Xero contacts match "${client.name}" — link the right one in Settings → Xero, then send again.`
+    )
+  }
   if (candidates.length >= 1) {
     contactId = candidates[0].ContactID
+    hasEmail = Boolean(candidates[0].EmailAddress?.trim())
     await logEvent(admin, runId, {
       direction: 'push', entity: 'contact', entityId: clientId, xeroId: contactId,
       action: 'matched', detail: `Found existing Xero contact "${candidates[0].Name}"`,
@@ -118,6 +129,7 @@ export async function ensureContactForClient(
       Contacts: [{ Name: client.name, ...(abn ? { TaxNumber: abn } : {}), ...(email ? { EmailAddress: email } : {}) }],
     })
     contactId = created.Contacts[0].ContactID
+    hasEmail = Boolean(email)
     await logEvent(admin, runId, {
       direction: 'push', entity: 'contact', entityId: clientId, xeroId: contactId,
       action: 'created', detail: `Created Xero contact "${client.name}"${email ? '' : ' (no email on file)'}`,
@@ -126,7 +138,7 @@ export async function ensureContactForClient(
 
   await admin.from('clients').update({ xero_contact_id: contactId }).eq('id', clientId)
   await admin.from('xero_contacts').upsert(
-    { contact_id: contactId, name: client.name, abn, has_email: true, status: 'ACTIVE', synced_at: new Date().toISOString() },
+    { contact_id: contactId, name: client.name, abn, has_email: hasEmail, status: 'ACTIVE', synced_at: new Date().toISOString() },
     { onConflict: 'contact_id' }
   )
   return contactId
