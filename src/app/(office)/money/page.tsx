@@ -14,12 +14,14 @@ import {
 import { cn } from '@/lib/utils'
 import { docTotals } from '@/lib/money'
 import { aud, fmtDate } from '@/lib/format'
+import { getXeroStatus } from '@/lib/xero/status'
 import { InvoiceTableWithExport, type InvoiceRow } from './xero-export-button'
 
 const FILTER_TABS = [
   { value: 'all', label: 'All' },
   { value: 'unpaid', label: 'Unpaid' },
   { value: 'paid', label: 'Paid' },
+  { value: 'needs-matching', label: 'Needs matching' },
 ] as const
 
 type Filter = (typeof FILTER_TABS)[number]['value']
@@ -41,13 +43,14 @@ export default async function MoneyPage({
   let query = supabase
     .from('invoices')
     .select(
-      'id, number, status, gst_rate, issue_date, due_date, paid_at, clients(name), jobs(id, number), invoice_lines(description, qty, unit_sell)'
+      'id, number, status, gst_rate, issue_date, due_date, paid_at, client_id, clients(name), jobs(id, number), invoice_lines(description, qty, unit_sell), origin, needs_review, xero_status, xero_amount_due, xero_online_url'
     )
     .order('created_at', { ascending: false })
   if (filter === 'unpaid') query = query.in('status', ['draft', 'sent'])
   if (filter === 'paid') query = query.eq('status', 'paid')
+  if (filter === 'needs-matching') query = query.eq('needs_review', true)
 
-  const [{ data: invoices }, { data: claims }] = await Promise.all([
+  const [{ data: invoices }, { data: claims }, xero] = await Promise.all([
     query,
     supabase
       .from('claims')
@@ -55,6 +58,7 @@ export default async function MoneyPage({
         'id, project_id, number, status, total_inc_gst, certified_amount, paid_at, projects(number, name)'
       )
       .order('created_at', { ascending: false }),
+    getXeroStatus(),
   ])
 
   const rows: InvoiceRow[] = (invoices ?? []).map((inv) => {
@@ -77,6 +81,12 @@ export default async function MoneyPage({
       issue_date: inv.issue_date as string,
       due_date: inv.due_date as string | null,
       paid_at: inv.paid_at as string | null,
+      origin: (inv.origin as 'ecr' | 'xero') ?? 'ecr',
+      needs_review: Boolean(inv.needs_review),
+      client_id: inv.client_id,
+      xero_status: inv.xero_status ?? null,
+      xero_amount_due: inv.xero_amount_due != null ? Number(inv.xero_amount_due) : null,
+      xero_online_url: inv.xero_online_url ?? null,
       xero: {
         number: inv.number,
         contactName: (inv.clients as unknown as { name: string } | null)?.name ?? '',
@@ -97,7 +107,9 @@ export default async function MoneyPage({
   const emptyMessage =
     filter === 'all'
       ? 'No invoices yet. Create one from a job card.'
-      : 'No invoices match this filter.'
+      : filter === 'needs-matching'
+        ? 'Nothing to match — every Xero invoice is linked to a job.'
+        : 'No invoices match this filter.'
 
   return (
     <div className="flex flex-col gap-6">
@@ -123,7 +135,7 @@ export default async function MoneyPage({
         ))}
       </div>
 
-      <InvoiceTableWithExport rows={rows} emptyMessage={emptyMessage} />
+      <InvoiceTableWithExport rows={rows} emptyMessage={emptyMessage} xeroConnected={xero.connected} />
 
       {/* Progress claims */}
       <section className="flex flex-col gap-3">

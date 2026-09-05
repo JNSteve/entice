@@ -167,7 +167,7 @@ export default async function JobDetailPage({
     const [{ data: invoices }, { count: quoteLineCount }] = await Promise.all([
       supabase
         .from('invoices')
-        .select('id, number, status, gst_rate, issue_date, paid_at, invoice_lines(qty, unit_sell)')
+        .select('id, number, status, gst_rate, issue_date, paid_at, origin, invoice_lines(qty, unit_sell)')
         .eq('job_id', id)
         .order('created_at'),
       job.quote_id
@@ -193,6 +193,7 @@ export default async function JobDetailPage({
         total,
         issue_date: inv.issue_date,
         paid_at: inv.paid_at,
+        origin: (inv.origin as 'ecr' | 'xero') ?? 'ecr',
       }
     })
 

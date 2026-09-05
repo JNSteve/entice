@@ -1253,6 +1253,8 @@ export type SystemHealthData = {
   unresolvedErrors: number | null
   /** The latest access review, when its next_review_due has passed. */
   accessReviewOverdue: { number: string; due: string } | null
+  /** Xero connection needing attention (null when connected/healthy or not configured). */
+  xero: { label: string; detail: string } | null
 }
 
 export function SystemHealthCard({ data }: { data: SystemHealthData | null }) {
@@ -1260,7 +1262,8 @@ export function SystemHealthCard({ data }: { data: SystemHealthData | null }) {
     data !== null &&
     !data.backupStale &&
     (data.unresolvedErrors ?? 0) === 0 &&
-    data.accessReviewOverdue === null
+    data.accessReviewOverdue === null &&
+    data.xero === null
 
   return (
     <DashboardCard title="System health" href="/settings?tab=backup">
@@ -1270,6 +1273,15 @@ export function SystemHealthCard({ data }: { data: SystemHealthData | null }) {
         <Muted>Backups, error capture and access reviews are in order.</Muted>
       ) : (
         <>
+          {data.xero && (
+            <div className="flex items-start justify-between gap-2 text-sm">
+              <div className="flex min-w-0 flex-col">
+                <Link href="/settings?tab=xero" className="truncate hover:underline">{data.xero.label}</Link>
+                <span className="text-xs text-muted-foreground">{data.xero.detail}</span>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-red-600 dark:text-red-400">Xero</span>
+            </div>
+          )}
           {data.backupStale && (
             <div className="flex items-start justify-between gap-2 text-sm">
               <div className="flex min-w-0 flex-col">

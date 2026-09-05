@@ -941,6 +941,16 @@ export default async function PortalSitePage({
                       <DownloadIcon className="size-4" />
                     </a>
                   )}
+                  {b.kind === 'invoice' && b.pay_url && b.status === 'sent' && (
+                    <a
+                      href={b.pay_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex min-h-11 shrink-0 items-center rounded-xl bg-[#162040] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1e2c56]"
+                    >
+                      Pay now
+                    </a>
+                  )}
                   <div className="flex shrink-0 flex-col items-end gap-1">
                     <span className="text-sm font-bold tabular-nums text-slate-900">
                       {b.amount != null ? aud(b.amount) : '—'}

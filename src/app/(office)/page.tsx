@@ -15,6 +15,7 @@ import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { nowAU, todayAU } from '@/lib/tz'
 import { isBackupStale } from '@/lib/backup'
+import { getXeroStatus } from '@/lib/xero/status'
 import {
   PROPERTY_COMPLIANCE_KIND_LABELS,
   type PropertyComplianceKind,
@@ -1120,7 +1121,7 @@ async function loadSystemHealth(
   isAdmin: boolean,
   todayStr: string
 ): Promise<SystemHealthData> {
-  const [backupRes, reviewRes, errorsRes] = await Promise.all([
+  const [backupRes, reviewRes, errorsRes, xs] = await Promise.all([
     supabase
       .from('backup_runs')
       .select('started_at')
@@ -1141,6 +1142,7 @@ async function loadSystemHealth(
           .eq('resolved', false)
           .gte('at', subDays(new Date(), 7).toISOString())
       : Promise.resolve({ count: null, error: null }),
+    getXeroStatus(),
   ])
   if (backupRes.error) throw backupRes.error
   if (reviewRes.error) throw reviewRes.error
@@ -1160,6 +1162,12 @@ async function loadSystemHealth(
       latestReview && latestReview.next_review_due < todayStr
         ? { number: latestReview.number, due: latestReview.next_review_due }
         : null,
+    xero:
+      xs.status === 'needs_reconnect'
+        ? { label: 'Xero needs reconnecting', detail: xs.pendingOrgSwitch ? 'Confirm the organisation switch in Settings → Xero' : 'Sending via Xero and the nightly sync are paused' }
+        : xs.connected && (xs.lastSyncStatus === 'failed' || xs.lastSyncStatus === 'partial')
+          ? { label: `Last Xero sync ${xs.lastSyncStatus}`, detail: 'Open the sync register for details' }
+          : null,
   }
 }
 

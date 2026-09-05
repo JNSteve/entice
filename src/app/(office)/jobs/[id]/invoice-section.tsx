@@ -33,6 +33,7 @@ export interface JobInvoiceRow {
   total: number
   issue_date: string
   paid_at: string | null
+  origin: 'ecr' | 'xero'
 }
 
 /** Job statuses from which invoicing is allowed (progress billing onwards). */
@@ -126,6 +127,9 @@ export function InvoiceSection({
                     >
                       {inv.number}
                     </Link>
+                    {inv.origin === 'xero' && (
+                      <span className="ml-2 rounded-full border px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted-foreground">from Xero</span>
+                    )}
                   </TableCell>
                   <TableCell>
                     <StatusBadge status={inv.status} />

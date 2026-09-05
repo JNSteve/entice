@@ -124,6 +124,7 @@ export interface PortalBillingRow {
   date: string
   amount: number | null
   status: string
+  pay_url?: string | null
 }
 
 // ─── Works payloads (portal_works / portal_work_detail, migration 0062) ──────
