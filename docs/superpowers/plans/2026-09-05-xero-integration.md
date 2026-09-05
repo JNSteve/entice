@@ -326,7 +326,7 @@ end $$;
 - [ ] **Step 2: Sanity-check the SQL parses**
 
 Run (Git Bash): `node -e "const s=require('fs').readFileSync('supabase/migrations/0063_xero.sql','utf8');console.log((s.match(/create table/g)||[]).length,'tables;',(s.match(/create policy/g)||[]).length,'policies')"`
-Expected: `9 tables; 7 policies`
+Expected: `8 tables; 7 policies`
 
 - [ ] **Step 3: Commit**
 
