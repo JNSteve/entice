@@ -482,6 +482,19 @@ export const paymentSchema = z.object({
 
 export type PaymentInput = z.infer<typeof paymentSchema>
 
+// ─── Xero mapping (Settings → Xero) ───────────────────────────────────────────
+
+export const xeroMappingSchema = z.object({
+  xero_email_mode: z.enum(['xero', 'ecr']),
+  xero_default_account: optionalText.nullable(),
+  xero_account_by_kind: z.partialRecord(z.enum(RATE_KINDS), z.string().min(1)).default({}),
+  xero_claims_account: optionalText.nullable(),
+  xero_gst_tax_type: z.string().min(1),
+  xero_no_gst_tax_type: z.string().min(1),
+  xero_tracking_category_id: optionalText.nullable(),
+})
+export type XeroMappingInput = z.infer<typeof xeroMappingSchema>
+
 // ─── Checklist templates ─────────────────────────────────────────────────────
 
 export const checklistTemplateSchema = z.object({

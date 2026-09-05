@@ -31,6 +31,7 @@ import {
   type ItpTemplateItemRow,
 } from './itp-section'
 import { EmailSection, type EmailLogRow } from './email-section'
+import { XeroSection, type XeroSectionProps } from './xero-section'
 import {
   EstimatingSection,
   type TakeoffAssemblyRow,
@@ -57,6 +58,7 @@ export type SettingsTab =
   | 'security'
   | 'itp'
   | 'email'
+  | 'xero'
   | 'archive'
 
 const TABS: { value: SettingsTab; label: string }[] = [
@@ -75,6 +77,7 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'itp', label: 'ITP templates' },
   { value: 'backup', label: 'Backups' },
   { value: 'email', label: 'Email' },
+  { value: 'xero', label: 'Xero' },
   { value: 'errors', label: 'Errors' },
   { value: 'security', label: 'Security' },
 ]
@@ -105,6 +108,7 @@ interface SettingsTabsProps {
   emailLog: EmailLogRow[]
   emailKeyPresent: boolean
   emailFromPresent: boolean
+  xero: XeroSectionProps
   archivedQuotes: ArchivedRecordRow[]
   archivedJobs: ArchivedRecordRow[]
   archivedProjects: ArchivedRecordRow[]
@@ -136,6 +140,7 @@ export function SettingsTabs({
   emailLog,
   emailKeyPresent,
   emailFromPresent,
+  xero,
   archivedQuotes,
   archivedJobs,
   archivedProjects,
@@ -219,6 +224,9 @@ export function SettingsTabs({
           fromPresent={emailFromPresent}
           rows={emailLog}
         />
+      </TabsContent>
+      <TabsContent value="xero" className="pt-4">
+        <XeroSection {...xero} />
       </TabsContent>
     </Tabs>
   )

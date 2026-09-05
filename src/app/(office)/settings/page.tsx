@@ -8,6 +8,8 @@ import {
   type QuoteTemplateRow,
 } from '@/lib/quote-doc'
 import { SettingsTabs, type SettingsTab } from './settings-tabs'
+import { getXeroStatus } from '@/lib/xero/status'
+import type { XeroRunRow } from './xero-section'
 
 // Quote-template PDF import (OpenAI reading a whole quote) can run past the
 // default serverless window — give actions invoked from this page headroom.
@@ -30,15 +32,16 @@ const VALID_TABS: SettingsTab[] = [
   'security',
   'itp',
   'email',
+  'xero',
   'archive',
 ]
 
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>
+  searchParams: Promise<{ tab?: string; xero?: string }>
 }) {
-  const { tab } = await searchParams
+  const { tab, xero: xeroFlag } = await searchParams
   const initialTab: SettingsTab = VALID_TABS.includes(tab as SettingsTab)
     ? (tab as SettingsTab)
     : 'company'
@@ -72,6 +75,14 @@ export default async function SettingsPage({
     { data: archivedQuotes },
     { data: archivedJobs },
     { data: archivedProjects },
+    { data: xeroAccounts },
+    { data: xeroTaxRates },
+    { data: xeroCategories },
+    { data: xeroContacts },
+    { data: xeroUnlinked },
+    { data: xeroPendingClaims },
+    { data: xeroRuns },
+    { data: xeroEvents },
   ] = await Promise.all([
     supabase.from('settings').select('*').eq('id', 1).single(),
     supabase
@@ -180,7 +191,17 @@ export default async function SettingsPage({
       .select('id, number, name, archived_at, clients(name)')
       .eq('archived', true)
       .order('archived_at', { ascending: false }),
+    supabase.from('xero_accounts').select('code, name, type, status').order('code'),
+    supabase.from('xero_tax_rates').select('tax_type, name, effective_rate').order('name'),
+    supabase.from('xero_tracking_categories').select('id, name, status').order('name'),
+    supabase.from('xero_contacts').select('contact_id, name, abn, has_email').neq('status', 'ARCHIVED').order('name'),
+    supabase.from('clients').select('id, name, abn').is('xero_contact_id', null).eq('archived', false).order('name'),
+    supabase.from('claims').select('id, project_id, number, certified_amount, projects(number)').in('status', ['certified', 'paid']).is('xero_invoice_id', null).order('certified_at', { ascending: false }),
+    supabase.from('xero_sync_runs').select('*').order('started_at', { ascending: false }).limit(20),
+    supabase.from('xero_sync_events').select('id, created_at, direction, entity, action, detail, xero_id').order('created_at', { ascending: false }).limit(50),
   ])
+
+  const xeroStatus = await getXeroStatus()
 
   // Build per-template submission counts
   const countMap = new Map<string, number>()
@@ -337,6 +358,32 @@ export default async function SettingsPage({
         emailLog={emailLog ?? []}
         emailKeyPresent={Boolean(process.env.RESEND_API_KEY?.trim())}
         emailFromPresent={Boolean(process.env.EMAIL_FROM?.trim())}
+        xero={{
+          status: xeroStatus,
+          flag: xeroFlag ?? null,
+          mapping: {
+            xero_email_mode: (settings?.xero_email_mode as 'xero' | 'ecr') ?? 'xero',
+            xero_default_account: settings?.xero_default_account ?? null,
+            xero_account_by_kind: (settings?.xero_account_by_kind as Record<string, string>) ?? {},
+            xero_claims_account: settings?.xero_claims_account ?? null,
+            xero_gst_tax_type: settings?.xero_gst_tax_type ?? 'OUTPUT',
+            xero_no_gst_tax_type: settings?.xero_no_gst_tax_type ?? 'EXEMPTOUTPUT',
+            xero_tracking_category_id: settings?.xero_tracking_category_id ?? null,
+          },
+          accounts: xeroAccounts ?? [],
+          taxRates: (xeroTaxRates ?? []).map((t) => ({ ...t, effective_rate: t.effective_rate != null ? Number(t.effective_rate) : null })),
+          trackingCategories: xeroCategories ?? [],
+          contacts: xeroContacts ?? [],
+          unlinkedClients: xeroUnlinked ?? [],
+          pendingClaims: (xeroPendingClaims ?? []).map((c) => ({
+            id: c.id as string, project_id: c.project_id as string, number: Number(c.number),
+            certified_amount: c.certified_amount != null ? Number(c.certified_amount) : null,
+            project_number: (c.projects as unknown as { number: string } | null)?.number ?? '—',
+          })),
+          runs: (xeroRuns ?? []) as XeroRunRow[],
+          events: xeroEvents ?? [],
+          isAdmin: caller.role === 'admin',
+        }}
         archivedQuotes={archivedQuoteRows}
         archivedJobs={archivedJobRows}
         archivedProjects={archivedProjectRows}
