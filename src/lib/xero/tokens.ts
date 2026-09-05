@@ -158,7 +158,7 @@ export async function storeTokenSet(
 }
 
 export async function markNeedsReconnect(admin: Admin, reason: string): Promise<void> {
-  await admin
+  const { error } = await admin
     .from('xero_connection')
     .update({
       status: 'needs_reconnect',
@@ -167,6 +167,7 @@ export async function markNeedsReconnect(admin: Admin, reason: string): Promise<
       updated_at: new Date().toISOString(),
     })
     .eq('id', 1)
+  if (error) console.error('[xero] could not mark the connection needs_reconnect:', error.message)
 
   // Office alert (skip-logged until email is configured; never throws).
   const { data: settings } = await admin

@@ -55,7 +55,7 @@ export async function startRun(
 
 export async function logEvent(admin: Admin, runId: string, ev: XeroEvent): Promise<void> {
   try {
-    await admin.from('xero_sync_events').insert({
+    const { error } = await admin.from('xero_sync_events').insert({
       run_id: runId,
       direction: ev.direction,
       entity: ev.entity,
@@ -64,6 +64,7 @@ export async function logEvent(admin: Admin, runId: string, ev: XeroEvent): Prom
       action: ev.action,
       detail: ev.detail ? ev.detail.slice(0, 1000) : null,
     })
+    if (error) console.error('[xero] failed to write sync event:', error.message)
   } catch (err) {
     console.error('[xero] failed to write sync event:', err)
   }

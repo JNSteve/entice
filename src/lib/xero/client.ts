@@ -89,7 +89,6 @@ export function createXeroApi(deps: XeroApiDeps): XeroApi {
           await sleep(ms)
           continue
         }
-        await sleep(ms)
         throw new XeroRateLimitError(await res.json().catch(() => null))
       }
       if (res.status === 204) return undefined as T
