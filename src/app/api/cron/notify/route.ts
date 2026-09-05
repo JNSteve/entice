@@ -2,9 +2,10 @@ import { NextResponse } from 'next/server'
 import { timingSafeEqual } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/server'
 import { runDailyDigests } from '@/lib/notify'
+import { runXeroSync } from '@/lib/xero/pull'
 
 export const runtime = 'nodejs'
-export const maxDuration = 120
+export const maxDuration = 300
 
 /**
  * Daily notification digests (CP3).
@@ -54,7 +55,16 @@ export async function GET(request: Request) {
 
   try {
     const result = await runDailyDigests(admin)
-    return NextResponse.json({ ok: true, ...result })
+    // Xero nightly pull rides this cron (Vercel Hobby allows two crons; both
+    // are used). runXeroSync returns { skipped } when nothing is connected.
+    let xero: unknown = null
+    try {
+      xero = await runXeroSync(admin, { trigger: 'cron' })
+    } catch (err) {
+      xero = { error: err instanceof Error ? err.message : String(err) }
+      console.error('[notify] xero sync failed:', xero)
+    }
+    return NextResponse.json({ ok: true, ...result, xero })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[notify] digest run failed:', message)
