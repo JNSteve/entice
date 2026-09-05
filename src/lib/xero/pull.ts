@@ -77,6 +77,7 @@ export async function runXeroSync(
   const api = xeroApiForAdmin(admin)
   let status: 'success' | 'partial' | 'failed' = 'success'
   let fatal: string | null = null
+  let truncated = false
 
   try {
     // 1. Token warm-up — refreshing here keeps the 60-day refresh token alive.
@@ -129,6 +130,7 @@ export async function runXeroSync(
   } catch (err) {
     fatal = err instanceof Error ? err.message : String(err)
     status = err instanceof XeroRateLimitError ? 'partial' : 'failed'
+    truncated = true
     s.errors++
     await logEvent(admin, runId, { direction: 'pull', entity: 'connection', action: 'failed', detail: fatal })
   }
@@ -146,13 +148,14 @@ export async function runXeroSync(
     errors: s.errors,
     error: fatal,
   })
-  // Only advance the watermark on a fully clean run — a partial or failed run
-  // must not skip past changes it didn't get to (the 1-hour overlap plus
-  // idempotent upserts make re-processing safe on the next run).
+  // Advance the watermark whenever the run reached the end of every page,
+  // even if individual records warned or failed (those are in the register
+  // and inside the 1-hour overlap on the next run). Hold it back only when
+  // the run was truncated (rate limit or a fatal error) so nothing is skipped.
   await admin
     .from('xero_connection')
     .update({
-      last_sync_at: status === 'success' ? startedAt : conn.last_sync_at,
+      last_sync_at: truncated ? conn.last_sync_at : startedAt,
       last_sync_status: status,
       updated_at: new Date().toISOString(),
     })
@@ -217,7 +220,10 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
         const { error: linesErr } = await admin
           .from('invoice_lines')
           .insert(m.lines.map((l) => ({ ...l, invoice_id: known.id })))
-        if (linesErr) throw linesErr
+        if (linesErr) {
+          await admin.from('invoices').update({ needs_review: true }).eq('id', known.id)
+          throw new Error(`Could not refresh lines for ${known.number}: ${linesErr.message}`)
+        }
       }
       if (!m.reconciles) {
         await logEvent(admin, runId, {
