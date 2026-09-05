@@ -642,7 +642,7 @@ function InvoiceLineRow({
         />
         <select
           aria-label="Line kind (Xero account)"
-          className="h-7 w-fit rounded-md border border-input bg-transparent px-1.5 text-base text-muted-foreground md:text-xs"
+          className="h-7 w-fit rounded-md border border-input bg-transparent px-1.5 text-base text-muted-foreground md:text-sm"
           value={kind}
           onChange={(e) => {
             setKind(e.target.value)
