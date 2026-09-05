@@ -3,11 +3,13 @@
 import { revalidatePath } from 'next/cache'
 import { format, lastDayOfMonth } from 'date-fns'
 import { requireRole } from '@/lib/auth'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { buildSnapshotLines, computeClaimTotals, computeLine } from '@/lib/claim-logic'
 import { round6 } from '@/lib/money'
 import { claimCertifySchema, claimLineUpdateSchema } from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
+import { getXeroStatus } from '@/lib/xero/status'
+import { pushClaimToXero } from '@/lib/xero/push'
 
 type Result = { error?: string }
 
@@ -325,8 +327,8 @@ export async function certifyClaim(
   claimId: string,
   projectId: string,
   data: unknown
-): Promise<Result> {
-  await requireRole('admin', 'office')
+): Promise<Result & { warnings?: string[] }> {
+  const profile = await requireRole('admin', 'office')
 
   const parsed = claimCertifySchema.safeParse(data)
   if (!parsed.success) {
@@ -357,6 +359,16 @@ export async function certifyClaim(
     .eq('id', claimId)
   if (error) return { error: error.message }
 
+  // Certification is a fact — it stands even if Xero is unreachable. The Xero
+  // tab lists un-pushed certified claims with a Retry (spec §5.3).
+  const xero = await getXeroStatus()
+  if (xero.connected) {
+    const pushed = await pushClaimToXero(createAdminClient(), claimId, profile.id)
+    revalidateClaim(projectId, claimId)
+    if (!pushed.ok) return { error: `Certified, but not in Xero yet: ${pushed.error}` }
+    return { warnings: pushed.warnings }
+  }
+
   revalidateClaim(projectId, claimId)
   return {}
 }
@@ -373,11 +385,14 @@ export async function markClaimPaid(
 
   const { data: claim } = await supabase
     .from('claims')
-    .select('id, status, certified_amount, total_inc_gst')
+    .select('id, status, certified_amount, total_inc_gst, xero_invoice_id')
     .eq('id', claimId)
     .eq('project_id', projectId)
     .single()
   if (!claim) return { error: 'Claim not found' }
+  if (claim.xero_invoice_id) {
+    return { error: 'Managed in Xero — mark the payment in Xero; ECR picks it up on the next sync.' }
+  }
   if (claim.status !== 'certified') {
     return { error: 'Only certified claims can be marked paid' }
   }

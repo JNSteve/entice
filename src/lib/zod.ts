@@ -464,6 +464,7 @@ export const invoiceLineUpdateSchema = z.object({
   qty: z.coerce.number().min(0),
   unit: z.string().min(1, 'Unit is required'),
   unit_sell: z.coerce.number().min(0),
+  kind: z.enum(RATE_KINDS).nullable().optional(),
 })
 
 export type InvoiceLineUpdateInput = z.infer<typeof invoiceLineUpdateSchema>

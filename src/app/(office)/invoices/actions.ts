@@ -8,10 +8,12 @@ import { requireRole } from '@/lib/auth'
 import { issueProblem } from '@/lib/issue-guards'
 import { syncJobStatus } from '@/lib/job-status'
 import { notifyClientInvoiceSent } from '@/lib/notify'
-import { createClient } from '@/lib/supabase/server'
+import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { docTotals, round2 } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
 import { nowAU } from '@/lib/tz'
+import { getXeroStatus } from '@/lib/xero/status'
+import { pushInvoiceToXero } from '@/lib/xero/push'
 import {
   invoiceBasisSchema,
   invoiceHeaderSchema,
@@ -79,7 +81,7 @@ export async function createInvoiceFromJob(
   }
 
   // Build the lines for the chosen basis before touching the sequence.
-  let lines: { description: string; qty: number; unit: string; unit_sell: number }[] = []
+  let lines: { description: string; qty: number; unit: string; unit_sell: number; kind: string | null }[] = []
 
   if (parsed.data === 'quote') {
     if (!job.quote_id) return { error: 'Job has no linked quote' }
@@ -99,7 +101,7 @@ export async function createInvoiceFromJob(
           .order('id'),
         supabase
           .from('quote_lines')
-          .select('section_id, position, description, qty, unit, unit_sell')
+          .select('section_id, position, description, qty, unit, unit_sell, kind')
           .eq('quote_id', job.quote_id)
           .order('position')
           .order('id'),
@@ -125,6 +127,7 @@ export async function createInvoiceFromJob(
       qty: Number(l.qty),
       unit: l.unit,
       unit_sell: Number(l.unit_sell),
+      kind: (l.kind as string | null) ?? null,
     }))
   } else if (parsed.data === 'costs') {
     const { data: costs } = await supabase
@@ -141,6 +144,7 @@ export async function createInvoiceFromJob(
       qty: 1,
       unit: 'ea',
       unit_sell: Number(c.amount),
+      kind: null,
     }))
   }
 
@@ -215,8 +219,10 @@ export async function updateInvoiceHeader(
   return {}
 }
 
-export async function markInvoiceSent(id: string): Promise<Result> {
-  await requireRole('admin', 'office')
+export async function markInvoiceSent(
+  id: string
+): Promise<Result & { warnings?: string[]; viaXero?: boolean }> {
+  const profile = await requireRole('admin', 'office')
 
   const supabase = await createClient()
   const { data: invoice } = await supabase
@@ -240,6 +246,18 @@ export async function markInvoiceSent(id: string): Promise<Result> {
   )
   if (problem) return { error: problem }
 
+  // Xero connected → the invoice is created + emailed by Xero FIRST; only a
+  // successful push flips ECR to 'sent' (spec §5.2). Failure leaves a draft.
+  const xero = await getXeroStatus()
+  let warnings: string[] = []
+  let emailedByXero = false
+  if (xero.connected) {
+    const pushed = await pushInvoiceToXero(createAdminClient(), id, profile.id)
+    if (!pushed.ok) return { error: `Xero: ${pushed.error}` }
+    warnings = pushed.warnings
+    emailedByXero = pushed.emailed
+  }
+
   const { error } = await supabase
     .from('invoices')
     .update({ status: 'sent', sent_at: new Date().toISOString() })
@@ -254,7 +272,7 @@ export async function markInvoiceSent(id: string): Promise<Result> {
   after(() => notifyClientInvoiceSent({ invoiceId: id }))
 
   revalidateInvoice(id, invoice.job_id)
-  return {}
+  return { warnings, viaXero: xero.connected && emailedByXero }
 }
 
 export async function voidInvoice(id: string): Promise<Result> {
@@ -263,10 +281,13 @@ export async function voidInvoice(id: string): Promise<Result> {
   const supabase = await createClient()
   const { data: invoice } = await supabase
     .from('invoices')
-    .select('id, status, job_id')
+    .select('id, status, job_id, xero_invoice_id')
     .eq('id', id)
     .single()
   if (!invoice) return { error: 'Invoice not found' }
+  if (invoice.xero_invoice_id) {
+    return { error: 'Managed in Xero — record payments, credits and voids in Xero; ECR picks them up on the next sync.' }
+  }
   if (!['draft', 'sent'].includes(invoice.status)) {
     return { error: `Can't void a ${invoice.status} invoice` }
   }
@@ -457,10 +478,13 @@ export async function recordPayment(data: unknown): Promise<Result> {
   const supabase = await createClient()
   const { data: invoice } = await supabase
     .from('invoices')
-    .select('id, status, job_id, gst_rate')
+    .select('id, status, job_id, gst_rate, xero_invoice_id')
     .eq('id', parsed.data.invoice_id)
     .single()
   if (!invoice) return { error: 'Invoice not found' }
+  if (invoice.xero_invoice_id) {
+    return { error: 'Managed in Xero — record payments, credits and voids in Xero; ECR picks them up on the next sync.' }
+  }
   if (invoice.status !== 'sent') {
     return { error: `Payments can only be recorded on sent invoices (this one is ${invoice.status})` }
   }
@@ -520,17 +544,23 @@ export async function deletePayment(paymentId: string): Promise<Result> {
   const supabase = await createClient()
   const { data: payment } = await supabase
     .from('payments')
-    .select('id, invoice_id')
+    .select('id, invoice_id, source')
     .eq('id', paymentId)
     .single()
   if (!payment || !payment.invoice_id) return { error: 'Payment not found' }
+  if (payment.source === 'xero') {
+    return { error: 'Managed in Xero — record payments, credits and voids in Xero; ECR picks them up on the next sync.' }
+  }
 
   const { data: invoice } = await supabase
     .from('invoices')
-    .select('id, status, job_id, gst_rate')
+    .select('id, status, job_id, gst_rate, xero_invoice_id')
     .eq('id', payment.invoice_id)
     .single()
   if (!invoice) return { error: 'Invoice not found' }
+  if (invoice.xero_invoice_id) {
+    return { error: 'Managed in Xero — record payments, credits and voids in Xero; ECR picks them up on the next sync.' }
+  }
 
   const { error } = await supabase.from('payments').delete().eq('id', paymentId)
   if (error) return { error: error.message }
@@ -564,6 +594,47 @@ export async function deletePayment(paymentId: string): Promise<Result> {
   }
 
   revalidateInvoice(invoice.id, invoice.job_id)
+  return {}
+}
+
+/** Needs-matching queue (Money page): attach a Xero-raised mirror to a job. */
+export async function linkInvoiceToJob(invoiceId: string, jobId: string | null): Promise<Result> {
+  const profile = await requireRole('admin', 'office')
+  const supabase = await createClient()
+  const { data: invoice } = await supabase
+    .from('invoices')
+    .select('id, origin, client_id, job_id')
+    .eq('id', invoiceId)
+    .single()
+  if (!invoice) return { error: 'Invoice not found' }
+  if (invoice.origin !== 'xero') return { error: 'Only invoices raised in Xero can be re-matched' }
+
+  if (jobId) {
+    const { data: job } = await supabase.from('jobs').select('id, client_id').eq('id', jobId).single()
+    if (!job) return { error: 'Job not found' }
+    if (job.client_id !== invoice.client_id) return { error: 'That job belongs to a different client' }
+  }
+
+  const { error } = await supabase
+    .from('invoices')
+    .update({ job_id: jobId, needs_review: false })
+    .eq('id', invoiceId)
+  if (error) return { error: error.message }
+
+  await syncJobStatus(supabase, invoice.job_id as string | null)
+  await syncJobStatus(supabase, jobId)
+
+  try {
+    const admin = createAdminClient()
+    const { startRun, logEvent, finishRun } = await import('@/lib/xero/register')
+    const runId = await startRun(admin, 'manual', profile.id)
+    await logEvent(admin, runId, { direction: 'pull', entity: 'invoice', entityId: invoiceId, action: 'matched', detail: jobId ? `Linked to job by ${profile.full_name}` : `Unlinked by ${profile.full_name}` })
+    await finishRun(admin, runId, { status: 'success' })
+  } catch {
+    // Register write is best-effort here (local dev has no service role).
+  }
+
+  revalidateInvoice(invoiceId, jobId ?? invoice.job_id)
   return {}
 }
 
