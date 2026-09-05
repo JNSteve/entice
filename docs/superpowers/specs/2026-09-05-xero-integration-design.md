@@ -93,7 +93,7 @@ Replaces `markInvoiceSent` when a connection is active. Runs server-side, admin/
 1. Existing guards from `markInvoiceSent` (draft, non-empty, non-zero total).
 2. **Contact**: use `clients.xero_contact_id`; else search Xero by ABN, then exact name; else create. Store the id.
 3. **Tracking option**: use `jobs.xero_tracking_option_id`; else create under the configured category, store the id. If the category is full (VERIFY-3) the push continues without tracking and logs a warning event.
-4. **Look-before-create**: `GET /Invoices?InvoiceNumbers={ecr number}`. If one exists (from an earlier timed-out attempt) adopt it, otherwise create:
+4. **Look-before-create**: `GET /Invoices?InvoiceNumbers={ecr number}`. Adopt an existing invoice **only** if it is an `ACCREC` invoice for the **same contact** in `AUTHORISED` or `PAID` (an earlier attempt that timed out before ECR recorded it). Voided/deleted ones are ignored. Any other live invoice with that number — a supplier bill, another contact's invoice, a bookkeeper's draft — is a **conflict and the push fails** with a clear message rather than adopting or duplicating (this is the VERIFY-1 collision case). Otherwise create:
    - `Type: ACCREC`, `Status: AUTHORISED`, `LineAmountTypes: Exclusive`
    - `InvoiceNumber`: the ECR number; `Reference`: job number + " " + job title (truncated to Xero's limit)
    - `Date` = `issue_date`; `DueDate` = `due_date ?? issue_date + clients.payment_terms_days`
@@ -120,7 +120,7 @@ Runs inside the existing `/api/cron/notify` handler (Vercel Hobby allows two cro
 
 1. **Token**: refresh if the access token expires within 5 minutes. Store the rotated refresh token before using it. `invalid_grant` → connection `needs_reconnect`, office email via the existing email engine, run `failed`.
 2. **Reference data**: accounts, tax rates, tracking categories → upsert cache.
-3. **Invoices**: `GET /Invoices?where=Type=="ACCREC"&Statuses=AUTHORISED,PAID,VOIDED&page=n` with `If-Modified-Since = last successful sync − 1 hour` (or 12 months back on the first run). For each:
+3. **Invoices**: `GET /Invoices?where=Type=="ACCREC"&Statuses=AUTHORISED,PAID,VOIDED&page=n` with `If-Modified-Since = last successful sync − 1 hour` (or 90 days back on the first run — the last quarter; older history stays in Xero). Each run has a 240-second budget: when it runs out the run stops, is marked `partial` and truncated, and resumes from the same watermark next time. The paged list may omit line items, so a mirror always fetches the full invoice before its lines are written or refreshed.. For each:
    - Known by `xero_invoice_id`; else by `InvoiceNumber == invoices.number` **only** for `origin = 'ecr'` invoices that are not yet linked, are `sent`/`paid`/`void`, and whose client's `xero_contact_id` agrees with the Xero contact (or either side is unknown) — a blank InvoiceNumber never matches. Claims are found by their stored `xero_invoice_id`. Update Xero-owned columns and derive status (§7); a `draft` is never status-flipped. Mirrors (`origin = 'xero'`) also get their lines and `gst_rate` re-derived from Xero on every sync.
    - Unknown: create a **mirror** `invoices` row with `origin = 'xero'`, `number` = Xero InvoiceNumber, header + lines copied, `client_id` from the contact link (or a **client created from name + ABN only** when no client matches — flagged `needs_review`), `job_id` from the tracking option, else from a job/project number found in `Reference` (same client only), else null → **Needs matching** queue. Lines and `gst_rate` come from the pure `mirrorLinesFromXero` (rate = TotalTax ÷ SubTotal; `Inclusive` unit prices backed out to ex-GST; `NoTax` → 0). When the ECR-derived total does not reconcile with Xero's `Total` within 2 cents the mirror is flagged `needs_review` and a warning is logged. If the lines cannot be written the mirror row is rolled back rather than left at $0.
 4. **Payments**: `GET /Payments` with the same `If-Modified-Since`, `PaymentType == "ACCRECPAYMENT"`. Upsert `payments` by `xero_payment_id` with `source = 'xero'`, `method = 'xero'`, `reference` = Xero Reference, against the linked invoice **or the pushed progress claim** (`claim_id`) — real Xero amounts, so part-payments are exact. A Xero `DELETED` payment removes **only** the ECR row that the sync itself created (`source = 'xero'`); ECR-entered payments are never deleted by the sync.
@@ -164,7 +164,9 @@ alter table invoice_lines add column kind text
 alter table claims
   add column xero_invoice_id text unique, add column xero_status text,
   add column xero_amount_due numeric(14,2), add column xero_online_url text,
-  add column xero_pushed_at timestamptz, add column xero_synced_at timestamptz;
+  add column xero_pushed_at timestamptz, add column xero_emailed_at timestamptz,
+  add column xero_synced_at timestamptz;
+-- partial indexes on jobs/projects.xero_tracking_option_id (the pull probes them per mirrored invoice)
 
 alter table payments
   add column xero_payment_id text unique,
