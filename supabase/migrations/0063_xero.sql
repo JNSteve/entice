@@ -60,6 +60,7 @@ alter table claims
   add column xero_amount_due numeric(14,2),
   add column xero_online_url text,
   add column xero_pushed_at timestamptz,
+  add column xero_emailed_at timestamptz,
   add column xero_synced_at timestamptz;
 
 alter table payments
@@ -69,6 +70,11 @@ alter table payments
 alter table clients  add column xero_contact_id text unique;
 alter table jobs     add column xero_tracking_option_id text;
 alter table projects add column xero_tracking_option_id text;
+
+-- The pull matches mirrored invoices to work by tracking option, and the
+-- nightly hygiene pass asks which options are still in use.
+create index jobs_xero_tracking_idx on jobs (xero_tracking_option_id) where xero_tracking_option_id is not null;
+create index projects_xero_tracking_idx on projects (xero_tracking_option_id) where xero_tracking_option_id is not null;
 
 ------------------------------------------------------------------------------
 -- 3. Reference caches — admin/office read, service-role writes

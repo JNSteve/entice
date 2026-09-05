@@ -1,4 +1,3 @@
-// src/lib/xero/types.ts
 /** Xero Accounting API shapes — ONLY the fields spec §3 allows us to read. */
 
 export type XeroTracking = {

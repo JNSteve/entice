@@ -10,12 +10,13 @@ import {
   normaliseAbn,
   parseXeroDate,
   parseXeroInstant,
+  pickAdoptableInvoice,
   totalsDiffer,
   workNumberFromReference,
   xeroErrorMessage,
   xeroLinesToInvoiceLines,
 } from '../src/lib/xero/map'
-import type { XeroMapping } from '../src/lib/xero/types'
+import type { XeroInvoice, XeroMapping } from '../src/lib/xero/types'
 
 const mapping: XeroMapping = {
   emailMode: 'xero',
@@ -278,6 +279,14 @@ describe('misc', () => {
     expect(xeroErrorMessage({ Title: 'Forbidden' })).toBe('Forbidden')
     expect(xeroErrorMessage(null)).toBe('Xero request failed')
   })
+
+  test('xeroErrorMessage survives malformed Elements without throwing', () => {
+    expect(xeroErrorMessage({ Elements: 'x' })).toBe('Xero request failed')
+    expect(xeroErrorMessage({ Elements: [null] })).toBe('Xero request failed')
+    expect(xeroErrorMessage({ Elements: [{ ValidationErrors: 'nope' }], Detail: 'Bad request' })).toBe(
+      'Bad request'
+    )
+  })
 })
 
 describe('mirrorLinesFromXero', () => {
@@ -323,5 +332,56 @@ describe('mirrorLinesFromXero', () => {
     const m = mirrorLinesFromXero({ LineItems: [] })
     expect(m.gst_rate).toBe(0)
     expect(m.lines).toEqual([])
+  })
+})
+
+describe('pickAdoptableInvoice', () => {
+  const xi = (over: Partial<XeroInvoice> = {}): XeroInvoice => ({
+    InvoiceID: 'x-1',
+    InvoiceNumber: 'INV-0001',
+    Type: 'ACCREC',
+    Status: 'AUTHORISED',
+    Contact: { ContactID: 'c-1' },
+    ...over,
+  })
+
+  test('adopts an AUTHORISED ACCREC for the same contact', () => {
+    const inv = xi()
+    expect(pickAdoptableInvoice([inv], 'c-1')).toEqual({ adopt: inv, conflict: null })
+  })
+
+  test('adopts a PAID ACCREC for the same contact', () => {
+    const inv = xi({ Status: 'PAID' })
+    expect(pickAdoptableInvoice([inv], 'c-1')).toEqual({ adopt: inv, conflict: null })
+  })
+
+  test('ignores VOIDED and DELETED — nothing to adopt, nothing in the way', () => {
+    const r = pickAdoptableInvoice([xi({ Status: 'VOIDED' }), xi({ Status: 'DELETED' })], 'c-1')
+    expect(r).toEqual({ adopt: null, conflict: null })
+  })
+
+  test('a live invoice for a different contact is a conflict, never adopted', () => {
+    const other = xi({ Contact: { ContactID: 'c-2' } })
+    expect(pickAdoptableInvoice([other], 'c-1')).toEqual({ adopt: null, conflict: other })
+  })
+
+  test("a bookkeeper's DRAFT on the same contact is a conflict", () => {
+    const draft = xi({ Status: 'DRAFT' })
+    expect(pickAdoptableInvoice([draft], 'c-1')).toEqual({ adopt: null, conflict: draft })
+  })
+
+  test('a supplier bill (ACCPAY) with the same number is a conflict', () => {
+    const bill = xi({ Type: 'ACCPAY' })
+    expect(pickAdoptableInvoice([bill], 'c-1')).toEqual({ adopt: null, conflict: bill })
+  })
+
+  test('adopts the right one even when a stranger comes back first', () => {
+    const stranger = xi({ InvoiceID: 'x-2', Contact: { ContactID: 'c-2' } })
+    const ours = xi()
+    expect(pickAdoptableInvoice([stranger, ours], 'c-1')).toEqual({ adopt: ours, conflict: null })
+  })
+
+  test('empty list → both null (the push is free to create)', () => {
+    expect(pickAdoptableInvoice([], 'c-1')).toEqual({ adopt: null, conflict: null })
   })
 })

@@ -1,4 +1,3 @@
-// src/lib/xero/contacts.ts
 import type { XeroApi } from './client'
 import { ifModifiedSinceHeader, matchContactToClient, normaliseAbn, type ClientForMatch } from './map'
 import { logEvent, type Admin } from './register'
@@ -98,7 +97,10 @@ export async function ensureContactForClient(
   }
   if (candidates.length === 0) {
     const { Contacts = [] } = await api.get<{ Contacts?: XeroContact[] }>(
-      `/Contacts?where=${encodeURIComponent(`Name=="${(client.name as string).replace(/"/g, '\\"')}"`)}`
+      `/Contacts?where=${encodeURIComponent(
+        // Backslashes first, or escaping the quotes would double-escape them.
+        `Name=="${(client.name as string).replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+      )}`
     )
     candidates.push(...Contacts)
   }

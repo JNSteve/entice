@@ -17,6 +17,9 @@ import { aud, fmtDate } from '@/lib/format'
 import { getXeroStatus } from '@/lib/xero/status'
 import { InvoiceTableWithExport, type InvoiceRow } from './xero-export-button'
 
+// Xero pushes/syncs run inside actions invoked from this page.
+export const maxDuration = 300
+
 const FILTER_TABS = [
   { value: 'all', label: 'All' },
   { value: 'unpaid', label: 'Unpaid' },

@@ -1,4 +1,3 @@
-// src/lib/xero/status.ts
 import { createAdminClient } from '@/lib/supabase/server'
 import { xeroConfigured } from './config'
 import { loadConnection } from './tokens'

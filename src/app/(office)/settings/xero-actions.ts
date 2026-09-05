@@ -109,8 +109,10 @@ export async function confirmXeroOrgSwitch(typedName: string): Promise<Result> {
   const nulls = { xero_invoice_id: null, xero_number: null, xero_status: null, xero_total: null, xero_amount_paid: null, xero_amount_credited: null, xero_amount_due: null, xero_online_url: null, xero_pushed_at: null, xero_emailed_at: null, xero_synced_at: null }
   const steps = [
     a.from('invoices').update(nulls).not('xero_invoice_id', 'is', null),
-    a.from('claims').update({ xero_invoice_id: null, xero_status: null, xero_amount_due: null, xero_online_url: null, xero_pushed_at: null, xero_synced_at: null }).not('xero_invoice_id', 'is', null),
-    a.from('payments').update({ xero_payment_id: null }).not('xero_payment_id', 'is', null),
+    a.from('claims').update({ xero_invoice_id: null, xero_status: null, xero_amount_due: null, xero_online_url: null, xero_pushed_at: null, xero_emailed_at: null, xero_synced_at: null }).not('xero_invoice_id', 'is', null),
+    // Hand the old org's payments back to ECR: source='ecr' makes them
+    // deletable in the UI instead of stranding rows no sync will ever own.
+    a.from('payments').update({ xero_payment_id: null, source: 'ecr' }).not('xero_payment_id', 'is', null),
     a.from('clients').update({ xero_contact_id: null }).not('xero_contact_id', 'is', null),
     a.from('jobs').update({ xero_tracking_option_id: null }).not('xero_tracking_option_id', 'is', null),
     a.from('projects').update({ xero_tracking_option_id: null }).not('xero_tracking_option_id', 'is', null),

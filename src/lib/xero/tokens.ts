@@ -209,12 +209,13 @@ export async function clearConnection(admin: Admin): Promise<void> {
 /**
  * Decrypt the current access token, refreshing first when it is within five
  * minutes of expiry. Throws when the connection is not usable; on a refresh
- * failure marks needs_reconnect before throwing.
+ * failure marks needs_reconnect before throwing. `expiresAt` (ms epoch) lets
+ * callers cache the result instead of re-reading the row on every request.
  */
 export async function getValidAccessToken(
   admin: Admin,
   opts: { forceRefresh?: boolean } = {}
-): Promise<{ accessToken: string; tenantId: string }> {
+): Promise<{ accessToken: string; tenantId: string; expiresAt: number }> {
   const env = xeroEnv()
   if (!env) throw new Error('Xero is not configured on this deployment')
   const row = await loadConnection(admin)
@@ -227,13 +228,22 @@ export async function getValidAccessToken(
     opts.forceRefresh || !row.access_token_enc || expiresAt - Date.now() < REFRESH_AHEAD_MS
 
   if (!needsRefresh) {
-    return { accessToken: decryptSecret(row.access_token_enc!, env.tokenKey), tenantId: row.tenant_id }
+    return {
+      accessToken: decryptSecret(row.access_token_enc!, env.tokenKey),
+      tenantId: row.tenant_id,
+      expiresAt,
+    }
   }
 
   try {
     const fresh = await refreshTokenSet(decryptSecret(row.refresh_token_enc, env.tokenKey))
     await storeTokenSet(admin, fresh)
-    return { accessToken: fresh.access_token, tenantId: row.tenant_id }
+    // Xero access tokens live 30 minutes; assume 25 to stay conservative.
+    return {
+      accessToken: fresh.access_token,
+      tenantId: row.tenant_id,
+      expiresAt: Date.now() + 25 * 60_000,
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     if ((err as { code?: string }).code === 'invalid_grant' || /invalid_grant/.test(message)) {

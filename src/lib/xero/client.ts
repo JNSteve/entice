@@ -32,7 +32,7 @@ export class XeroRateLimitError extends XeroApiError {
   }
 }
 
-export type XeroAuth = { accessToken: string; tenantId: string }
+export type XeroAuth = { accessToken: string; tenantId: string; expiresAt?: number }
 
 export type XeroApiDeps = {
   getAuth: () => Promise<XeroAuth>
@@ -114,10 +114,26 @@ export function createXeroApi(deps: XeroApiDeps): XeroApi {
   }
 }
 
-/** The real thing: tokens from xero_connection via the service-role client. */
+const AUTH_CACHE_MARGIN_MS = 5 * 60_000
+
+/**
+ * The real thing: tokens from xero_connection via the service-role client.
+ * The auth is cached in the closure so a sync of hundreds of requests decrypts
+ * and re-reads the connection row once, not once per call; a 401 refresh
+ * replaces the cache.
+ */
 export function xeroApiForAdmin(admin: Admin): XeroApi {
+  let cached: XeroAuth | null = null
   return createXeroApi({
-    getAuth: () => getValidAccessToken(admin),
-    refresh: () => getValidAccessToken(admin, { forceRefresh: true }),
+    getAuth: async () => {
+      if (cached?.expiresAt && Date.now() < cached.expiresAt - AUTH_CACHE_MARGIN_MS) return cached
+      cached = await getValidAccessToken(admin)
+      return cached
+    },
+    refresh: async () => {
+      cached = null
+      cached = await getValidAccessToken(admin, { forceRefresh: true })
+      return cached
+    },
   })
 }

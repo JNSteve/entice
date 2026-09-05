@@ -1,4 +1,3 @@
-// src/lib/xero/tracking.ts
 import { XeroApiError, type XeroApi } from './client'
 import { loadMapping } from './mapping'
 import type { TrackingRef } from './map'

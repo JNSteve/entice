@@ -4,6 +4,9 @@ import { createClient } from '@/lib/supabase/server'
 import { round2 } from '@/lib/money'
 import { ClaimEditor, type ClaimLineRow } from './claim-editor'
 
+// Xero pushes/syncs run inside actions invoked from this page.
+export const maxDuration = 300
+
 export default async function ProjectClaimDetailPage({
   params,
 }: {

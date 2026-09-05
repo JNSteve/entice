@@ -166,6 +166,28 @@ export function buildClaimPayload(
   }
 }
 
+/**
+ * Which same-numbered Xero invoice, if any, may be adopted by a push (spec
+ * §5.2 step 4): only an ACCREC invoice for the SAME contact in AUTHORISED or
+ * PAID. Voided/deleted ones are ignored. Anything else live with that number
+ * (a supplier bill, another contact's invoice, a bookkeeper's DRAFT) is a
+ * conflict — the push must fail rather than adopt or duplicate.
+ */
+export function pickAdoptableInvoice(
+  candidates: XeroInvoice[],
+  contactId: string
+): { adopt: XeroInvoice | null; conflict: XeroInvoice | null } {
+  const live = candidates.filter((i) => i.Status !== 'VOIDED' && i.Status !== 'DELETED')
+  const adopt =
+    live.find(
+      (i) =>
+        i.Type === 'ACCREC' &&
+        (i.Status === 'AUTHORISED' || i.Status === 'PAID') &&
+        i.Contact?.ContactID === contactId
+    ) ?? null
+  return { adopt, conflict: adopt ? null : (live[0] ?? null) }
+}
+
 // ─── Pull-side derivations ───────────────────────────────────────────────────
 
 export type DerivedInvoiceStatus = { status: 'sent' | 'paid' | 'void'; paid_at: string | null }
@@ -255,10 +277,11 @@ export function xeroErrorMessage(body: unknown): string {
       error_description?: string
       error?: string
     }
-    const validation = b.Elements?.flatMap((e) => e.ValidationErrors ?? [])
-      .map((v) => v.Message)
+    const validation = (Array.isArray(b.Elements) ? b.Elements : [])
+      .flatMap((e) => (Array.isArray(e?.ValidationErrors) ? e.ValidationErrors : []))
+      .map((v) => v?.Message)
       .filter(Boolean)
-    if (validation && validation.length > 0) return validation.join(' ')
+    if (validation.length > 0) return validation.join(' ')
     return b.Message ?? b.Detail ?? b.Title ?? b.error_description ?? b.error ?? 'Xero request failed'
   }
   return 'Xero request failed'

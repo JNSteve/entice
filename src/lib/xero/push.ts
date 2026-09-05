@@ -1,8 +1,7 @@
-// src/lib/xero/push.ts
 import { docTotals } from '@/lib/money'
 import { XeroApiError, xeroApiForAdmin } from './client'
 import { ensureContactForClient } from './contacts'
-import { buildClaimPayload, buildInvoicePayload, totalsDiffer } from './map'
+import { buildClaimPayload, buildInvoicePayload, pickAdoptableInvoice, totalsDiffer } from './map'
 import { loadMapping } from './mapping'
 import { finishRun, logEvent, startRun, type Admin } from './register'
 import { ensureTrackingOption } from './tracking'
@@ -34,7 +33,10 @@ async function pushPayload(
   if (opts.knownXeroId) {
     try {
       const { Invoices = [] } = await api.get<{ Invoices?: XeroInvoice[] }>(`/Invoices/${opts.knownXeroId}`)
-      xero = Invoices.find((i) => i.Status !== 'DELETED' && i.Status !== 'VOIDED') ?? null
+      const inv = Invoices[0]
+      // Even the stored id must clear the adoption test — a stranger's invoice
+      // (or one Xero has moved to a state ECR cannot send) is not ours to touch.
+      xero = inv ? pickAdoptableInvoice([inv], payload.Contact.ContactID).adopt : null
     } catch {
       xero = null
     }
@@ -43,9 +45,14 @@ async function pushPayload(
     const { Invoices = [] } = await api.get<{ Invoices?: XeroInvoice[] }>(
       `/Invoices?InvoiceNumbers=${encodeURIComponent(payload.InvoiceNumber)}`
     )
-    xero = Invoices.find((i) => i.Status !== 'DELETED' && i.Status !== 'VOIDED') ?? null
-    if (xero) {
+    const { adopt, conflict } = pickAdoptableInvoice(Invoices, payload.Contact.ContactID)
+    if (adopt) {
+      xero = adopt
       await logEvent(admin, runId, { direction: 'push', entity, entityId, xeroId: xero.InvoiceID, action: 'matched', detail: `Adopted existing Xero invoice ${payload.InvoiceNumber}` })
+    } else if (conflict) {
+      throw new Error(
+        `Xero already has invoice ${payload.InvoiceNumber} (${conflict.Type} ${conflict.Status}) for ${conflict.Contact?.ContactID === payload.Contact.ContactID ? 'this contact in a state ECR cannot send' : 'a different contact'} — change the ECR number or Xero's numbering, then send again.`
+      )
     }
   }
   if (!xero) {
@@ -181,7 +188,7 @@ export async function pushClaimToXero(admin: Admin, claimId: string, actorId: st
     const [{ data: claim, error: claimErr }, mapping] = await Promise.all([
       admin
         .from('claims')
-        .select('id, number, reference_date, certified_amount, xero_invoice_id, projects(id, number, name, client_id, clients(payment_terms_days))')
+        .select('id, number, reference_date, certified_amount, xero_invoice_id, xero_emailed_at, projects(id, number, name, client_id, clients(payment_terms_days))')
         .eq('id', claimId)
         .single(),
       loadMapping(admin),
@@ -214,7 +221,7 @@ export async function pushClaimToXero(admin: Admin, claimId: string, actorId: st
 
     const r = await pushPayload(admin, api, runId, 'claim', claimId, payload, {
       knownXeroId: (claim.xero_invoice_id as string | null) ?? null,
-      alreadyEmailed: false,
+      alreadyEmailed: Boolean(claim.xero_emailed_at),
       emailMode: mapping.emailMode,
       ecrTotal: certified,
     })
@@ -227,6 +234,7 @@ export async function pushClaimToXero(admin: Admin, claimId: string, actorId: st
         xero_amount_due: r.xero.AmountDue ?? r.xero.Total ?? null,
         xero_online_url: r.onlineUrl,
         xero_pushed_at: new Date().toISOString(),
+        xero_emailed_at: r.emailed ? ((claim.xero_emailed_at as string | null) ?? new Date().toISOString()) : null,
         xero_synced_at: new Date().toISOString(),
       })
       .eq('id', claimId)

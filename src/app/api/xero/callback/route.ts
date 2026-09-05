@@ -1,4 +1,3 @@
-// src/app/api/xero/callback/route.ts
 import { NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getProfile } from '@/lib/auth'

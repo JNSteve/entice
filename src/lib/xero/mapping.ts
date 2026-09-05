@@ -1,4 +1,3 @@
-// src/lib/xero/mapping.ts
 import type { Admin } from './register'
 import type { XeroMapping } from './types'
 

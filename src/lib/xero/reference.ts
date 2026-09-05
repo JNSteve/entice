@@ -1,4 +1,3 @@
-// src/lib/xero/reference.ts
 import type { XeroApi } from './client'
 import { logEvent, type Admin } from './register'
 import type { XeroAccount, XeroTaxRate, XeroTrackingCategory } from './types'

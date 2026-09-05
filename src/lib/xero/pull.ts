@@ -1,4 +1,3 @@
-// src/lib/xero/pull.ts
 import { syncJobStatus } from '@/lib/job-status'
 import { XeroRateLimitError, xeroApiForAdmin, type XeroApi } from './client'
 import { syncContacts } from './contacts'
@@ -29,11 +28,21 @@ export type SyncSummary = {
 }
 
 const PAGE = 100
-const FIRST_RUN_LOOKBACK_DAYS = 365
+/** First connection pulls the last quarter; older history stays in Xero. */
+const FIRST_RUN_LOOKBACK_DAYS = 90
 const OVERLAP_MS = 60 * 60 * 1000
+/** Wall-clock budget for one run, well inside the 300s route maxDuration. */
+const RUN_BUDGET_MS = 240_000
 
 function zero(): SyncSummary {
   return { invoices_pulled: 0, invoices_created: 0, payments_upserted: 0, contacts_linked: 0, warnings: 0, errors: 0 }
+}
+
+/** The paged list may omit LineItems; fetch the full invoice when we need lines. */
+async function withLines(api: XeroApi, x: XeroInvoice): Promise<XeroInvoice> {
+  if (x.LineItems !== undefined) return x
+  const { Invoices = [] } = await api.get<{ Invoices?: XeroInvoice[] }>(`/Invoices/${x.InvoiceID}`)
+  return Invoices[0] ?? x
 }
 
 async function* pages<T>(api: XeroApi, base: string, key: string, since: string | null): AsyncGenerator<T[]> {
@@ -70,6 +79,7 @@ export async function runXeroSync(
   const runId = await startRun(admin, opts.trigger, opts.createdBy ?? null)
   const s: SyncSummary = { ...zero(), runId }
   const startedAt = new Date().toISOString()
+  const deadline = Date.now() + RUN_BUDGET_MS
   const since = conn.last_sync_at
     ? new Date(new Date(conn.last_sync_at).getTime() - OVERLAP_MS).toISOString()
     : new Date(Date.now() - FIRST_RUN_LOOKBACK_DAYS * 24 * 60 * 60 * 1000).toISOString()
@@ -95,12 +105,17 @@ export async function runXeroSync(
       'Invoices',
       since
     )) {
+      if (Date.now() > deadline) {
+        truncated = true
+        await logEvent(admin, runId, { direction: 'pull', entity: 'connection', action: 'warning', detail: 'Stopped at the time budget — resumes from the same watermark next run' })
+        break
+      }
       for (const x of batch) {
         s.invoices_pulled++
         try {
-          const outcome = await applyInvoice(admin, runId, x)
-          if (outcome === 'created') s.invoices_created++
-          if (outcome === 'warning') s.warnings++
+          const outcome = await applyInvoice(admin, runId, api, x)
+          if (outcome === 'created' || outcome === 'created_warning') s.invoices_created++
+          if (outcome === 'warning' || outcome === 'created_warning') s.warnings++
         } catch (err) {
           s.errors++
           await logEvent(admin, runId, { direction: 'pull', entity: 'invoice', xeroId: x.InvoiceID, action: 'failed', detail: err instanceof Error ? err.message : String(err) })
@@ -109,24 +124,31 @@ export async function runXeroSync(
     }
 
     // 4. Payments on sales invoices.
-    for await (const batch of pages<XeroPayment>(
-      api,
-      `/Payments?where=${encodeURIComponent('PaymentType=="ACCRECPAYMENT"')}`,
-      'Payments',
-      since
-    )) {
-      for (const p of batch) {
-        try {
-          if (await applyPayment(admin, runId, p)) s.payments_upserted++
-        } catch (err) {
-          s.errors++
-          await logEvent(admin, runId, { direction: 'pull', entity: 'payment', xeroId: p.PaymentID, action: 'failed', detail: err instanceof Error ? err.message : String(err) })
+    if (!truncated) {
+      for await (const batch of pages<XeroPayment>(
+        api,
+        `/Payments?where=${encodeURIComponent('PaymentType=="ACCRECPAYMENT"')}`,
+        'Payments',
+        since
+      )) {
+        if (Date.now() > deadline) {
+          truncated = true
+          await logEvent(admin, runId, { direction: 'pull', entity: 'connection', action: 'warning', detail: 'Stopped at the time budget — resumes from the same watermark next run' })
+          break
+        }
+        for (const p of batch) {
+          try {
+            if (await applyPayment(admin, runId, p)) s.payments_upserted++
+          } catch (err) {
+            s.errors++
+            await logEvent(admin, runId, { direction: 'pull', entity: 'payment', xeroId: p.PaymentID, action: 'failed', detail: err instanceof Error ? err.message : String(err) })
+          }
         }
       }
     }
 
     // 5. Tracking hygiene.
-    await archiveStaleTrackingOptions(admin, api, runId)
+    if (!truncated) await archiveStaleTrackingOptions(admin, api, runId)
   } catch (err) {
     fatal = err instanceof Error ? err.message : String(err)
     status = err instanceof XeroRateLimitError ? 'partial' : 'failed'
@@ -136,6 +158,8 @@ export async function runXeroSync(
   }
 
   if (status === 'success' && (s.errors > 0 || s.warnings > 0)) status = 'partial'
+  // A run cut short by the time budget did real work but is not a full pass.
+  if (truncated && status === 'success') status = 'partial'
   s.status = status
 
   await finishRun(admin, runId, {
@@ -165,9 +189,14 @@ export async function runXeroSync(
 
 // ─── Invoices ────────────────────────────────────────────────────────────────
 
-type InvoiceOutcome = 'updated' | 'created' | 'skipped' | 'warning'
+type InvoiceOutcome = 'updated' | 'created' | 'created_warning' | 'skipped' | 'warning'
 
-async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promise<InvoiceOutcome> {
+async function applyInvoice(
+  admin: Admin,
+  runId: string,
+  api: XeroApi,
+  x: XeroInvoice
+): Promise<InvoiceOutcome> {
   const now = new Date().toISOString()
   const xeroCols = {
     xero_status: x.Status,
@@ -201,7 +230,12 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
     const statusChanged = known.status !== 'draft' && known.status !== derived.status
     const revertedToSent = known.status === 'paid' && derived.status === 'sent'
     const isXeroMirror = known.origin === 'xero'
-    const m = isXeroMirror ? mirrorLinesFromXero(x) : null
+    // A paged list can omit LineItems; re-mirroring off that would blank the
+    // invoice, so fetch the full record and leave the lines alone if Xero
+    // still gives us none.
+    const full = isXeroMirror ? await withLines(api, x) : x
+    const linesMissing = isXeroMirror && full.LineItems === undefined
+    const m = isXeroMirror && !linesMissing ? mirrorLinesFromXero(full) : null
     const { error } = await admin
       .from('invoices')
       .update({
@@ -231,6 +265,12 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
           action: 'warning', detail: 'ECR total does not reconcile with Xero Total',
         })
       }
+    }
+    if (linesMissing) {
+      await logEvent(admin, runId, {
+        direction: 'pull', entity: 'invoice', entityId: known.id as string, xeroId: x.InvoiceID,
+        action: 'skipped', detail: 'Xero returned no line items — lines left as-is',
+      })
     }
     if (statusChanged) {
       await syncJobStatus(admin, known.job_id as string | null)
@@ -303,9 +343,13 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
     await logEvent(admin, runId, { direction: 'pull', entity: 'contact', entityId: clientId, xeroId: contactId, action: 'created', detail: `Client "${name}" created from Xero — review` })
   }
 
+  // Lines drive both the job match and the mirror, and the paged list may omit
+  // them — fetch the full invoice once here and read everything off that.
+  const source = await withLines(api, x)
+
   // Job match: tracking option → reference number.
   let jobId: string | null = null
-  const optionIds = (x.LineItems ?? []).flatMap((l) => l.Tracking ?? []).map((t) => t.TrackingOptionID).filter(Boolean) as string[]
+  const optionIds = (source.LineItems ?? []).flatMap((l) => l.Tracking ?? []).map((t) => t.TrackingOptionID).filter(Boolean) as string[]
   if (optionIds.length > 0) {
     const { data: j } = await admin.from('jobs').select('id').in('xero_tracking_option_id', optionIds).eq('client_id', clientId).limit(1).maybeSingle()
     jobId = (j?.id as string | undefined) ?? null
@@ -324,7 +368,7 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
   const { data: clash } = await admin.from('invoices').select('id').eq('number', number).maybeSingle()
   if (clash) number = `${number} (Xero)` // VERIFY-1 fallback
 
-  const m = mirrorLinesFromXero(x)
+  const m = mirrorLinesFromXero(source)
   const { data: inv, error: invErr } = await admin
     .from('invoices')
     .insert({
@@ -366,6 +410,9 @@ async function applyInvoice(admin: Admin, runId: string, x: XeroInvoice): Promis
       direction: 'pull', entity: 'invoice', entityId: inv.id as string, xeroId: x.InvoiceID,
       action: 'warning', detail: 'ECR total does not reconcile with Xero Total — review',
     })
+    // Counted as both a creation and a warning so the run ends 'partial' and
+    // the dashboard alert fires.
+    return 'created_warning'
   }
   return 'created'
 }

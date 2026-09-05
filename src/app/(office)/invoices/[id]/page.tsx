@@ -9,6 +9,9 @@ import {
   type PaymentData,
 } from './invoice-editor'
 
+// Xero pushes/syncs run inside actions invoked from this page.
+export const maxDuration = 300
+
 export default async function InvoicePage({
   params,
 }: {
