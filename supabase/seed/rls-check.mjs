@@ -54,6 +54,27 @@ function check(label, ok, detail) {
   console.log(`${status}  ${label}${detail ? ` — ${detail}` : ''}`)
 }
 
+// A missing table is a schema problem (migration not applied), not an RLS
+// verdict — report it as SKIP so a partial apply can never masquerade as PASS.
+function isMissingRelation(error) {
+  return (
+    error?.code === 'PGRST205' ||
+    error?.code === '42P01' ||
+    /does not exist|schema cache/i.test(error?.message ?? '')
+  )
+}
+function checkBlocked(label, error, rows, whoCanSee) {
+  if (error) {
+    if (isMissingRelation(error)) {
+      console.log(`SKIP  ${label} — table missing (apply migration 0063 first): ${error.message}`)
+      return
+    }
+    check(label, true, `blocked with error: ${error.message}`)
+    return
+  }
+  check(label, (rows ?? []).length === 0, `${whoCanSee} can see ${(rows ?? []).length} row(s)`)
+}
+
 async function main() {
   const env = loadEnv()
   if (!env.NEXT_PUBLIC_SUPABASE_URL || !env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
@@ -229,21 +250,26 @@ async function main() {
   // register are admin/office only.
   {
     const { data: connRows, error: connErr } = await supabase.from('xero_connection').select('id').limit(1)
-    if (connErr) check('xero_connection SELECT blocked for field', true, `error: ${connErr.message}`)
-    else check('xero_connection SELECT blocked for field', (connRows ?? []).length === 0, `field can see ${(connRows ?? []).length} row(s)`)
+    checkBlocked('xero_connection SELECT blocked for field', connErr, connRows, 'field')
 
     for (const table of ['xero_sync_runs', 'xero_sync_events', 'xero_accounts', 'xero_contacts']) {
       const { data, error } = await supabase.from(table).select('*').limit(1)
-      if (error) check(`${table} SELECT blocked for field`, true, `error: ${error.message}`)
-      else check(`${table} SELECT blocked for field`, (data ?? []).length === 0, `field can see ${(data ?? []).length} row(s)`)
+      checkBlocked(`${table} SELECT blocked for field`, error, data, 'field')
     }
 
     const { error: runInsertErr, data: runInserted } = await supabase
       .from('xero_sync_runs')
       .insert({ trigger: 'manual', status: 'running' })
       .select('id')
-    if (runInsertErr) check('insert xero_sync_runs rejected (field)', true, runInsertErr.message)
-    else check('insert xero_sync_runs rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(runInserted)}`)
+    if (runInsertErr) {
+      if (isMissingRelation(runInsertErr)) {
+        console.log('SKIP  insert xero_sync_runs — table missing (apply migration 0063 first)')
+      } else {
+        check('insert xero_sync_runs rejected (field)', true, runInsertErr.message)
+      }
+    } else {
+      check('insert xero_sync_runs rejected (field)', false, `insert SUCCEEDED: ${JSON.stringify(runInserted)}`)
+    }
   }
 
   await supabase.auth.signOut()
@@ -286,8 +312,7 @@ async function main() {
     }
 
     const { data: superConn, error: superConnErr } = await adminClient.from('xero_connection').select('id').limit(1)
-    if (superConnErr) check('xero_connection SELECT blocked for supervisor', true, `error: ${superConnErr.message}`)
-    else check('xero_connection SELECT blocked for supervisor', (superConn ?? []).length === 0, `supervisor can see ${(superConn ?? []).length} row(s)`)
+    checkBlocked('xero_connection SELECT blocked for supervisor', superConnErr, superConn, 'supervisor')
 
     // Pick any existing audit_log row.
     const { data: auditSample } = await adminClient
