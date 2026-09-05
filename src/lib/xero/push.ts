@@ -2,7 +2,7 @@
 import { docTotals } from '@/lib/money'
 import { XeroApiError, xeroApiForAdmin } from './client'
 import { ensureContactForClient } from './contacts'
-import { buildClaimPayload, buildInvoicePayload, claimInvoiceNumber, totalsDiffer } from './map'
+import { buildClaimPayload, buildInvoicePayload, totalsDiffer } from './map'
 import { loadMapping } from './mapping'
 import { finishRun, logEvent, startRun, type Admin } from './register'
 import { ensureTrackingOption } from './tracking'
