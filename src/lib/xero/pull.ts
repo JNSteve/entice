@@ -38,9 +38,10 @@ function zero(): SyncSummary {
   return { invoices_pulled: 0, invoices_created: 0, payments_upserted: 0, contacts_linked: 0, warnings: 0, errors: 0 }
 }
 
-/** The paged list may omit LineItems; fetch the full invoice when we need lines. */
+/** The paged list may omit or empty LineItems; fetch the full invoice when we need lines. */
 async function withLines(api: XeroApi, x: XeroInvoice): Promise<XeroInvoice> {
-  if (x.LineItems !== undefined) return x
+  const emptyButValued = Array.isArray(x.LineItems) && x.LineItems.length === 0 && (x.SubTotal ?? x.Total ?? 0) > 0
+  if (x.LineItems !== undefined && !emptyButValued) return x
   const { Invoices = [] } = await api.get<{ Invoices?: XeroInvoice[] }>(`/Invoices/${x.InvoiceID}`)
   return Invoices[0] ?? x
 }
@@ -88,6 +89,12 @@ export async function runXeroSync(
   let status: 'success' | 'partial' | 'failed' = 'success'
   let fatal: string | null = null
   let truncated = false
+  let budgetLogged = false
+  const logBudgetOnce = async () => {
+    if (budgetLogged) return
+    budgetLogged = true
+    await logEvent(admin, runId, { direction: 'pull', entity: 'connection', action: 'warning', detail: 'Stopped at the time budget — resumes from the same watermark next run' })
+  }
 
   try {
     // 1. Token warm-up — refreshing here keeps the 60-day refresh token alive.
@@ -99,7 +106,7 @@ export async function runXeroSync(
     s.contacts_linked = contacts.linked
 
     // 3. Sales invoices changed since last sync.
-    for await (const batch of pages<XeroInvoice>(
+    invoicesLoop: for await (const batch of pages<XeroInvoice>(
       api,
       `/Invoices?where=${encodeURIComponent('Type=="ACCREC"')}&Statuses=AUTHORISED,PAID,VOIDED`,
       'Invoices',
@@ -107,10 +114,15 @@ export async function runXeroSync(
     )) {
       if (Date.now() > deadline) {
         truncated = true
-        await logEvent(admin, runId, { direction: 'pull', entity: 'connection', action: 'warning', detail: 'Stopped at the time budget — resumes from the same watermark next run' })
+        await logBudgetOnce()
         break
       }
       for (const x of batch) {
+        if (Date.now() > deadline) {
+          truncated = true
+          await logBudgetOnce()
+          break invoicesLoop
+        }
         s.invoices_pulled++
         try {
           const outcome = await applyInvoice(admin, runId, api, x)
@@ -125,7 +137,7 @@ export async function runXeroSync(
 
     // 4. Payments on sales invoices.
     if (!truncated) {
-      for await (const batch of pages<XeroPayment>(
+      paymentsLoop: for await (const batch of pages<XeroPayment>(
         api,
         `/Payments?where=${encodeURIComponent('PaymentType=="ACCRECPAYMENT"')}`,
         'Payments',
@@ -133,10 +145,15 @@ export async function runXeroSync(
       )) {
         if (Date.now() > deadline) {
           truncated = true
-          await logEvent(admin, runId, { direction: 'pull', entity: 'connection', action: 'warning', detail: 'Stopped at the time budget — resumes from the same watermark next run' })
+          await logBudgetOnce()
           break
         }
         for (const p of batch) {
+          if (Date.now() > deadline) {
+            truncated = true
+            await logBudgetOnce()
+            break paymentsLoop
+          }
           try {
             if (await applyPayment(admin, runId, p)) s.payments_upserted++
           } catch (err) {
