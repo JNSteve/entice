@@ -35,7 +35,7 @@ import { MoneyInput } from '@/components/MoneyInput'
 import { StatusBadge } from '@/components/StatusBadge'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
-import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/zod'
+import { PAYMENT_METHODS, RATE_KINDS, type PaymentMethod, type RateKind } from '@/lib/zod'
 import { cn } from '@/lib/utils'
 import {
   addInvoiceLine,
@@ -53,6 +53,7 @@ import {
   ArrowUpIcon,
   BanIcon,
   BanknoteIcon,
+  ExternalLinkIcon,
   FileDownIcon,
   PlusIcon,
   SendIcon,
@@ -73,6 +74,21 @@ export interface InvoiceData {
   job_id: string | null
   job_number: string | null
   job_title: string | null
+  origin: 'ecr' | 'xero'
+  needs_review: boolean
+  xero: {
+    invoice_id: string
+    number: string | null
+    status: string | null
+    total: number | null
+    amount_paid: number | null
+    amount_credited: number | null
+    amount_due: number | null
+    online_url: string | null
+    pushed_at: string | null
+    emailed_at: string | null
+    synced_at: string | null
+  } | null
 }
 
 export interface InvoiceLineData {
@@ -82,6 +98,7 @@ export interface InvoiceLineData {
   qty: number
   unit: string
   unit_sell: number
+  kind: string | null
 }
 
 export interface PaymentData {
@@ -90,6 +107,7 @@ export interface PaymentData {
   amount: number
   method: string | null
   reference: string | null
+  source: 'ecr' | 'xero'
 }
 
 const METHOD_LABELS: Record<PaymentMethod, string> = {
@@ -109,13 +127,16 @@ export function InvoiceEditor({
   lines,
   payments,
   isAdmin,
+  xeroConnected,
 }: {
   invoice: InvoiceData
   lines: InvoiceLineData[]
   payments: PaymentData[]
   isAdmin: boolean
+  xeroConnected: boolean
 }) {
-  const editable = invoice.status === 'draft'
+  const managedInXero = invoice.xero !== null
+  const editable = invoice.status === 'draft' && invoice.origin === 'ecr'
   const { total } = docTotals(
     lines.map((l) => ({ qty: l.qty, unitSell: l.unit_sell })),
     invoice.gst_rate
@@ -124,7 +145,14 @@ export function InvoiceEditor({
 
   return (
     <div className="flex flex-col gap-6">
-      <HeaderCard invoice={invoice} editable={editable} total={total} />
+      <HeaderCard
+        invoice={invoice}
+        editable={editable}
+        total={total}
+        managedInXero={managedInXero}
+        xeroConnected={xeroConnected}
+      />
+      {(invoice.xero || invoice.origin === 'xero') && <XeroPanel invoice={invoice} />}
       <LinesCard invoiceId={invoice.id} lines={lines} editable={editable} />
       {(payments.length > 0 || invoice.status === 'sent' || invoice.status === 'paid') && (
         <PaymentsCard
@@ -132,10 +160,52 @@ export function InvoiceEditor({
           payments={payments}
           total={total}
           isAdmin={isAdmin}
+          managedInXero={managedInXero}
         />
       )}
       <TotalsCard lines={lines} gstRate={invoice.gst_rate} paidToDate={paidToDate} />
     </div>
+  )
+}
+
+// ─── Xero panel ──────────────────────────────────────────────────────────────
+
+function XeroPanel({ invoice }: { invoice: InvoiceData }) {
+  const x = invoice.xero
+  return (
+    <Card>
+      <CardContent className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h3 className="text-sm font-semibold">Xero</h3>
+          <span className="text-xs text-muted-foreground">
+            {invoice.origin === 'xero' ? 'Raised in Xero — read-only mirror' : 'Managed in Xero since sending'}
+          </span>
+        </div>
+        {invoice.needs_review && (
+          <p className="rounded-lg border border-amber-200 bg-amber-50 p-2 text-sm text-amber-900">
+            Needs matching — this invoice arrived from Xero without a job. Link it from the Money page.
+          </p>
+        )}
+        {x ? (
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-3 text-sm sm:grid-cols-3 lg:grid-cols-6">
+            <div><dt className="text-muted-foreground">Xero number</dt><dd className="font-mono text-xs">{x.number ?? '—'}</dd></div>
+            <div><dt className="text-muted-foreground">Xero status</dt><dd className="font-medium">{x.status ?? '—'}</dd></div>
+            <div><dt className="text-muted-foreground">Paid</dt><dd className="tabular-nums">{x.amount_paid != null ? aud(x.amount_paid) : '—'}</dd></div>
+            <div><dt className="text-muted-foreground">Credited</dt><dd className="tabular-nums">{x.amount_credited != null ? aud(x.amount_credited) : '—'}</dd></div>
+            <div><dt className="text-muted-foreground">Due</dt><dd className="font-medium tabular-nums">{x.amount_due != null ? aud(x.amount_due) : '—'}</dd></div>
+            <div><dt className="text-muted-foreground">Last synced</dt><dd>{x.synced_at ? fmtDate(x.synced_at) : '—'}</dd></div>
+          </dl>
+        ) : (
+          <p className="text-sm text-muted-foreground">Not linked to a Xero invoice.</p>
+        )}
+        {x && (
+          <p className="text-xs text-muted-foreground">
+            {x.emailed_at ? `Emailed by Xero ${fmtDate(x.emailed_at)}. ` : ''}
+            Payments, credits and voids are recorded in Xero and picked up on the next sync.
+          </p>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 
@@ -145,10 +215,14 @@ function HeaderCard({
   invoice,
   editable,
   total,
+  managedInXero,
+  xeroConnected,
 }: {
   invoice: InvoiceData
   editable: boolean
   total: number
+  managedInXero: boolean
+  xeroConnected: boolean
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -172,7 +246,9 @@ function HeaderCard({
 
   function handleMarkSent() {
     const ok = confirm(
-      `Mark ${invoice.number} as sent?\n\nLines will be locked once the invoice is sent.`
+      xeroConnected
+        ? `Send ${invoice.number} via Xero?\n\nXero will record the invoice and email it to the client. Lines lock once sent.`
+        : `Mark ${invoice.number} as sent?\n\nLines will be locked once the invoice is sent.`
     )
     if (!ok) return
     startTransition(async () => {
@@ -181,7 +257,8 @@ function HeaderCard({
         toast.error(result.error)
         return
       }
-      toast.success('Invoice marked as sent')
+      for (const w of result.warnings ?? []) toast.warning(w)
+      toast.success(result.viaXero ? 'Sent via Xero' : 'Invoice marked as sent')
       router.refresh()
     })
   }
@@ -229,19 +306,19 @@ function HeaderCard({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {invoice.status === 'draft' && (
+            {invoice.status === 'draft' && invoice.origin === 'ecr' && (
               <Button onClick={handleMarkSent} disabled={pending}>
                 <SendIcon />
-                Mark sent
+                {xeroConnected ? 'Send via Xero' : 'Mark sent'}
               </Button>
             )}
-            {invoice.status === 'sent' && (
+            {invoice.status === 'sent' && !managedInXero && (
               <Button onClick={() => setPayOpen(true)} disabled={pending}>
                 <BanknoteIcon />
                 Record payment
               </Button>
             )}
-            {(invoice.status === 'draft' || invoice.status === 'sent') && (
+            {(invoice.status === 'draft' || invoice.status === 'sent') && !managedInXero && (
               <Button
                 variant="outline"
                 className="text-destructive border-destructive/50 hover:bg-destructive/10"
@@ -251,6 +328,17 @@ function HeaderCard({
                 <BanIcon />
                 Void
               </Button>
+            )}
+            {invoice.xero?.online_url && invoice.status === 'sent' && (
+              <a
+                href={invoice.xero.online_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(buttonVariants({ variant: 'outline' }))}
+              >
+                <ExternalLinkIcon />
+                Pay-now link
+              </a>
             )}
             <a
               href={`/api/pdf/invoice/${invoice.id}`}
@@ -438,6 +526,7 @@ interface LinePayload {
   qty: number
   unit: string
   unit_sell: number
+  kind: RateKind | null
 }
 
 function InvoiceLineRow({
@@ -458,12 +547,14 @@ function InvoiceLineRow({
   const [qty, setQty] = useState(String(line.qty))
   const [unit, setUnit] = useState(line.unit)
   const [sell, setSell] = useState<number>(line.unit_sell)
+  const [kind, setKind] = useState<string>(line.kind ?? '')
 
   function revert() {
     setDescription(line.description)
     setQty(String(line.qty))
     setUnit(line.unit)
     setSell(line.unit_sell)
+    setKind(line.kind ?? '')
   }
 
   function save(overrides: Partial<LinePayload> = {}) {
@@ -472,6 +563,7 @@ function InvoiceLineRow({
       qty: parseFloat(qty) || 0,
       unit: unit.trim() || 'ea',
       unit_sell: sell,
+      kind: (kind || null) as RateKind | null,
       ...overrides,
     }
     startTransition(async () => {
@@ -538,15 +630,33 @@ function InvoiceLineRow({
 
   return (
     <div className={cn('grid items-center gap-2', GRID_EDITABLE)}>
-      <Input
-        aria-label="Description"
-        value={description}
-        onChange={(e) => setDescription(e.target.value)}
-        onBlur={() => {
-          if (description !== line.description) save({ description })
-        }}
-        placeholder="Line description…"
-      />
+      <div className="flex flex-col gap-1">
+        <Input
+          aria-label="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          onBlur={() => {
+            if (description !== line.description) save({ description })
+          }}
+          placeholder="Line description…"
+        />
+        <select
+          aria-label="Line kind (Xero account)"
+          className="h-7 w-fit rounded-md border border-input bg-transparent px-1.5 text-base text-muted-foreground md:text-xs"
+          value={kind}
+          onChange={(e) => {
+            setKind(e.target.value)
+            save({ kind: (e.target.value || null) as RateKind | null })
+          }}
+        >
+          <option value="">Default account</option>
+          {RATE_KINDS.map((k) => (
+            <option key={k} value={k}>
+              {k}
+            </option>
+          ))}
+        </select>
+      </div>
       <Input
         aria-label="Quantity"
         type="number"
@@ -613,16 +723,19 @@ function PaymentsCard({
   payments,
   total,
   isAdmin,
+  managedInXero,
 }: {
   invoice: InvoiceData
   payments: PaymentData[]
   total: number
   isAdmin: boolean
+  managedInXero: boolean
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
-  const canRemove = isAdmin && invoice.status !== 'paid' && invoice.status !== 'void'
+  const canRemove =
+    isAdmin && !managedInXero && invoice.status !== 'paid' && invoice.status !== 'void'
 
   function handleDelete(paymentId: string) {
     if (!confirm('Remove this payment?')) return
@@ -672,7 +785,11 @@ function PaymentsCard({
                     <TableRow key={p.id}>
                       <TableCell className="tabular-nums">{fmtDate(p.date)}</TableCell>
                       <TableCell className="text-muted-foreground">
-                        {p.method ? METHOD_LABELS[p.method as PaymentMethod] ?? p.method : '—'}
+                        {p.method
+                          ? p.method === 'xero'
+                            ? 'Xero'
+                            : (METHOD_LABELS[p.method as PaymentMethod] ?? p.method)
+                          : '—'}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
                         {p.reference ?? '—'}

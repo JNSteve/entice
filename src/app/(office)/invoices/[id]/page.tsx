@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { getXeroStatus } from '@/lib/xero/status'
 import {
   InvoiceEditor,
   type InvoiceData,
@@ -27,17 +28,19 @@ export default async function InvoicePage({
         .single(),
       supabase
         .from('invoice_lines')
-        .select('id, position, description, qty, unit, unit_sell')
+        .select('id, position, description, qty, unit, unit_sell, kind')
         .eq('invoice_id', id)
         .order('position')
         .order('id'),
       supabase
         .from('payments')
-        .select('id, date, amount, method, reference')
+        .select('id, date, amount, method, reference, source')
         .eq('invoice_id', id)
         .order('date')
         .order('id'),
     ])
+
+  const xero = await getXeroStatus()
 
   if (!invoice) notFound()
 
@@ -62,6 +65,23 @@ export default async function InvoicePage({
     job_id: jobRel?.id ?? null,
     job_number: jobRel?.number ?? null,
     job_title: jobRel?.title ?? null,
+    origin: (invoice.origin as 'ecr' | 'xero') ?? 'ecr',
+    needs_review: Boolean(invoice.needs_review),
+    xero: invoice.xero_invoice_id
+      ? {
+          invoice_id: invoice.xero_invoice_id as string,
+          number: (invoice.xero_number as string | null) ?? null,
+          status: (invoice.xero_status as string | null) ?? null,
+          total: invoice.xero_total != null ? Number(invoice.xero_total) : null,
+          amount_paid: invoice.xero_amount_paid != null ? Number(invoice.xero_amount_paid) : null,
+          amount_credited: invoice.xero_amount_credited != null ? Number(invoice.xero_amount_credited) : null,
+          amount_due: invoice.xero_amount_due != null ? Number(invoice.xero_amount_due) : null,
+          online_url: (invoice.xero_online_url as string | null) ?? null,
+          pushed_at: (invoice.xero_pushed_at as string | null) ?? null,
+          emailed_at: (invoice.xero_emailed_at as string | null) ?? null,
+          synced_at: (invoice.xero_synced_at as string | null) ?? null,
+        }
+      : null,
   }
 
   const lineData: InvoiceLineData[] = (lines ?? []).map((l) => ({
@@ -71,6 +91,7 @@ export default async function InvoicePage({
     qty: Number(l.qty),
     unit: l.unit,
     unit_sell: Number(l.unit_sell),
+    kind: (l.kind as string | null) ?? null,
   }))
 
   const paymentData: PaymentData[] = (payments ?? []).map((p) => ({
@@ -79,6 +100,7 @@ export default async function InvoicePage({
     amount: Number(p.amount),
     method: p.method,
     reference: p.reference,
+    source: (p.source as 'ecr' | 'xero') ?? 'ecr',
   }))
 
   return (
@@ -87,6 +109,7 @@ export default async function InvoicePage({
       lines={lineData}
       payments={paymentData}
       isAdmin={profile.role === 'admin'}
+      xeroConnected={xero.connected}
     />
   )
 }

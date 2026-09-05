@@ -71,6 +71,11 @@ export interface ClaimHeader {
   certified_at: string | null
   schedule_received_at: string | null
   paid_at: string | null
+  xero_status: string | null
+  xero_amount_due: number | null
+  xero_online_url: string | null
+  xero_pushed_at: string | null
+  in_xero: boolean
 }
 
 export interface ClaimEditorProps {
@@ -281,12 +286,18 @@ export function ClaimEditor({ projectId, claim: initialClaim, lines: initialLine
         certified_amount: certifiedAmount,
         schedule_received_at: scheduleDate,
       })
-      if (result.error) {
+      const softFailure = result.error?.startsWith('Certified, but') ?? false
+      if (result.error && !softFailure) {
         toast.error(result.error)
         return
       }
+      if (softFailure) {
+        toast.warning(result.error!)
+      } else {
+        for (const w of result.warnings ?? []) toast.warning(w)
+        toast.success('Claim certified')
+      }
       setCertifyOpen(false)
-      toast.success('Claim certified')
       setClaim((prev) => ({
         ...prev,
         status: 'certified',
@@ -436,6 +447,17 @@ export function ClaimEditor({ projectId, claim: initialClaim, lines: initialLine
                   {aud(claim.certified_amount ?? 0)} on {fmtDate(claim.certified_at)}
                 </span>
               </span>
+            )}
+            {claim.in_xero && (
+              <span>
+                Xero:{' '}
+                <span className="font-medium text-foreground">
+                  {`${claim.xero_status ?? 'AUTHORISED'}${claim.xero_amount_due != null ? ` · ${aud(claim.xero_amount_due)} due` : ''}`}
+                </span>
+              </span>
+            )}
+            {!claim.in_xero && claim.certified_at && (
+              <span className="text-amber-700">Not in Xero yet — retry from Settings → Xero</span>
             )}
             {claim.schedule_received_at && (
               <span>

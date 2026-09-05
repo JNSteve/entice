@@ -28,7 +28,8 @@ export default async function ProjectClaimDetailPage({
         `id, number, status, reference_date, gst_rate,
          gross_this_claim, retention_this_claim, subtotal, gst, total_inc_gst,
          total_claimed_to_date, submitted_at, certified_amount, certified_at,
-         schedule_received_at, paid_at`
+         schedule_received_at, paid_at,
+         xero_invoice_id, xero_status, xero_amount_due, xero_online_url, xero_pushed_at`
       )
       .eq('id', claimId)
       .eq('project_id', projectId)
@@ -128,6 +129,11 @@ export default async function ProjectClaimDetailPage({
         certified_at: claim.certified_at,
         schedule_received_at: claim.schedule_received_at,
         paid_at: claim.paid_at,
+        xero_status: claim.xero_status ?? null,
+        xero_amount_due: claim.xero_amount_due != null ? Number(claim.xero_amount_due) : null,
+        xero_online_url: claim.xero_online_url ?? null,
+        xero_pushed_at: claim.xero_pushed_at ?? null,
+        in_xero: Boolean(claim.xero_invoice_id),
       }}
       lines={lines}
       retention={{
