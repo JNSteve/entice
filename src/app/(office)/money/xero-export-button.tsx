@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/table'
 import { StatusBadge } from '@/components/StatusBadge'
 import { FileDownIcon } from 'lucide-react'
-import { xeroSalesCsv, type XeroInvoice } from '@/lib/xero'
+import { xeroSalesCsv, type XeroInvoice } from '@/lib/xero-csv'
 import { aud, fmtDate } from '@/lib/format'
 import { format } from 'date-fns'
 

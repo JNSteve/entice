@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { xeroSalesCsv, type XeroInvoice } from '../src/lib/xero'
+import { xeroSalesCsv, type XeroInvoice } from '../src/lib/xero-csv'
 
 const HEADER =
   '*ContactName,EmailAddress,POAddressLine1,*InvoiceNumber,*InvoiceDate,*DueDate,*Description,*Quantity,*UnitAmount,*AccountCode,*TaxType,Reference'
