@@ -1,6 +1,6 @@
 # Xero integration — two-way invoicing via OAuth 2.0
 
-**Date:** 2026-09-05 · **Status:** Design approved by owner in chat (2026-09-05); not yet built · **Module:** Money (invoices, claims, payments), Settings, client portal billing tab
+**Date:** 2026-09-05 · **Status:** Design approved by owner in chat (2026-09-05); implementation plan at `docs/superpowers/plans/2026-09-05-xero-integration.md`; not yet built · **Module:** Money (invoices, claims, payments), Settings, client portal billing tab
 
 ## 1. Why
 
@@ -154,10 +154,12 @@ alter table invoices
   add column xero_status text, add column xero_total numeric(14,2),
   add column xero_amount_paid numeric(14,2), add column xero_amount_credited numeric(14,2),
   add column xero_amount_due numeric(14,2), add column xero_online_url text,
-  add column xero_pushed_at timestamptz, add column xero_synced_at timestamptz,
+  add column xero_pushed_at timestamptz, add column xero_emailed_at timestamptz,
+  add column xero_synced_at timestamptz,
   add column needs_review boolean not null default false;   -- unmatched job or auto-created client
+-- kind reuses RATE_KINDS (src/lib/zod.ts), the same values quote_lines.kind uses
 alter table invoice_lines add column kind text
-  check (kind in ('labour','plant','materials','subcontract','other'));
+  check (kind in ('labour','plant','material','subbie','other'));
 
 alter table claims
   add column xero_invoice_id text unique, add column xero_status text,
@@ -177,6 +179,9 @@ create table xero_accounts   (code text primary key, name text, type text, tax_t
 create table xero_tax_rates  (tax_type text primary key, name text, effective_rate numeric(6,3), status text, synced_at timestamptz);
 create table xero_tracking_categories (id text primary key, name text, status text, synced_at timestamptz);
 create table xero_tracking_options (id text primary key, category_id text references xero_tracking_categories(id), name text, status text, synced_at timestamptz);
+-- Contacts cache exists ONLY so the manual "link client → contact" picker has a list.
+-- Holds exactly the §3 fields: id, name, ABN, whether an email exists. Nothing else.
+create table xero_contacts  (contact_id text primary key, name text, abn text, has_email boolean, status text, synced_at timestamptz);
 
 alter table settings
   add column xero_email_mode text not null default 'xero' check (xero_email_mode in ('xero','ecr')),
@@ -207,7 +212,7 @@ create table xero_sync_events (
 
 `portal_billing` (0044 definition) is re-created to add `pay_url` = `invoices.xero_online_url` (invoices only, still behind `show_financials`). No other portal RPC changes.
 
-Existing `audit_log` triggers on invoices/payments/claims keep firing; sync writes appear with a null actor (system).
+Invoices, payments and claims have no `audit_log` triggers today; the Xero audit trail is `xero_sync_runs` / `xero_sync_events`, which record every push, pull, match, org switch and failure with actor (`created_by`) and timestamp.
 
 ## 7. Status derivation for Xero-linked records
 
