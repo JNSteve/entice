@@ -32,8 +32,12 @@ async function pushPayload(
 
   let xero: XeroInvoice | null = null
   if (opts.knownXeroId) {
-    const { Invoices = [] } = await api.get<{ Invoices?: XeroInvoice[] }>(`/Invoices/${opts.knownXeroId}`)
-    xero = Invoices[0] ?? null
+    try {
+      const { Invoices = [] } = await api.get<{ Invoices?: XeroInvoice[] }>(`/Invoices/${opts.knownXeroId}`)
+      xero = Invoices.find((i) => i.Status !== 'DELETED' && i.Status !== 'VOIDED') ?? null
+    } catch {
+      xero = null
+    }
   }
   if (!xero) {
     const { Invoices = [] } = await api.get<{ Invoices?: XeroInvoice[] }>(
@@ -80,18 +84,25 @@ async function pushPayload(
 }
 
 export async function pushInvoiceToXero(admin: Admin, invoiceId: string, actorId: string | null): Promise<PushResult> {
-  const runId = await startRun(admin, 'push', actorId)
+  let runId: string
   try {
-    const [{ data: inv }, { data: lines }, mapping] = await Promise.all([
+    runId = await startRun(admin, 'push', actorId)
+  } catch (err) {
+    return { ok: false, error: `Xero register unavailable: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  try {
+    const [{ data: inv, error: invErr }, { data: lines, error: linesErr }, mapping] = await Promise.all([
       admin
         .from('invoices')
-        .select('id, number, status, issue_date, due_date, gst_rate, client_id, job_id, xero_invoice_id, xero_emailed_at, clients(payment_terms_days), jobs(id, number, title)')
+        .select('id, number, issue_date, due_date, gst_rate, client_id, job_id, xero_invoice_id, xero_emailed_at, clients(payment_terms_days), jobs(id, number, title)')
         .eq('id', invoiceId)
         .single(),
       admin.from('invoice_lines').select('description, qty, unit_sell, kind').eq('invoice_id', invoiceId).order('position'),
       loadMapping(admin),
     ])
-    if (!inv) return { ok: false, error: 'Invoice not found' }
+    if (invErr) throw new Error(`Could not load invoice: ${invErr.message}`)
+    if (linesErr) throw new Error(`Could not load invoice lines: ${linesErr.message}`)
+    if (!inv) throw new Error('Invoice not found')
     const client = inv.clients as unknown as { payment_terms_days: number | null } | null
     const job = inv.jobs as unknown as { id: string; number: string; title: string } | null
 
@@ -129,22 +140,24 @@ export async function pushInvoiceToXero(admin: Admin, invoiceId: string, actorId
       ecrTotal: total,
     })
 
-    const { error } = await admin
-      .from('invoices')
-      .update({
-        xero_invoice_id: r.xero.InvoiceID,
-        xero_number: r.xero.InvoiceNumber ?? null,
-        xero_status: r.xero.Status,
-        xero_total: r.xero.Total ?? null,
-        xero_amount_paid: r.xero.AmountPaid ?? 0,
-        xero_amount_credited: r.xero.AmountCredited ?? 0,
-        xero_amount_due: r.xero.AmountDue ?? r.xero.Total ?? null,
-        xero_online_url: r.onlineUrl,
-        xero_pushed_at: new Date().toISOString(),
-        xero_emailed_at: r.emailed ? (inv.xero_emailed_at ?? new Date().toISOString()) : null,
-        xero_synced_at: new Date().toISOString(),
-      })
-      .eq('id', invoiceId)
+    const invoiceUpdate = {
+      xero_invoice_id: r.xero.InvoiceID,
+      xero_number: r.xero.InvoiceNumber ?? null,
+      xero_status: r.xero.Status,
+      xero_total: r.xero.Total ?? null,
+      xero_amount_paid: r.xero.AmountPaid ?? 0,
+      xero_amount_credited: r.xero.AmountCredited ?? 0,
+      xero_amount_due: r.xero.AmountDue ?? r.xero.Total ?? null,
+      xero_online_url: r.onlineUrl,
+      xero_pushed_at: new Date().toISOString(),
+      xero_emailed_at: r.emailed ? (inv.xero_emailed_at ?? new Date().toISOString()) : null,
+      xero_synced_at: new Date().toISOString(),
+    }
+    let { error } = await admin.from('invoices').update(invoiceUpdate).eq('id', invoiceId)
+    if (error) {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      ;({ error } = await admin.from('invoices').update(invoiceUpdate).eq('id', invoiceId))
+    }
     if (error) throw new Error(`Xero invoice created but ECR could not record it: ${error.message}`)
 
     await finishRun(admin, runId, { status: r.warnings.length ? 'partial' : 'success', pushed: 1, warnings: r.warnings.length })
@@ -158,18 +171,24 @@ export async function pushInvoiceToXero(admin: Admin, invoiceId: string, actorId
 }
 
 export async function pushClaimToXero(admin: Admin, claimId: string, actorId: string | null): Promise<PushResult> {
-  const runId = await startRun(admin, 'push', actorId)
+  let runId: string
   try {
-    const [{ data: claim }, mapping] = await Promise.all([
+    runId = await startRun(admin, 'push', actorId)
+  } catch (err) {
+    return { ok: false, error: `Xero register unavailable: ${err instanceof Error ? err.message : String(err)}` }
+  }
+  try {
+    const [{ data: claim, error: claimErr }, mapping] = await Promise.all([
       admin
         .from('claims')
-        .select('id, number, status, reference_date, certified_amount, xero_invoice_id, projects(id, number, name, client_id, clients(payment_terms_days))')
+        .select('id, number, reference_date, certified_amount, xero_invoice_id, projects(id, number, name, client_id, clients(payment_terms_days))')
         .eq('id', claimId)
         .single(),
       loadMapping(admin),
     ])
-    if (!claim) return { ok: false, error: 'Claim not found' }
-    if (claim.certified_amount == null) return { ok: false, error: 'Claim has no certified amount' }
+    if (claimErr) throw new Error(`Could not load claim: ${claimErr.message}`)
+    if (!claim) throw new Error('Claim not found')
+    if (claim.certified_amount == null) throw new Error('Claim has no certified amount')
     const project = claim.projects as unknown as {
       id: string; number: string; name: string; client_id: string
       clients: { payment_terms_days: number | null } | null
@@ -222,5 +241,3 @@ export async function pushClaimToXero(admin: Admin, claimId: string, actorId: st
     return { ok: false, error: message }
   }
 }
-
-export { claimInvoiceNumber }

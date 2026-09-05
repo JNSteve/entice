@@ -14,6 +14,7 @@ import { nextNumber } from '@/lib/numbering'
 import { nowAU } from '@/lib/tz'
 import { getXeroStatus } from '@/lib/xero/status'
 import { pushInvoiceToXero } from '@/lib/xero/push'
+import { finishRun, logEvent, startRun } from '@/lib/xero/register'
 import {
   invoiceBasisSchema,
   invoiceHeaderSchema,
@@ -626,7 +627,6 @@ export async function linkInvoiceToJob(invoiceId: string, jobId: string | null):
 
   try {
     const admin = createAdminClient()
-    const { startRun, logEvent, finishRun } = await import('@/lib/xero/register')
     const runId = await startRun(admin, 'manual', profile.id)
     await logEvent(admin, runId, { direction: 'pull', entity: 'invoice', entityId: invoiceId, action: 'matched', detail: jobId ? `Linked to job by ${profile.full_name}` : `Unlinked by ${profile.full_name}` })
     await finishRun(admin, runId, { status: 'success' })
@@ -634,7 +634,8 @@ export async function linkInvoiceToJob(invoiceId: string, jobId: string | null):
     // Register write is best-effort here (local dev has no service role).
   }
 
-  revalidateInvoice(invoiceId, jobId ?? invoice.job_id)
+  revalidateInvoice(invoiceId, jobId)
+  if (invoice.job_id && invoice.job_id !== jobId) revalidatePath(`/jobs/${invoice.job_id}`)
   return {}
 }
 
