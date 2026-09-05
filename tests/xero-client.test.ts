@@ -75,7 +75,7 @@ describe('createXeroApi', () => {
     const { api } = makeApi(async () =>
       response(400, { Elements: [{ ValidationErrors: [{ Message: 'Invoice # must be unique.' }] }] })
     )
-    const err = await api.post('/Invoices', { Invoices: [] }).catch((e) => e)
+    const err = (await api.post('/Invoices', { Invoices: [] }).catch((e: unknown) => e)) as XeroApiError
     expect(err).toBeInstanceOf(XeroApiError)
     expect(err.message).toBe('Invoice # must be unique.')
     expect(err.status).toBe(400)
