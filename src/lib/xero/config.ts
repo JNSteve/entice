@@ -26,6 +26,13 @@ export function xeroEnv(): XeroEnv | null {
   return { clientId, clientSecret, tokenKey }
 }
 
+/** Names (never values) of the Xero env vars that are absent or blank. */
+export function xeroMissingEnv(): string[] {
+  return (['XERO_CLIENT_ID', 'XERO_CLIENT_SECRET', 'XERO_TOKEN_KEY'] as const).filter(
+    (name) => !process.env[name]?.trim()
+  )
+}
+
 export function xeroConfigured(): boolean {
   return xeroEnv() !== null
 }

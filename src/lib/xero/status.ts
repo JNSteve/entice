@@ -1,5 +1,5 @@
 import { createAdminClient } from '@/lib/supabase/server'
-import { xeroConfigured } from './config'
+import { xeroConfigured, xeroMissingEnv } from './config'
 import { loadConnection } from './tokens'
 
 export type XeroStatus = {
@@ -34,7 +34,10 @@ const UNAVAILABLE: XeroStatus = {
  */
 export async function getXeroStatus(): Promise<XeroStatus> {
   if (!xeroConfigured()) {
-    return { ...UNAVAILABLE, reason: 'XERO_CLIENT_ID, XERO_CLIENT_SECRET and XERO_TOKEN_KEY must be set in the environment.' }
+    return {
+      ...UNAVAILABLE,
+      reason: `Missing from this deployment's environment: ${xeroMissingEnv().join(', ')}. Add it in Vercel (Production) and redeploy.`,
+    }
   }
   let admin
   try {

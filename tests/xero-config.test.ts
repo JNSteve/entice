@@ -6,6 +6,7 @@ import {
   XERO_TOKEN_URL,
   xeroConfigured,
   xeroEnv,
+  xeroMissingEnv,
   xeroRedirectUri,
 } from '../src/lib/xero/config'
 
@@ -42,6 +43,7 @@ describe('xero config', () => {
     process.env.XERO_TOKEN_KEY = 'k'
     expect(xeroEnv()).toBeNull()
     expect(xeroConfigured()).toBe(false)
+    expect(xeroMissingEnv()).toEqual(['XERO_CLIENT_ID'])
     process.env.XERO_CLIENT_ID = 'id'
     expect(xeroEnv()).toEqual({ clientId: 'id', clientSecret: 's', tokenKey: 'k' })
     expect(xeroConfigured()).toBe(true)
