@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/server'
 import { computeClaim, type ClaimLineInput } from '@/lib/claims'
 import { lineTotal, round2 } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
+import { appendPdf, checkOriginalPdf } from '@/lib/pdf-merge'
 import { buildQuotePdfResponse } from '@/pdf/build-quote-pdf'
 import { buildComplianceReportResponse } from '@/pdf/build-compliance-report'
 import { buildTakeoffPdfResponse } from '@/pdf/build-takeoff-pdf'
@@ -21,6 +22,7 @@ import {
   type SwmsPdfRow,
   type SwmsPdfSignature,
 } from '@/pdf/SwmsPdf'
+import { SwmsRegisterPdf } from '@/pdf/SwmsRegisterPdf'
 import {
   HRCW_ANSWER_LABELS,
   SWMS_EMERGENCY_CONTACT_LABELS,
@@ -136,7 +138,7 @@ import {
   type WasteClassification,
   type WasteUnitKey,
 } from '@/lib/zod'
-import { todayAU } from '@/lib/tz'
+import { nowAU, todayAU } from '@/lib/tz'
 import type { FormField, FormTemplateKind } from '@/lib/zod'
 import type { DocCompany } from '@/pdf/DocShell'
 
@@ -769,7 +771,9 @@ async function swmsPdf(id: string): Promise<Response> {
       supabase
         .from('swms_instances')
         .select(
-          `id, title, body, hazards, version, status, created_at, ${SWMS_STRUCTURE_COLUMNS},
+          `id, title, body, hazards, version, status, created_at, document_attachment_id,
+           document:attachments!swms_instances_document_attachment_id_fkey(bucket, path, filename),
+           ${SWMS_STRUCTURE_COLUMNS},
            projects(number, name), jobs(number, title)`
         )
         .eq('id', id)
@@ -875,6 +879,52 @@ async function swmsPdf(id: string): Promise<Response> {
         by: (row.actor_name as string) ?? 'system',
       })
     }
+  }
+
+  const documentRel = instance.document as unknown as {
+    bucket: string
+    path: string
+    filename: string
+  } | null
+  if (documentRel) {
+    // Uploaded-PDF SWMS → "signed copy": original pages + register pages.
+    // Generated on demand; the stored original is never modified.
+    let originalBytes: Uint8Array | null = null
+    const { data: blob } = await supabase.storage
+      .from(documentRel.bucket ?? 'attachments')
+      .download(documentRel.path)
+    if (blob) originalBytes = new Uint8Array(await blob.arrayBuffer())
+    const check = await checkOriginalPdf(originalBytes)
+
+    const register = await renderToBuffer(
+      <SwmsRegisterPdf
+        swms={{
+          title: instance.title,
+          parentLabel,
+          version: currentVersion,
+          status: instance.status,
+          date: fmtDate(instance.created_at),
+        }}
+        company={toCompany(settings)}
+        sourceFilename={documentRel.filename}
+        generatedAt={format(nowAU(), 'dd/MM/yyyy HH:mm')}
+        signatures={pdfSignatures}
+        earlierSignatureCount={earlierSignatureCount}
+        changes={changes}
+        originalProblem={check.ok ? null : check.reason}
+      />
+    )
+    const bytes =
+      check.ok && originalBytes
+        ? await appendPdf(originalBytes, new Uint8Array(register))
+        : new Uint8Array(register)
+
+    return new Response(new Uint8Array(bytes), {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `inline; filename="swms-v${currentVersion}-signed.pdf"`,
+      },
+    })
   }
 
   const docControlRows: SwmsPdfRow[] = [
