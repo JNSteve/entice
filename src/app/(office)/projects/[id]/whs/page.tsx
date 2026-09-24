@@ -15,7 +15,7 @@ import {
 } from '@/components/ui/table'
 import { StatusBadge } from '@/components/StatusBadge'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
-import { fetchSwmsInstances } from '@/lib/swms-queries'
+import { fetchSwmsDocumentOptions, fetchSwmsInstances } from '@/lib/swms-queries'
 import { fmtDate } from '@/lib/format'
 import {
   FORM_KIND_COLORS as KIND_COLORS,
@@ -53,6 +53,7 @@ export default async function ProjectWhsPage({
     { data: actions },
     { data: subbies },
     { data: holdPoints },
+    swmsDocuments,
   ] = await Promise.all([
     supabase.from('projects').select('id, number, name').eq('id', id).single(),
     fetchSwmsInstances(supabase, 'project', id),
@@ -92,6 +93,7 @@ export default async function ProjectWhsPage({
       .eq('project_id', id)
       .order('created_at', { ascending: false }),
     supabase.from('hold_points').select('id, date, status').eq('project_id', id),
+    fetchSwmsDocumentOptions(supabase, 'project', id),
   ])
 
   if (!project) notFound()
@@ -146,6 +148,7 @@ export default async function ProjectWhsPage({
         parentId={id}
         instances={swmsInstances}
         templates={swmsTemplates ?? []}
+        documents={swmsDocuments}
         canManage
         canSupersede={canSupersede}
       />

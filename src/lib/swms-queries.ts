@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { parseSwmsStructure } from '@/lib/swms'
+import { isPdfFile } from '@/lib/swms-document'
 import { todayAU, dateAU } from '@/lib/tz'
 
 // ─── Field worker SWMS list ──────────────────────────────────────────────────
@@ -136,6 +137,8 @@ export interface SwmsInstanceListRow {
   registerTotal: number
   register: SwmsRegisterRow[]
   externalSigners: SwmsExternalSigner[]
+  /** Set for SWMS issued from an uploaded PDF. */
+  document: { id: string; filename: string } | null
 }
 
 /**
@@ -154,7 +157,9 @@ export async function fetchSwmsInstances(
   const [{ data: instances }, { data: crew }] = await Promise.all([
     supabase
       .from('swms_instances')
-      .select('id, title, steps, hazards, version, status, created_at')
+      .select(
+        'id, title, steps, hazards, version, status, created_at, document_attachment_id, document:attachments!swms_instances_document_attachment_id_fkey(id, filename)'
+      )
       .eq(column, parentId)
       .order('created_at', { ascending: false }),
     supabase
@@ -215,6 +220,40 @@ export async function fetchSwmsInstances(
       registerTotal: register.length,
       register,
       externalSigners,
+      document:
+        (instance.document as unknown as { id: string; filename: string } | null) ?? null,
     }
   })
+}
+
+export interface SwmsDocumentOption {
+  id: string
+  filename: string
+  created_at: string
+}
+
+/** PDF attachment rows → options for issuing/revising an uploaded SWMS. */
+export function toSwmsDocumentOptions(
+  rows: { id: string; filename: string; content_type: string | null; created_at: string }[]
+): SwmsDocumentOption[] {
+  return rows
+    .filter((a) => isPdfFile(a.content_type, a.filename))
+    .map((a) => ({ id: a.id, filename: a.filename, created_at: a.created_at }))
+}
+
+/** PDF attachments on a job/project, newest first — candidates to issue as a SWMS. */
+export async function fetchSwmsDocumentOptions(
+  supabase: SupabaseClient,
+  parentType: 'project' | 'job',
+  parentId: string
+): Promise<SwmsDocumentOption[]> {
+  const { data } = await supabase
+    .from('attachments')
+    .select('id, filename, content_type, created_at')
+    .eq('parent_type', parentType)
+    .eq('parent_id', parentId)
+    .order('created_at', { ascending: false })
+  return toSwmsDocumentOptions(
+    (data ?? []) as { id: string; filename: string; content_type: string | null; created_at: string }[]
+  )
 }

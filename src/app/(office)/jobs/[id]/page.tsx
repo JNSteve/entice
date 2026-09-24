@@ -23,7 +23,7 @@ import {
   MaintenanceLogList,
   type MaintenanceLogListEntry,
 } from '@/components/MaintenanceLog'
-import { fetchSwmsInstances } from '@/lib/swms-queries'
+import { fetchSwmsInstances, toSwmsDocumentOptions } from '@/lib/swms-queries'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
@@ -353,6 +353,7 @@ export default async function JobDetailPage({
         parentId={job.id}
         instances={swmsInstances}
         templates={swmsTemplates ?? []}
+        documents={toSwmsDocumentOptions(attachments)}
         canManage={canMutate}
         canSupersede={canSeeCosts}
       />

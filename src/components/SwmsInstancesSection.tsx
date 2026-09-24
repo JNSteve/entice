@@ -62,7 +62,7 @@ import {
   reviseSwmsInstance,
   supersedeSwmsInstance,
 } from '@/lib/swms-actions'
-import type { SwmsInstanceListRow } from '@/lib/swms-queries'
+import type { SwmsDocumentOption, SwmsInstanceListRow } from '@/lib/swms-queries'
 
 export interface SwmsTemplateOption {
   id: string
@@ -77,6 +77,8 @@ interface SwmsInstancesSectionProps {
   parentId: string
   instances: SwmsInstanceListRow[]
   templates: SwmsTemplateOption[]
+  /** PDF attachments on this job/project — for issuing an uploaded SWMS. */
+  documents: SwmsDocumentOption[]
   /** admin/office/supervisor — add + revise. */
   canManage: boolean
   /** admin/office — supersede. */
