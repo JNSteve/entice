@@ -275,7 +275,22 @@ export async function deleteAttachment(
     .delete()
     .eq('id', id)
 
-  if (deleteError) return { error: deleteError.message }
+  if (deleteError) {
+    // 23503 = FK violation: swms_instances.document_attachment_id is
+    // ON DELETE RESTRICT, so a PDF issued as a SWMS keeps its sign-on record.
+    if (deleteError.code === '23503') {
+      const { data: swms } = await supabase
+        .from('swms_instances')
+        .select('title')
+        .eq('document_attachment_id', id)
+        .limit(1)
+        .maybeSingle()
+      return {
+        error: `This file is the PDF for SWMS '${swms?.title ?? 'untitled'}' and is kept for its sign-on record — it can't be deleted`,
+      }
+    }
+    return { error: deleteError.message }
+  }
 
   const { data: removed, error: storageError } = await supabase.storage
     .from(row.bucket ?? 'attachments')

@@ -8,6 +8,11 @@ import {
   parseHrcwItems,
   swmsInstanceCreateV2Schema,
 } from '@/lib/swms'
+import {
+  checkSwmsDocumentAttachment,
+  swmsDocumentCreateSchema,
+  swmsDocumentReviseSchema,
+} from '@/lib/swms-document'
 
 type Result = { error?: string }
 
@@ -80,6 +85,49 @@ export async function createSwmsInstance(data: unknown): Promise<Result> {
   return {}
 }
 
+// ─── Create instance from an uploaded PDF ────────────────────────────────────
+
+/**
+ * Issues an uploaded PDF (an attachment on the same job/project) as a
+ * document-backed SWMS at version 1. Sign-on, share links and versioning work
+ * exactly as for template SWMS; the structured columns stay at their defaults.
+ */
+export async function createDocumentSwmsInstance(data: unknown): Promise<Result> {
+  await requireRole('admin', 'office', 'supervisor')
+
+  const parsed = swmsDocumentCreateSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+  const { title, attachment_id, project_id, job_id } = parsed.data
+  const parent = job_id
+    ? { type: 'job' as const, id: job_id }
+    : { type: 'project' as const, id: project_id as string }
+
+  const supabase = await createClient()
+  const { data: att } = await supabase
+    .from('attachments')
+    .select('parent_type, parent_id, content_type, filename')
+    .eq('id', attachment_id)
+    .maybeSingle()
+  const problem = checkSwmsDocumentAttachment(att, parent)
+  if (problem) return { error: problem }
+
+  const { error } = await supabase.from('swms_instances').insert({
+    template_id: null,
+    project_id,
+    job_id,
+    title,
+    document_attachment_id: attachment_id,
+    version: 1,
+    status: 'active',
+  })
+  if (error) return { error: error.message }
+
+  revalidateSwms(project_id, job_id)
+  return {}
+}
+
 // ─── Revise ──────────────────────────────────────────────────────────────────
 
 /**
@@ -93,12 +141,15 @@ export async function reviseSwmsInstance(id: string): Promise<Result> {
 
   const { data: instance } = await supabase
     .from('swms_instances')
-    .select('id, project_id, job_id, version, status')
+    .select('id, project_id, job_id, version, status, document_attachment_id')
     .eq('id', id)
     .single()
   if (!instance) return { error: 'SWMS not found' }
   if (instance.status !== 'active') {
     return { error: 'Only active SWMS can be revised' }
+  }
+  if (instance.document_attachment_id) {
+    return { error: 'Upload the revised PDF to revise this SWMS' }
   }
 
   const { error } = await supabase
@@ -108,6 +159,64 @@ export async function reviseSwmsInstance(id: string): Promise<Result> {
   if (error) return { error: error.message }
 
   revalidateSwms(instance.project_id, instance.job_id, id)
+  return {}
+}
+
+/**
+ * Revises a document-backed SWMS: points it at the replacement PDF and bumps
+ * the version in ONE update, so every worker must re-sign. The previous PDF
+ * stays in Documents; the audit trigger records the file switch.
+ */
+export async function reviseDocumentSwmsInstance(data: unknown): Promise<Result> {
+  await requireRole('admin', 'office', 'supervisor')
+
+  const parsed = swmsDocumentReviseSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createClient()
+  const { data: instance } = await supabase
+    .from('swms_instances')
+    .select('id, project_id, job_id, version, status, document_attachment_id')
+    .eq('id', parsed.data.instance_id)
+    .single()
+  if (!instance) return { error: 'SWMS not found' }
+  if (instance.status !== 'active') return { error: 'Only active SWMS can be revised' }
+  if (!instance.document_attachment_id) {
+    return { error: 'This SWMS was issued from a template — use Revise instead' }
+  }
+  if (instance.document_attachment_id === parsed.data.attachment_id) {
+    return { error: 'Pick the revised PDF — that is the current file' }
+  }
+
+  const parent = instance.job_id
+    ? { type: 'job' as const, id: instance.job_id as string }
+    : { type: 'project' as const, id: instance.project_id as string }
+  const { data: att } = await supabase
+    .from('attachments')
+    .select('parent_type, parent_id, content_type, filename')
+    .eq('id', parsed.data.attachment_id)
+    .maybeSingle()
+  const problem = checkSwmsDocumentAttachment(att, parent)
+  if (problem) return { error: problem }
+
+  // Compare-and-set on version: a concurrent revise makes this match 0 rows.
+  const { data: updated, error } = await supabase
+    .from('swms_instances')
+    .update({
+      document_attachment_id: parsed.data.attachment_id,
+      version: Number(instance.version) + 1,
+    })
+    .eq('id', instance.id)
+    .eq('version', instance.version)
+    .select('id')
+  if (error) return { error: error.message }
+  if (!updated || updated.length === 0) {
+    return { error: 'This SWMS was changed by someone else — reload and try again' }
+  }
+
+  revalidateSwms(instance.project_id, instance.job_id, instance.id)
   return {}
 }
 
