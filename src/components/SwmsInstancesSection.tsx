@@ -42,6 +42,7 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { EmptyState } from '@/components/EmptyState'
 import { ShareLinkDialog } from '@/components/ShareLinkDialog'
+import { AddDocumentSwmsForm, ReviseDocumentSwmsDialog } from '@/components/SwmsDocumentForms'
 import { StatusBadge } from '@/components/StatusBadge'
 import { fmtDate } from '@/lib/format'
 import {
@@ -90,6 +91,7 @@ export function SwmsInstancesSection({
   parentId,
   instances,
   templates,
+  documents,
   canManage,
   canSupersede,
 }: SwmsInstancesSectionProps) {
@@ -102,6 +104,7 @@ export function SwmsInstancesSection({
             parentType={parentType}
             parentId={parentId}
             templates={templates}
+            documents={documents}
           />
         )}
       </div>
@@ -117,6 +120,9 @@ export function SwmsInstancesSection({
             <SwmsInstanceCard
               key={instance.id}
               instance={instance}
+              parentType={parentType}
+              parentId={parentId}
+              documents={documents}
               canManage={canManage}
               canSupersede={canSupersede}
             />
@@ -131,10 +137,16 @@ export function SwmsInstancesSection({
 
 function SwmsInstanceCard({
   instance,
+  parentType,
+  parentId,
+  documents,
   canManage,
   canSupersede,
 }: {
   instance: SwmsInstanceListRow
+  parentType: 'project' | 'job'
+  parentId: string
+  documents: SwmsDocumentOption[]
   canManage: boolean
   canSupersede: boolean
 }) {
@@ -210,6 +222,11 @@ function SwmsInstanceCard({
             <Badge variant="secondary" className="tabular-nums">
               v{instance.version}
             </Badge>
+            {instance.document && (
+              <Badge variant="outline" className="max-w-[16rem] truncate" title={instance.document.filename}>
+                PDF · {instance.document.filename}
+              </Badge>
+            )}
             <StatusBadge status={instance.status} />
           </div>
           <button
@@ -246,19 +263,22 @@ function SwmsInstanceCard({
             onClick={() => window.open(`/api/pdf/swms/${instance.id}`, '_blank')}
           >
             <FileTextIcon className="size-4" />
-            PDF
+            {instance.document ? 'Signed copy' : 'PDF'}
           </Button>
-          {canManage && isActive && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={handleRevise}
+          {canManage && isActive && (instance.document ? (
+            <ReviseDocumentSwmsDialog
+              instanceId={instance.id}
+              parentType={parentType}
+              parentId={parentId}
+              documents={documents}
+              currentAttachmentId={instance.document.id}
               disabled={pending}
-            >
+            />
+          ) : (
+            <Button type="button" variant="ghost" size="sm" onClick={handleRevise} disabled={pending}>
               Revise
             </Button>
-          )}
+          ))}
           {canSupersede && isActive && (
             <Button
               type="button"
@@ -383,12 +403,15 @@ function AddSwmsDialog({
   parentType,
   parentId,
   templates,
+  documents,
 }: {
   parentType: 'project' | 'job'
   parentId: string
   templates: SwmsTemplateOption[]
+  documents: SwmsDocumentOption[]
 }) {
   const [open, setOpen] = useState(false)
+  const [source, setSource] = useState<'template' | 'document'>('template')
   const [pending, startTransition] = useTransition()
   const [templateId, setTemplateId] = useState('')
   const [details, setDetails] = useState<SwmsProjectDetails>({ ...EMPTY_DETAILS })
@@ -408,6 +431,7 @@ function AddSwmsDialog({
   }
 
   function reset() {
+    setSource('template')
     setTemplateId('')
     setDetails({ ...EMPTY_DETAILS })
     setAnswers({})
@@ -446,154 +470,184 @@ function AddSwmsDialog({
           <DialogHeader>
             <DialogTitle>Issue SWMS</DialogTitle>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="swms-template">Template</Label>
-              <Select
-                value={templateId}
-                onValueChange={(v) => pickTemplate(v ?? '')}
-              >
-                <SelectTrigger id="swms-template" className="w-full">
-                  <SelectValue placeholder="Pick a template" />
-                </SelectTrigger>
-                <SelectContent>
-                  {templates.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {templates.length === 0 && (
-                <p className="text-xs text-muted-foreground">
-                  No active SWMS templates — create one in Settings → SWMS.
-                </p>
-              )}
-            </div>
-
-            {selectedTemplate && (
-              <>
-                <IssueSectionHeading
-                  title="Project-specific details"
-                  hint="Filled at issue — these appear on the SWMS the crew reads and signs."
-                />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {(
-                    Object.keys(SWMS_PROJECT_DETAIL_LABELS) as (keyof SwmsProjectDetails)[]
-                  ).map((key) => (
-                    <div
-                      key={key}
-                      className={
-                        DETAIL_TEXTAREA_KEYS.has(key)
-                          ? 'flex flex-col gap-1.5 sm:col-span-2'
-                          : 'flex flex-col gap-1.5'
-                      }
-                    >
-                      <Label htmlFor={`swms-detail-${key}`}>
-                        {SWMS_PROJECT_DETAIL_LABELS[key]}
-                      </Label>
-                      {DETAIL_TEXTAREA_KEYS.has(key) ? (
-                        <Textarea
-                          id={`swms-detail-${key}`}
-                          value={details[key]}
-                          onChange={(e) =>
-                            setDetails((d) => ({ ...d, [key]: e.target.value }))
-                          }
-                          rows={2}
-                        />
-                      ) : (
-                        <Input
-                          id={`swms-detail-${key}`}
-                          value={details[key]}
-                          onChange={(e) =>
-                            setDetails((d) => ({ ...d, [key]: e.target.value }))
-                          }
-                        />
-                      )}
-                    </div>
-                  ))}
-                </div>
-
-                {hrcwItems.length > 0 && (
-                  <>
-                    <IssueSectionHeading
-                      title="High-risk construction work checklist"
-                      hint="Suggestions from the template are pre-checked — confirm each answer."
-                    />
-                    <div className="flex flex-col gap-2">
-                      {hrcwItems.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
-                        >
-                          <span className="flex-1 text-sm">{item.label}</span>
-                          <Select
-                            value={answers[item.id] ?? item.suggested}
-                            onValueChange={(v) =>
-                              setAnswers((a) => ({
-                                ...a,
-                                [item.id]: (v ?? item.suggested) as HrcwAnswer,
-                              }))
-                            }
-                          >
-                            <SelectTrigger
-                              className="w-24 shrink-0"
-                              aria-label={`Answer: ${item.label}`}
-                            >
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {HRCW_ANSWERS.map((a) => (
-                                <SelectItem key={a} value={a}>
-                                  {HRCW_ANSWER_LABELS[a]}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      ))}
-                    </div>
-                  </>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              size="sm"
+              variant={source === 'template' ? 'secondary' : 'outline'}
+              onClick={() => setSource('template')}
+            >
+              From template
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant={source === 'document' ? 'secondary' : 'outline'}
+              onClick={() => setSource('document')}
+            >
+              Uploaded PDF
+            </Button>
+          </div>
+          {source === 'document' ? (
+            <AddDocumentSwmsForm
+              parentType={parentType}
+              parentId={parentId}
+              documents={documents}
+              onDone={() => {
+                setOpen(false)
+                reset()
+              }}
+            />
+          ) : (
+            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="swms-template">Template</Label>
+                <Select
+                  value={templateId}
+                  onValueChange={(v) => pickTemplate(v ?? '')}
+                >
+                  <SelectTrigger id="swms-template" className="w-full">
+                    <SelectValue placeholder="Pick a template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {templates.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No active SWMS templates — create one in Settings → SWMS.
+                  </p>
                 )}
+              </div>
 
-                <IssueSectionHeading
-                  title="Emergency contacts"
-                  hint="Site-specific emergency arrangements for this SWMS."
-                />
-                <div className="grid gap-3 sm:grid-cols-2">
-                  {(
-                    Object.keys(SWMS_EMERGENCY_CONTACT_LABELS) as (keyof SwmsEmergencyContacts)[]
-                  ).map((key) => (
-                    <div
-                      key={key}
-                      className={
-                        key === 'assembly_point'
-                          ? 'flex flex-col gap-1.5 sm:col-span-2'
-                          : 'flex flex-col gap-1.5'
-                      }
-                    >
-                      <Label htmlFor={`swms-contact-${key}`}>
-                        {SWMS_EMERGENCY_CONTACT_LABELS[key]}
-                      </Label>
-                      <Input
-                        id={`swms-contact-${key}`}
-                        value={contacts[key]}
-                        onChange={(e) =>
-                          setContacts((c) => ({ ...c, [key]: e.target.value }))
+              {selectedTemplate && (
+                <>
+                  <IssueSectionHeading
+                    title="Project-specific details"
+                    hint="Filled at issue — these appear on the SWMS the crew reads and signs."
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(
+                      Object.keys(SWMS_PROJECT_DETAIL_LABELS) as (keyof SwmsProjectDetails)[]
+                    ).map((key) => (
+                      <div
+                        key={key}
+                        className={
+                          DETAIL_TEXTAREA_KEYS.has(key)
+                            ? 'flex flex-col gap-1.5 sm:col-span-2'
+                            : 'flex flex-col gap-1.5'
                         }
-                      />
-                    </div>
-                  ))}
-                </div>
-              </>
-            )}
+                      >
+                        <Label htmlFor={`swms-detail-${key}`}>
+                          {SWMS_PROJECT_DETAIL_LABELS[key]}
+                        </Label>
+                        {DETAIL_TEXTAREA_KEYS.has(key) ? (
+                          <Textarea
+                            id={`swms-detail-${key}`}
+                            value={details[key]}
+                            onChange={(e) =>
+                              setDetails((d) => ({ ...d, [key]: e.target.value }))
+                            }
+                            rows={2}
+                          />
+                        ) : (
+                          <Input
+                            id={`swms-detail-${key}`}
+                            value={details[key]}
+                            onChange={(e) =>
+                              setDetails((d) => ({ ...d, [key]: e.target.value }))
+                            }
+                          />
+                        )}
+                      </div>
+                    ))}
+                  </div>
 
-            <DialogFooter>
-              <Button type="submit" disabled={pending || !templateId}>
-                {pending ? 'Issuing…' : 'Issue SWMS'}
-              </Button>
-            </DialogFooter>
-          </form>
+                  {hrcwItems.length > 0 && (
+                    <>
+                      <IssueSectionHeading
+                        title="High-risk construction work checklist"
+                        hint="Suggestions from the template are pre-checked — confirm each answer."
+                      />
+                      <div className="flex flex-col gap-2">
+                        {hrcwItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2"
+                          >
+                            <span className="flex-1 text-sm">{item.label}</span>
+                            <Select
+                              value={answers[item.id] ?? item.suggested}
+                              onValueChange={(v) =>
+                                setAnswers((a) => ({
+                                  ...a,
+                                  [item.id]: (v ?? item.suggested) as HrcwAnswer,
+                                }))
+                              }
+                            >
+                              <SelectTrigger
+                                className="w-24 shrink-0"
+                                aria-label={`Answer: ${item.label}`}
+                              >
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {HRCW_ANSWERS.map((a) => (
+                                  <SelectItem key={a} value={a}>
+                                    {HRCW_ANSWER_LABELS[a]}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  )}
+
+                  <IssueSectionHeading
+                    title="Emergency contacts"
+                    hint="Site-specific emergency arrangements for this SWMS."
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {(
+                      Object.keys(SWMS_EMERGENCY_CONTACT_LABELS) as (keyof SwmsEmergencyContacts)[]
+                    ).map((key) => (
+                      <div
+                        key={key}
+                        className={
+                          key === 'assembly_point'
+                            ? 'flex flex-col gap-1.5 sm:col-span-2'
+                            : 'flex flex-col gap-1.5'
+                        }
+                      >
+                        <Label htmlFor={`swms-contact-${key}`}>
+                          {SWMS_EMERGENCY_CONTACT_LABELS[key]}
+                        </Label>
+                        <Input
+                          id={`swms-contact-${key}`}
+                          value={contacts[key]}
+                          onChange={(e) =>
+                            setContacts((c) => ({ ...c, [key]: e.target.value }))
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              <DialogFooter>
+                <Button type="submit" disabled={pending || !templateId}>
+                  {pending ? 'Issuing…' : 'Issue SWMS'}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </>
