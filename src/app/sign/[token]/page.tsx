@@ -1,6 +1,7 @@
 import { format, isValid, parseISO } from 'date-fns'
 import { ShieldCheckIcon } from 'lucide-react'
 import { FormDataView } from '@/components/FormDataView'
+import { SwmsDocumentLink } from '@/components/SwmsDocumentLink'
 import { SwmsFullView } from '@/components/SwmsFullView'
 import { createPublicClient } from '@/lib/supabase/public'
 import { parseSwmsStructure } from '@/lib/swms'
@@ -29,6 +30,8 @@ interface SharedSwmsDoc {
   emergency_contacts?: unknown
   project_details?: unknown
   references_list?: unknown
+  /** Set for SWMS issued from an uploaded PDF (migration 0064). */
+  document?: { bucket: string; path: string; filename: string } | null
 }
 
 interface SharedFormDoc {
@@ -131,6 +134,17 @@ export default async function PublicSignPage({
   }
 
   const doc = shared.doc
+
+  // Uploaded-PDF SWMS: mint a 1h signed URL with the anon key. Storage policy
+  // attachments_select_shared_swms_doc (0064) allows it only while this SWMS
+  // is active and has a live signon link — the token was validated above.
+  let documentUrl: string | null = null
+  if (doc.type === 'swms' && doc.document) {
+    const { data: signed } = await supabase.storage
+      .from(doc.document.bucket ?? 'attachments')
+      .createSignedUrl(doc.document.path, 3600)
+    documentUrl = signed?.signedUrl ?? null
+  }
   const heading =
     shared.label ?? (doc.type === 'swms' ? doc.title : doc.name)
 
@@ -150,7 +164,11 @@ export default async function PublicSignPage({
       </div>
 
       {doc.type === 'swms' ? (
-        <SwmsReadThrough doc={doc} />
+        doc.document ? (
+          <SwmsDocumentLink url={documentUrl} filename={doc.document.filename} />
+        ) : (
+          <SwmsReadThrough doc={doc} />
+        )
       ) : (
         <FormReadThrough doc={doc} />
       )}

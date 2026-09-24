@@ -4,6 +4,7 @@ import { ArrowLeftIcon, CheckCircle2Icon } from 'lucide-react'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { StatusBadge } from '@/components/StatusBadge'
+import { SwmsDocumentLink } from '@/components/SwmsDocumentLink'
 import { SwmsFullView } from '@/components/SwmsFullView'
 import { fmtDate } from '@/lib/format'
 import { SWMS_STRUCTURE_COLUMNS, parseSwmsStructure } from '@/lib/swms'
@@ -23,12 +24,29 @@ export default async function FieldSwmsInstancePage({
   const { data: instance } = await supabase
     .from('swms_instances')
     .select(
-      `id, title, body, hazards, version, status, ${SWMS_STRUCTURE_COLUMNS},
+      `id, title, body, hazards, version, status, document_attachment_id,
+       document:attachments!swms_instances_document_attachment_id_fkey(bucket, path, filename),
+       ${SWMS_STRUCTURE_COLUMNS},
        projects(number, name), jobs(number, title)`
     )
     .eq('id', instanceId)
     .single()
   if (!instance) notFound()
+
+  // Uploaded-PDF SWMS: field staff can read job/project attachment objects
+  // under attachments_select_scoped, so sign with the user's own client.
+  const documentRel = instance.document as unknown as {
+    bucket: string
+    path: string
+    filename: string
+  } | null
+  let documentUrl: string | null = null
+  if (documentRel) {
+    const { data: signed } = await supabase.storage
+      .from(documentRel.bucket ?? 'attachments')
+      .createSignedUrl(documentRel.path, 3600)
+    documentUrl = signed?.signedUrl ?? null
+  }
 
   const { data: mySignature } = await supabase
     .from('swms_signatures')
@@ -71,7 +89,11 @@ export default async function FieldSwmsInstancePage({
         <p className="text-sm text-muted-foreground">{parentLabel}</p>
       </div>
 
-      <SwmsFullView structure={structure} />
+      {documentRel ? (
+        <SwmsDocumentLink url={documentUrl} filename={documentRel.filename} />
+      ) : (
+        <SwmsFullView structure={structure} />
+      )}
 
       {/* Sign-on */}
       <section className="flex flex-col gap-2 border-t pt-4">
