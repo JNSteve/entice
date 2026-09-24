@@ -170,7 +170,7 @@ const matrixCol = StyleSheet.create({
 
 // ─── Building blocks ─────────────────────────────────────────────────────────
 
-function SectionTable({
+export function SectionTable({
   title,
   children,
 }: {
@@ -187,7 +187,7 @@ function SectionTable({
   )
 }
 
-function LabelValueRows({ rows }: { rows: SwmsPdfRow[] }) {
+export function LabelValueRows({ rows }: { rows: SwmsPdfRow[] }) {
   return (
     <>
       {rows.map((r, i) => (
@@ -309,7 +309,7 @@ function StepsTable({ steps }: { steps: SwmsPdfStep[] }) {
   )
 }
 
-function SignatureTable({
+export function SignatureTable({
   signatures,
   earlierSignatureCount,
 }: {
@@ -356,6 +356,26 @@ function SignatureTable({
           </Text>
         </View>
       )}
+    </SectionTable>
+  )
+}
+
+export function ChangeRecordTable({ changes }: { changes: SwmsPdfChange[] }) {
+  if (changes.length === 0) return null
+  return (
+    <SectionTable title="Review & change record">
+      <View style={tableStyles.headRow}>
+        <Text style={[tableStyles.headCell, changeCol.date]}>Date</Text>
+        <Text style={[tableStyles.headCell, changeCol.description]}>Change</Text>
+        <Text style={[tableStyles.headCell, changeCol.by]}>By</Text>
+      </View>
+      {changes.map((c, i) => (
+        <View key={i} style={tableStyles.row} wrap={false}>
+          <Text style={[tableStyles.cell, changeCol.date]}>{c.date}</Text>
+          <Text style={[tableStyles.cell, changeCol.description]}>{c.description}</Text>
+          <Text style={[tableStyles.cell, changeCol.by]}>{c.by}</Text>
+        </View>
+      ))}
     </SectionTable>
   )
 }
@@ -514,22 +534,7 @@ export function SwmsPdf({
       />
 
       {/* Review / change record */}
-      {changes.length > 0 && (
-        <SectionTable title="Review & change record">
-          <View style={tableStyles.headRow}>
-            <Text style={[tableStyles.headCell, changeCol.date]}>Date</Text>
-            <Text style={[tableStyles.headCell, changeCol.description]}>Change</Text>
-            <Text style={[tableStyles.headCell, changeCol.by]}>By</Text>
-          </View>
-          {changes.map((c, i) => (
-            <View key={i} style={tableStyles.row} wrap={false}>
-              <Text style={[tableStyles.cell, changeCol.date]}>{c.date}</Text>
-              <Text style={[tableStyles.cell, changeCol.description]}>{c.description}</Text>
-              <Text style={[tableStyles.cell, changeCol.by]}>{c.by}</Text>
-            </View>
-          ))}
-        </SectionTable>
-      )}
+      <ChangeRecordTable changes={changes} />
     </DocShell>
   )
 }
