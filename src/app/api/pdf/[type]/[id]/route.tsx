@@ -896,33 +896,48 @@ async function swmsPdf(id: string): Promise<Response> {
     if (blob) originalBytes = new Uint8Array(await blob.arrayBuffer())
     const check = await checkOriginalPdf(originalBytes)
 
-    const register = await renderToBuffer(
-      <SwmsRegisterPdf
-        swms={{
-          title: instance.title,
-          parentLabel,
-          version: currentVersion,
-          status: instance.status,
-          date: fmtDate(instance.created_at),
-        }}
-        company={toCompany(settings)}
-        sourceFilename={documentRel.filename}
-        generatedAt={format(nowAU(), 'dd/MM/yyyy HH:mm')}
-        signatures={pdfSignatures}
-        earlierSignatureCount={earlierSignatureCount}
-        changes={changes}
-        originalProblem={check.ok ? null : check.reason}
-      />
-    )
-    const bytes =
-      check.ok && originalBytes
-        ? await appendPdf(originalBytes, new Uint8Array(register))
-        : new Uint8Array(register)
+    const renderRegister = (originalProblem: string | null) =>
+      renderToBuffer(
+        <SwmsRegisterPdf
+          swms={{
+            title: instance.title,
+            parentLabel,
+            version: currentVersion,
+            status: instance.status,
+            date: fmtDate(instance.created_at),
+          }}
+          company={toCompany(settings)}
+          sourceFilename={documentRel.filename}
+          generatedAt={format(nowAU(), 'dd/MM/yyyy HH:mm')}
+          signatures={pdfSignatures}
+          earlierSignatureCount={earlierSignatureCount}
+          changes={changes}
+          originalProblem={originalProblem}
+        />
+      )
 
+    let bytes: Uint8Array
+    if (check.ok) {
+      const register = await renderRegister(null)
+      try {
+        bytes = await appendPdf(check.doc, new Uint8Array(register))
+      } catch {
+        // Loaded leniently but can't be re-saved (damaged xref/objects):
+        // fall back to the register alone, with the reason printed on it.
+        bytes = new Uint8Array(await renderRegister('the PDF could not be merged'))
+      }
+    } else {
+      bytes = new Uint8Array(await renderRegister(check.reason))
+    }
+
+    // ASCII-only, header-safe: the title is free text.
+    const fileTitle =
+      instance.title.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) ||
+      'swms'
     return new Response(new Uint8Array(bytes), {
       headers: {
         'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="swms-v${currentVersion}-signed.pdf"`,
+        'Content-Disposition': `inline; filename="${fileTitle}-v${currentVersion}-signed.pdf"`,
       },
     })
   }

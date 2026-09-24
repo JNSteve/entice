@@ -210,6 +210,7 @@ export async function reviseDocumentSwmsInstance(data: unknown): Promise<Result>
     })
     .eq('id', instance.id)
     .eq('version', instance.version)
+    .eq('status', 'active')
     .select('id')
   if (error) return { error: error.message }
   if (!updated || updated.length === 0) {

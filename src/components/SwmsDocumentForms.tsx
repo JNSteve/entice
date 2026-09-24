@@ -243,7 +243,11 @@ export function ReviseDocumentSwmsDialog({
 
   return (
     <>
-      <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(true)} disabled={disabled}>
+      <Button type="button" variant="ghost" size="sm" onClick={() => {
+          // Fresh choice each time: the current file may have changed since.
+          setChoice(initialChoice(documents, currentAttachmentId))
+          setOpen(true)
+        }} disabled={disabled}>
         Revise
       </Button>
       <Dialog open={open} onOpenChange={setOpen}>

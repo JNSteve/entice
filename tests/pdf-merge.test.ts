@@ -19,7 +19,7 @@ async function makeEncryptedLookingPdf(): Promise<Uint8Array> {
 
 describe('checkOriginalPdf', () => {
   it('accepts a normal PDF', async () => {
-    expect(await checkOriginalPdf(await makePdf(2))).toEqual({ ok: true })
+    expect((await checkOriginalPdf(await makePdf(2))).ok).toBe(true)
   })
 
   it('reports a missing file', async () => {
@@ -48,9 +48,9 @@ describe('appendPdf', () => {
     const appendix = await PDFDocument.create()
     appendix.addPage([200, 300])
 
-    const merged = await PDFDocument.load(
-      await appendPdf(await original.save(), await appendix.save())
-    )
+    const check = await checkOriginalPdf(await original.save())
+    if (!check.ok) throw new Error(check.reason)
+    const merged = await PDFDocument.load(await appendPdf(check.doc, await appendix.save()))
     expect(merged.getPageCount()).toBe(3)
     expect(merged.getPage(0).getSize()).toEqual({ width: 100, height: 100 })
     expect(merged.getPage(2).getSize()).toEqual({ width: 200, height: 300 })
