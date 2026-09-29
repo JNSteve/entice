@@ -73,10 +73,10 @@ where p.id = t.user_id and t.approved;
 create or replace function timesheet_stamp_cost_rate() returns trigger
 language plpgsql set search_path = public as $$
 declare
-  role text := current_app_role();
-  trusted boolean := role is null or role in ('admin','office');
+  v_role text := current_app_role();
+  trusted boolean := v_role is null or v_role in ('admin','office');
 begin
-  if role = 'field' and (
+  if v_role = 'field' and (
        (tg_op = 'INSERT' and new.approved)
        or (tg_op = 'UPDATE' and (new.approved is distinct from old.approved
                                  or new.approved_by is distinct from old.approved_by))
