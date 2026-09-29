@@ -10,7 +10,8 @@ import { EditJobDialog } from './edit-job-dialog'
 import { ScheduleWorkDialog } from './schedule-work-dialog'
 import { ChecklistSection } from './checklist-section'
 import { WorkLogSection } from './work-log-section'
-import { CostsSection } from './costs-section'
+import { PnlPanel } from '@/components/pnl/PnlPanel'
+import { loadPnl, type PnlData } from '@/lib/pnl-queries'
 import { InvoiceSection, type JobInvoiceRow } from './invoice-section'
 import { docTotals } from '@/lib/money'
 import { PhotoUpload } from '@/components/PhotoUpload'
@@ -42,7 +43,6 @@ export default async function JobDetailPage({
     { data: job },
     { data: checklistItems },
     { data: workLogs },
-    { data: costs },
     { data: sites },
     { data: supervisors },
     { data: pms },
@@ -74,12 +74,6 @@ export default async function JobDetailPage({
       .from('work_logs')
       .select('id, date, notes, created_by, profiles!work_logs_created_by_fkey(full_name)')
       .eq('job_id', id)
-      .order('date', { ascending: false }),
-    supabase
-      .from('costs')
-      .select('id, date, description, amount, cost_code_id, cost_codes(code, name)')
-      .eq('parent_type', 'job')
-      .eq('parent_id', id)
       .order('date', { ascending: false }),
     supabase.from('sites').select('id, client_id, name').order('name'),
     supabase
@@ -145,17 +139,6 @@ export default async function JobDetailPage({
     }
   })
 
-  const costsData = (costs ?? []).map((c) => {
-    const codeRel = c.cost_codes as unknown as { code: string; name: string } | null
-    return {
-      id: c.id,
-      date: c.date,
-      description: c.description,
-      amount: Number(c.amount),
-      cost_code_label: codeRel ? `${codeRel.code} – ${codeRel.name}` : null,
-    }
-  })
-
   const canMutate = profile.role === 'admin' || profile.role === 'office' || profile.role === 'supervisor'
   const canSeeCosts = profile.role === 'admin' || profile.role === 'office'
   const canDeleteAttachment = profile.role === 'admin' || profile.role === 'office'
@@ -163,8 +146,9 @@ export default async function JobDetailPage({
   // Invoices — admin/office only (money data).
   let invoiceRows: JobInvoiceRow[] = []
   let hasQuoteBasis = false
+  let pnl: PnlData | null = null
   if (canSeeCosts) {
-    const [{ data: invoices }, { count: quoteLineCount }] = await Promise.all([
+    const [{ data: invoices }, { count: quoteLineCount }, pnlData] = await Promise.all([
       supabase
         .from('invoices')
         .select('id, number, status, gst_rate, issue_date, paid_at, origin, invoice_lines(qty, unit_sell)')
@@ -176,7 +160,9 @@ export default async function JobDetailPage({
             .select('id', { count: 'exact', head: true })
             .eq('quote_id', job.quote_id)
         : Promise.resolve({ count: 0 }),
+      loadPnl(supabase, 'job', id),
     ])
+    pnl = pnlData
 
     invoiceRows = (invoices ?? []).map((inv) => {
       const { total } = docTotals(
@@ -358,19 +344,14 @@ export default async function JobDetailPage({
         canSupersede={canSeeCosts}
       />
 
-      {/* Costs — admin/office only */}
-      {canSeeCosts && (
+      {/* Costs & P&L — admin/office only */}
+      {canSeeCosts && pnl && (
         <>
           <div className="border-t" />
-          <CostsSection
-            jobId={job.id}
-            costs={costsData}
-            costCodes={(costCodes ?? []).map((cc) => ({
-              id: cc.id,
-              code: cc.code,
-              name: cc.name,
-            }))}
-          />
+          <section className="flex flex-col gap-4">
+            <h2 className="text-base font-semibold">Costs &amp; P&amp;L</h2>
+            <PnlPanel parentType="job" parentId={job.id} data={pnl} />
+          </section>
         </>
       )}
 

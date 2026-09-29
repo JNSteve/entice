@@ -15,6 +15,21 @@ from (
 ) q
 where j.quote_id = q.quote_id and j.contract_price is null;
 
+-- Supervisors may update jobs (0003) — the price stays admin/office only.
+create or replace function jobs_guard_contract_price() returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if new.contract_price is distinct from old.contract_price
+     and current_app_role() in ('supervisor','field') then
+    raise exception 'only admin or office can change the job price';
+  end if;
+  return new;
+end $$;
+
+create trigger jobs_contract_price_guard
+  before update on jobs
+  for each row execute function jobs_guard_contract_price();
+
 create table job_price_adjustments (
   id uuid primary key default gen_random_uuid(),
   job_id uuid not null references jobs(id) on delete cascade,

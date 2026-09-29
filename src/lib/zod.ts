@@ -619,18 +619,46 @@ export const workLogSchema = z.object({
 
 export type WorkLogInput = z.infer<typeof workLogSchema>
 
-export const jobCostSchema = z.object({
+// ─── P&L ──────────────────────────────────────────────────────────────────────
+
+export const costLineSchema = z
+  .object({
+    kind: z.enum(['labour', 'other']),
+    parent_type: z.enum(['job', 'project']),
+    parent_id: z.uuid(),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date is required'),
+    description: z.string().trim().max(500).default(''),
+    cost_code_id: z.uuid().nullish().transform((v) => v ?? null),
+    amount: z.coerce.number().positive('Amount must be positive').max(100_000_000).optional(),
+    hours: z.coerce.number().positive('Hours must be positive').max(10_000).optional(),
+    rate: z.coerce.number().min(0, 'Rate cannot be negative').max(100_000).optional(),
+    worker_id: z.uuid().nullish().transform((v) => v ?? null),
+    worker_name: z.string().trim().max(120).nullish().transform((v) => v || null),
+  })
+  .superRefine((v, ctx) => {
+    if (v.kind === 'labour') {
+      if (v.hours == null) ctx.addIssue({ code: 'custom', message: 'Hours are required', path: ['hours'] })
+      if (v.rate == null) ctx.addIssue({ code: 'custom', message: 'Rate is required', path: ['rate'] })
+      if (!v.worker_id && !v.worker_name)
+        ctx.addIssue({ code: 'custom', message: 'Pick a worker or type a name', path: ['worker_name'] })
+    } else {
+      if (v.amount == null) ctx.addIssue({ code: 'custom', message: 'Amount is required', path: ['amount'] })
+      if (!v.description) ctx.addIssue({ code: 'custom', message: 'Description is required', path: ['description'] })
+    }
+  })
+export type CostLineInput = z.infer<typeof costLineSchema>
+
+export const priceAdjustmentSchema = z.object({
   job_id: z.uuid(),
-  date: z.string().min(1, 'Date is required'),
-  description: z.string().min(1, 'Description is required'),
-  amount: z.coerce.number().positive('Amount must be positive'),
-  cost_code_id: z
-    .uuid()
-    .nullish()
-    .transform((v) => v ?? null),
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date is required'),
+  description: z.string().trim().min(1, 'Description is required').max(500),
+  amount: z.coerce.number().refine((n) => n !== 0, 'Amount cannot be zero'),
 })
 
-export type JobCostInput = z.infer<typeof jobCostSchema>
+export const jobBasePriceSchema = z.object({
+  job_id: z.uuid(),
+  price: z.coerce.number().min(0, 'Price cannot be negative').max(100_000_000),
+})
 
 // ─── Projects ────────────────────────────────────────────────────────────────
 

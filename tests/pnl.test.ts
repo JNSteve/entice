@@ -94,3 +94,31 @@ test('drawdownTone thresholds', () => {
   expect(drawdownTone(80.1)).toBe('warn')
   expect(drawdownTone(100.1)).toBe('over')
 })
+
+describe('costLineSchema', async () => {
+  const { costLineSchema, priceAdjustmentSchema } = await import('../src/lib/zod')
+  const base = {
+    parent_type: 'job',
+    parent_id: '11450f03-f7a1-49f7-9296-ed48c8a809e1',
+    date: '2026-09-29',
+  }
+
+  test('labour needs hours, rate and a worker', () => {
+    const r = costLineSchema.safeParse({ ...base, kind: 'labour', hours: 8 })
+    expect(r.success).toBe(false)
+    const ok = costLineSchema.safeParse({ ...base, kind: 'labour', hours: 8, rate: 55, worker_name: 'Labour hire' })
+    expect(ok.success).toBe(true)
+  })
+
+  test('other cost needs description and a positive amount', () => {
+    expect(costLineSchema.safeParse({ ...base, kind: 'other', amount: 100 }).success).toBe(false)
+    expect(costLineSchema.safeParse({ ...base, kind: 'other', description: 'Tip', amount: 0 }).success).toBe(false)
+    expect(costLineSchema.safeParse({ ...base, kind: 'other', description: 'Tip', amount: 120 }).success).toBe(true)
+  })
+
+  test('price adjustment allows negatives but not zero', () => {
+    const adj = { job_id: base.parent_id, date: base.date, description: 'Scope cut' }
+    expect(priceAdjustmentSchema.safeParse({ ...adj, amount: -500 }).success).toBe(true)
+    expect(priceAdjustmentSchema.safeParse({ ...adj, amount: 0 }).success).toBe(false)
+  })
+})

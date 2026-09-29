@@ -16,6 +16,7 @@ const TABS: Tab[] = [
   { label: 'Overview', suffix: '' },
   { label: 'Programme', suffix: '/programme' },
   { label: 'Budget', suffix: '/budget', money: true },
+  { label: 'P&L', suffix: '/pnl', money: true },
   { label: 'POs', suffix: '/pos', money: true },
   { label: 'Variations', suffix: '/variations', money: true },
   { label: 'Claims', suffix: '/claims', money: true },

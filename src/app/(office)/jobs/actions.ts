@@ -13,7 +13,6 @@ import {
   jobStatusSchema,
   checklistItemSchema,
   workLogSchema,
-  jobCostSchema,
 } from '@/lib/zod'
 
 type Result = { error?: string }
@@ -403,33 +402,6 @@ export async function addWorkLog(data: unknown): Promise<Result> {
     job_id: parsed.data.job_id,
     date: parsed.data.date,
     notes: parsed.data.notes,
-    created_by: profile.id,
-  })
-  if (error) return { error: error.message }
-
-  revalidateJob(parsed.data.job_id)
-  return {}
-}
-
-// ─── Costs ────────────────────────────────────────────────────────────────────
-
-export async function addJobCost(data: unknown): Promise<Result> {
-  const profile = await requireRole('admin', 'office')
-
-  const parsed = jobCostSchema.safeParse(data)
-  if (!parsed.success) {
-    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
-  }
-
-  const supabase = await createClient()
-  const { error } = await supabase.from('costs').insert({
-    parent_type: 'job',
-    parent_id: parsed.data.job_id,
-    date: parsed.data.date,
-    description: parsed.data.description,
-    amount: parsed.data.amount,
-    cost_code_id: parsed.data.cost_code_id,
-    source: 'manual',
     created_by: profile.id,
   })
   if (error) return { error: error.message }
