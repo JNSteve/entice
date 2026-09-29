@@ -97,6 +97,8 @@ export interface JobPayload {
   scheduled_start: null
   scheduled_end: null
   pm_id: string | null
+  /** Quote sell subtotal ex GST — the job's base price for the P&L. */
+  contract_price: number | null
 }
 
 export function jobPayloadFromQuote(
@@ -116,6 +118,10 @@ export function jobPayloadFromQuote(
     scheduled_start: null,
     scheduled_end: null,
     pm_id: quote.pm_id ?? null,
+    contract_price:
+      lines.length === 0
+        ? null
+        : docTotals(lines.map((l) => ({ qty: l.qty, unitSell: l.unit_sell })), 0).subtotal,
   }
 }
 

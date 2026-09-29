@@ -53,6 +53,15 @@ describe('jobPayloadFromQuote', () => {
     expect(payload.pm_id).toBe('pm-001')
   })
 
+  test('contract_price = sell subtotal ex GST of all lines', () => {
+    const payload = jobPayloadFromQuote(QUOTE, 'J-0005', SECTIONS, LINES)
+    expect(payload.contract_price).toBe(650.5)
+  })
+
+  test('contract_price is null when the quote has no lines', () => {
+    expect(jobPayloadFromQuote(QUOTE, 'J-0006').contract_price).toBeNull()
+  })
+
   test('null pm_id is preserved', () => {
     const q = { ...QUOTE, pm_id: null }
     const payload = jobPayloadFromQuote(q, 'J-0004')
