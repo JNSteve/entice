@@ -66,15 +66,31 @@ set cost_rate = p.hourly_cost
 from profiles p
 where p.id = t.user_id and t.approved;
 
+-- Approval + locked rate. Field users can't approve (0003's policies only
+-- check user_id, so this closes self-approval now that approved hours cost
+-- the job). Admin/office (and the service role, e.g. a backup restore) may
+-- supply a rate; otherwise approval stamps profiles.hourly_cost.
 create or replace function timesheet_stamp_cost_rate() returns trigger
 language plpgsql set search_path = public as $$
+declare
+  role text := current_app_role();
+  trusted boolean := role is null or role in ('admin','office');
 begin
+  if role = 'field' and (
+       (tg_op = 'INSERT' and new.approved)
+       or (tg_op = 'UPDATE' and (new.approved is distinct from old.approved
+                                 or new.approved_by is distinct from old.approved_by))
+     ) then
+    raise exception 'only staff can approve timesheets';
+  end if;
+
   if new.approved and (tg_op = 'INSERT' or not old.approved) then
-    new.cost_rate := (select hourly_cost from profiles where id = new.user_id);
+    if not trusted or new.cost_rate is null then
+      new.cost_rate := (select hourly_cost from profiles where id = new.user_id);
+    end if;
   elsif not new.approved then
     new.cost_rate := null;
-  elsif current_app_role() is distinct from 'admin'
-        and current_app_role() is distinct from 'office' then
+  elsif not trusted then
     new.cost_rate := old.cost_rate;
   end if;
   return new;

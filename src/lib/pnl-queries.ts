@@ -57,6 +57,24 @@ export interface PnlData {
 
 const num = (v: unknown) => (v == null ? null : Number(v))
 
+const PAGE = 1000
+
+/**
+ * PostgREST caps a response at 1000 rows — page until a short page so the
+ * P&L totals never silently drop rows on long-running jobs.
+ */
+async function fetchAll<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const rows: T[] = []
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await page(from, from + PAGE - 1)
+    if (error) throw new Error(error.message)
+    rows.push(...(data ?? []))
+    if (!data || data.length < PAGE) return rows
+  }
+}
+
 /** Everything the P&L panel needs for one job or project (admin/office only). */
 export async function loadPnl(
   supabase: Supabase,
@@ -65,7 +83,7 @@ export async function loadPnl(
 ): Promise<PnlData | null> {
   const fk = parentType === 'job' ? 'job_id' : 'project_id'
 
-  const [parentRes, priceRowsRes, costsRes, timesheetsRes, profilesRes, codesRes] =
+  const [parentRes, priceRowsRes, costRows, timesheetRows, profilesRes, codesRes] =
     await Promise.all([
       parentType === 'job'
         ? supabase.from('jobs').select('id, quote_id, contract_price').eq('id', parentId).maybeSingle()
@@ -82,19 +100,27 @@ export async function loadPnl(
             .select('id, sell_amount')
             .eq('project_id', parentId)
             .eq('status', 'approved'),
-      supabase
-        .from('costs')
-        .select(
-          'id, date, description, amount, source, hours, rate, worker_id, worker_name, cost_code_id, cost_codes(code, name, category)'
-        )
-        .eq('parent_type', parentType)
-        .eq('parent_id', parentId)
-        .order('date', { ascending: false })
-        .order('created_at', { ascending: false }),
-      supabase
-        .from('timesheet_entries')
-        .select('user_id, start_at, end_at, approved, cost_rate')
-        .eq(fk, parentId),
+      fetchAll((from, to) =>
+        supabase
+          .from('costs')
+          .select(
+            'id, date, description, amount, source, hours, rate, worker_id, worker_name, cost_code_id, cost_codes(code, name, category)'
+          )
+          .eq('parent_type', parentType)
+          .eq('parent_id', parentId)
+          .order('date', { ascending: false })
+          .order('created_at', { ascending: false })
+          .order('id')
+          .range(from, to)
+      ),
+      fetchAll((from, to) =>
+        supabase
+          .from('timesheet_entries')
+          .select('id, user_id, start_at, end_at, approved, cost_rate')
+          .eq(fk, parentId)
+          .order('id')
+          .range(from, to)
+      ),
       supabase.from('profiles').select('id, full_name, hourly_cost, active').order('full_name'),
       supabase.from('cost_codes').select('id, code, name, active').order('code'),
     ])
@@ -107,7 +133,7 @@ export async function loadPnl(
   const profiles = profilesRes.data ?? []
   const nameById = new Map(profiles.map((p) => [p.id as string, p.full_name as string]))
 
-  const costLines: PnlCostLine[] = (costsRes.data ?? []).map((c) => {
+  const costLines: PnlCostLine[] = costRows.map((c) => {
     const code = c.cost_codes as unknown as { code: string; name: string } | null
     return {
       id: c.id,
@@ -150,7 +176,7 @@ export async function loadPnl(
   const summary = computePnl({
     basePrice,
     adjustments,
-    timesheets: (timesheetsRes.data ?? []).map((t) => ({
+    timesheets: timesheetRows.map((t) => ({
       userId: t.user_id,
       workerName: nameById.get(t.user_id) ?? 'Unknown',
       startAt: t.start_at,
@@ -158,13 +184,15 @@ export async function loadPnl(
       approved: t.approved,
       costRate: num(t.cost_rate),
     })),
-    costs: (costsRes.data ?? []).map((c) => ({
+    costs: costRows.map((c) => ({
       amount: Number(c.amount),
       source: c.source as CostSource,
       category:
         ((c.cost_codes as unknown as { category: CostCategory } | null)?.category ?? null),
     })),
   })
+
+  const usedCodes = new Set(costRows.map((c) => c.cost_code_id).filter(Boolean))
 
   return {
     summary,
@@ -174,7 +202,7 @@ export async function loadPnl(
       .filter((p) => p.active)
       .map((p) => ({ id: p.id, full_name: p.full_name, hourly_cost: num(p.hourly_cost) })),
     costCodes: (codesRes.data ?? [])
-      .filter((c) => c.active)
+      .filter((c) => c.active || usedCodes.has(c.id))
       .map((c) => ({ id: c.id, code: c.code, name: c.name })),
   }
 }

@@ -173,7 +173,13 @@ function CostLineDialog({ parentType, parentId, line, workers, costCodes, onClos
   const [pending, startTransition] = useTransition()
   const [kind, setKind] = useState<'labour' | 'other'>(line ? (line.source === 'labour' ? 'labour' : 'other') : 'labour')
   const [date, setDate] = useState(line?.date ?? new Date().toISOString().slice(0, 10))
-  const [description, setDescription] = useState(line?.description ?? '')
+  // An auto-generated labour description is shown blank so it re-derives from
+  // the worker on save instead of going stale.
+  const [description, setDescription] = useState(
+    line && !(line.source === 'labour' && line.description === `Labour — ${line.worker_label}`)
+      ? line.description
+      : ''
+  )
   const [costCodeId, setCostCodeId] = useState(line?.cost_code_id ?? NONE)
   const [amount, setAmount] = useState<number | null>(line && line.source !== 'labour' ? line.amount : null)
   const [workerId, setWorkerId] = useState(
@@ -182,7 +188,7 @@ function CostLineDialog({ parentType, parentId, line, workers, costCodes, onClos
   const [workerName, setWorkerName] = useState(line?.worker_name ?? '')
   const [hours, setHours] = useState(line?.hours != null ? String(line.hours) : '')
   const [rate, setRate] = useState<number | null>(
-    line?.rate ?? (line ? null : workers[0]?.hourly_cost ?? null)
+    line?.rate ?? (line?.worker_id || line?.worker_name ? null : workers[0]?.hourly_cost ?? null)
   )
 
   // Keep a known worker selectable even if they've since been deactivated.
@@ -190,6 +196,12 @@ function CostLineDialog({ parentType, parentId, line, workers, costCodes, onClos
     line?.worker_id && !workers.some((w) => w.id === line.worker_id)
       ? [...workers, { id: line.worker_id, full_name: line.worker_label ?? 'Unknown', hourly_cost: null }]
       : workers
+
+  // Keep an inactive cost code on an existing line selectable (and labelled).
+  const codeOptions =
+    line?.cost_code_id && !costCodes.some((c) => c.id === line.cost_code_id)
+      ? [...costCodes, { id: line.cost_code_id, code: line.cost_code_label ?? 'Inactive code', name: '' }]
+      : costCodes
 
   const hoursNum = Number(hours)
   const labourTotal = hoursNum > 0 && rate != null ? labourAmount(hoursNum, rate) : null
@@ -356,9 +368,9 @@ function CostLineDialog({ parentType, parentId, line, workers, costCodes, onClos
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value={NONE}>No cost code</SelectItem>
-                {costCodes.map((cc) => (
+                {codeOptions.map((cc) => (
                   <SelectItem key={cc.id} value={cc.id}>
-                    {cc.code} – {cc.name}
+                    {cc.name ? `${cc.code} – ${cc.name}` : cc.code}
                   </SelectItem>
                 ))}
               </SelectContent>

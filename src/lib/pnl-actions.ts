@@ -42,14 +42,18 @@ async function costFields(supabase: Supabase, d: CostLineInput) {
     if (!p) return { error: 'Worker not found' }
     label = p.full_name
   }
+  // Round to the stored precision first so hours × rate = amount on the row.
+  const hours = round2(d.hours!)
+  const rate = round2(d.rate!)
+  if (hours <= 0) return { error: 'Hours must be positive' }
   return {
     date: d.date,
     description: d.description || `Labour — ${label}`,
-    amount: labourAmount(d.hours!, d.rate!),
+    amount: labourAmount(hours, rate),
     cost_code_id: d.cost_code_id,
     source: 'labour' as const,
-    hours: d.hours!,
-    rate: d.rate!,
+    hours,
+    rate,
     worker_id: d.worker_id,
     worker_name: d.worker_id ? null : d.worker_name,
   }

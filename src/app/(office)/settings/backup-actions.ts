@@ -39,6 +39,7 @@ const EXPORT_TABLES: { table: string; columns?: string }[] = [
   { table: 'quote_lines' },
   // Jobs
   { table: 'jobs' },
+  { table: 'job_price_adjustments' },
   { table: 'job_checklist_items' },
   { table: 'work_logs' },
   // Projects

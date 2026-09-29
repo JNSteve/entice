@@ -90,6 +90,7 @@ export async function createCostFromDocket(data: unknown): Promise<Result> {
     revalidatePath(`/projects/${parent_id}`)
     revalidatePath(`/projects/${parent_id}/documents`)
     revalidatePath(`/projects/${parent_id}/budget`)
+    revalidatePath(`/projects/${parent_id}/pnl`)
   }
 
   return {}
