@@ -41,7 +41,7 @@ approved variation `sell_amount`; approved timesheets at `cost_rate`; all
   unpriced rows last. Top 10, "Show all". Drawdown bar coloured by
   `drawdownTone`. Pending hours note when > 0.
 - **Closed summary (for the period, priced rows):** jobs closed, revenue
-  (Σ price), cost, margin earned (Σ margin), **average margin %** = Σ margin ÷
+  (Σ price), cost (priced rows, so revenue − cost = margin), margin earned (Σ margin), **average margin %** = Σ margin ÷
   Σ price (weighted). Best and worst by margin %.
 - **Closed table:** newest closed first; price, cost, margin $, margin %
   (red when negative). Unpriced closed rows listed with "No price".

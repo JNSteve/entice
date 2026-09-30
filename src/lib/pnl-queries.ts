@@ -71,7 +71,7 @@ const PAGE = 1000
  * PostgREST caps a response at 1000 rows — page until a short page so the
  * P&L totals never silently drop rows on long-running jobs.
  */
-async function fetchAll<T>(
+export async function fetchAll<T>(
   page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>
 ): Promise<T[]> {
   const rows: T[] = []
