@@ -169,7 +169,7 @@ function CreateCostDialog({
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cfd-amount">Amount</Label>
+            <Label htmlFor="cfd-amount">Amount ex GST</Label>
             <MoneyInput
               value={amount}
               onChange={setAmount}

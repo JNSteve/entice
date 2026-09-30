@@ -44,12 +44,20 @@ export interface PnlAdjustment {
 }
 
 export type PnlPrice =
-  | { mode: 'job'; basePrice: number | null; hasQuote: boolean; adjustments: PnlAdjustment[] }
+  | {
+      mode: 'job'
+      basePrice: number | null
+      hasQuote: boolean
+      quoteNumber: string | null
+      adjustments: PnlAdjustment[]
+    }
   | { mode: 'project'; contractSum: number; approvedVariations: number }
 
 export interface PnlData {
   summary: PnlSummary
   price: PnlPrice
+  /** Settings GST rate (%) — for showing inc-GST equivalents only. */
+  gstRate: number
   costLines: PnlCostLine[]
   workers: PnlWorkerOption[]
   costCodes: PnlCostCodeOption[]
@@ -83,10 +91,10 @@ export async function loadPnl(
 ): Promise<PnlData | null> {
   const fk = parentType === 'job' ? 'job_id' : 'project_id'
 
-  const [parentRes, priceRowsRes, costRows, timesheetRows, profilesRes, codesRes] =
+  const [parentRes, priceRowsRes, costRows, timesheetRows, profilesRes, codesRes, settingsRes] =
     await Promise.all([
       parentType === 'job'
-        ? supabase.from('jobs').select('id, quote_id, contract_price').eq('id', parentId).maybeSingle()
+        ? supabase.from('jobs').select('id, quote_id, contract_price, quotes(number)').eq('id', parentId).maybeSingle()
         : supabase.from('projects').select('id, contract_sum').eq('id', parentId).maybeSingle(),
       parentType === 'job'
         ? supabase
@@ -123,10 +131,17 @@ export async function loadPnl(
       ),
       supabase.from('profiles').select('id, full_name, hourly_cost, active').order('full_name'),
       supabase.from('cost_codes').select('id, code, name, active').order('code'),
+      supabase.from('settings').select('gst_rate').eq('id', 1).maybeSingle(),
     ])
 
   const parent = parentRes.data as
-    | { id: string; quote_id?: string | null; contract_price?: unknown; contract_sum?: unknown }
+    | {
+        id: string
+        quote_id?: string | null
+        contract_price?: unknown
+        contract_sum?: unknown
+        quotes?: { number: string } | null
+      }
     | null
   if (!parent) return null
 
@@ -161,7 +176,13 @@ export async function loadPnl(
     })
     basePrice = num(parent.contract_price)
     adjustments = rows.map((r) => r.amount)
-    price = { mode: 'job', basePrice, hasQuote: Boolean(parent.quote_id), adjustments: rows }
+    price = {
+      mode: 'job',
+      basePrice,
+      hasQuote: Boolean(parent.quote_id),
+      quoteNumber: parent.quotes?.number ?? null,
+      adjustments: rows,
+    }
   } else {
     const vos = (priceRowsRes.data ?? []).map((v) => Number((v as { sell_amount: unknown }).sell_amount))
     basePrice = Number(parent.contract_sum ?? 0)
@@ -197,6 +218,7 @@ export async function loadPnl(
   return {
     summary,
     price,
+    gstRate: Number(settingsRes.data?.gst_rate ?? 10),
     costLines,
     workers: profiles
       .filter((p) => p.active)

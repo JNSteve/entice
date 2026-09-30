@@ -11,7 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { aud } from '@/lib/format'
-import { COST_CATEGORIES, drawdownTone } from '@/lib/pnl'
+import { COST_CATEGORIES, drawdownTone, withGst } from '@/lib/pnl'
 import type { PnlData } from '@/lib/pnl-queries'
 import { cn } from '@/lib/utils'
 import { CostLinesTable } from './CostLinesTable'
@@ -33,7 +33,7 @@ function pct(n: number | null): string {
 }
 
 export function PnlPanel({ parentType, parentId, data, variationsHref }: PnlPanelProps) {
-  const { summary, price, costLines, workers, costCodes } = data
+  const { summary, price, costLines, workers, costCodes, gstRate } = data
   const tone = drawdownTone(summary.drawdownPct)
   const categories = COST_CATEGORIES.filter((c) => summary.byCategory[c.key] !== 0)
 
@@ -41,16 +41,29 @@ export function PnlPanel({ parentType, parentId, data, variationsHref }: PnlPane
     <div className="flex flex-col gap-6">
       {/* Summary strip */}
       <div className="flex flex-col gap-3">
+        <p className="text-sm text-muted-foreground">
+          All figures are <span className="font-medium text-foreground">ex GST</span>. GST is passed
+          through to the ATO, so it isn&apos;t part of price, cost or margin.
+        </p>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-          <Tile label="Price" value={summary.price != null ? aud(summary.price) : 'No price set'} />
-          <Tile label="Cost to date" value={aud(summary.cost)} />
           <Tile
-            label="Margin"
+            label="Price (ex GST)"
+            value={summary.price != null ? aud(summary.price) : 'No price set'}
+            sub={summary.price != null ? `${aud(withGst(summary.price, gstRate))} inc GST` : undefined}
+          />
+          <Tile label="Cost to date (ex GST)" value={aud(summary.cost)} />
+          <Tile
+            label="Margin (ex GST)"
             value={summary.margin != null ? aud(summary.margin) : '—'}
-            sub={pct(summary.marginPct)}
+            sub={summary.marginPct != null ? `${pct(summary.marginPct)} of price` : undefined}
             className={summary.margin != null && summary.margin < 0 ? 'text-red-600' : undefined}
           />
-          <Tile label="Drawdown" value={pct(summary.drawdownPct)} className={TONE_TEXT[tone]} />
+          <Tile
+            label="Drawdown"
+            value={pct(summary.drawdownPct)}
+            sub={summary.drawdownPct != null ? 'of price used by cost' : undefined}
+            className={TONE_TEXT[tone]}
+          />
         </div>
         {summary.drawdownPct != null && (
           <div
@@ -76,8 +89,10 @@ export function PnlPanel({ parentType, parentId, data, variationsHref }: PnlPane
             jobId={parentId}
             basePrice={price.basePrice}
             hasQuote={price.hasQuote}
+            quoteNumber={price.quoteNumber}
             adjustments={price.adjustments}
             price={summary.price}
+            gstRate={gstRate}
           />
         ) : (
           <div className="flex flex-col gap-3">

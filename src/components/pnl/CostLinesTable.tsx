@@ -87,7 +87,7 @@ export function CostLinesTable({ parentType, parentId, lines, workers, costCodes
                 <TableHead>Description</TableHead>
                 <TableHead>Cost code</TableHead>
                 <TableHead>Source</TableHead>
-                <TableHead className="text-right">Amount</TableHead>
+                <TableHead className="text-right">Amount (ex GST)</TableHead>
                 <TableHead className="w-20" />
               </TableRow>
             </TableHeader>
@@ -354,8 +354,11 @@ function CostLineDialog({ parentType, parentId, line, workers, costCodes, onClos
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Amount (ex GST)</Label>
+                <Label>Amount ex GST</Label>
                 <MoneyInput value={amount} onChange={setAmount} placeholder="0.00" />
+                <p className="text-xs text-muted-foreground">
+                  From a receipt or invoice? Use the total before GST.
+                </p>
               </div>
             </>
           )}

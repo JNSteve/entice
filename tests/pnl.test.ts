@@ -122,3 +122,9 @@ describe('costLineSchema', async () => {
     expect(priceAdjustmentSchema.safeParse({ ...adj, amount: 0 }).success).toBe(false)
   })
 })
+
+test('withGst adds GST for display', async () => {
+  const { withGst } = await import('../src/lib/pnl')
+  expect(withGst(2250, 10)).toBe(2475)
+  expect(withGst(-1050, 10)).toBe(-1155)
+})

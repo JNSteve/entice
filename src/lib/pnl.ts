@@ -132,3 +132,8 @@ export function drawdownTone(pct: number | null): 'ok' | 'warn' | 'over' {
   if (pct == null || pct <= 80) return 'ok'
   return pct > 100 ? 'over' : 'warn'
 }
+
+/** Inc-GST equivalent of an ex-GST amount — display only; the P&L itself is ex GST. */
+export function withGst(exGst: number, gstRate: number): number {
+  return round2(exGst * (1 + gstRate / 100))
+}
