@@ -223,15 +223,20 @@ function CostLineDialog({
   const [costCodeId, setCostCodeId] = useState(line?.cost_code_id ?? NONE)
   const [amount, setAmount] = useState<number | null>(line && line.source !== 'labour' ? line.amount : null)
   // "Other cost": category + (optionally) a price-list item priced as qty × unit cost.
-  const [category, setCategory] = useState<CostCategory>(
-    line ? (line.category ?? 'other') : 'materials'
-  )
+  // A category the user picked (or one already saved on the line). Until then
+  // the chip follows the cost code, so a code-only line keeps its code's
+  // category and older lines aren't silently re-categorised on edit.
+  const [pickedCategory, setPickedCategory] = useState<CostCategory | null>(line?.category ?? null)
   const [item, setItem] = useState<Pick<PriceItemHit, 'id' | 'name' | 'unit' | 'supplier'> | null>(
     line?.rate_item_id ? { id: line.rate_item_id, name: line.description, unit: 'ea', supplier: null } : null
   )
   const [custom, setCustom] = useState(Boolean(line && !line.rate_item_id))
   const [qty, setQty] = useState(line?.qty != null ? String(line.qty) : '1')
   const [unitCost, setUnitCost] = useState<number | null>(line?.unit_cost ?? null)
+  const codeCategory = costCodes.find((c) => c.id === costCodeId)?.category ?? null
+  const category: CostCategory = pickedCategory ?? codeCategory ?? (line ? 'other' : 'materials')
+  // Sent to the server: an explicit pick, or the default chip on a new line with no cost code.
+  const sentCategory: CostCategory | null = pickedCategory ?? (codeCategory || line ? null : category)
   const qtyNum = Number(qty)
   const itemAmount = item && qtyNum > 0 && unitCost != null ? round2(qtyNum * unitCost) : null
   const [workerId, setWorkerId] = useState(
@@ -288,7 +293,7 @@ function CostLineDialog({
               qty: qtyNum,
               unit_cost: unitCost ?? undefined,
             }
-          : { amount: amount ?? undefined, category }),
+          : { amount: amount ?? undefined, category: sentCategory }),
     }
     startTransition(async () => {
       const result = line ? await updateCostLine(line.id, payload) : await addCostLine(payload)
@@ -415,7 +420,7 @@ function CostLineDialog({
                       role="radio"
                       aria-checked={category === c.key}
                       onClick={() => {
-                        setCategory(c.key)
+                        setPickedCategory(c.key)
                         if (!line) {
                           setItem(null)
                           setCustom(c.key === 'other')

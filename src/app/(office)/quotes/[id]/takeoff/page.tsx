@@ -1,3 +1,4 @@
+import { fetchAll } from '@/lib/pnl-queries'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { ArrowLeftIcon } from 'lucide-react'
@@ -53,12 +54,16 @@ export default async function QuoteTakeoffPage({
       )
       .eq('quote_id', id)
       .order('position'),
-    supabase
-      .from('rate_items')
-      .select('id, kind, name, unit, cost, default_markup_pct')
-      .eq('active', true)
-      .order('kind')
-      .order('name'),
+    fetchAll((from, to) =>
+      supabase
+        .from('rate_items')
+        .select('id, kind, name, unit, cost, default_markup_pct')
+        .eq('active', true)
+        .order('kind')
+        .order('name')
+        .order('id')
+        .range(from, to)
+    ).then((data) => ({ data })),
     supabase
       .from('takeoff_assemblies')
       .select('id, name, unit, description')

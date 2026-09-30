@@ -38,6 +38,7 @@ export interface PnlCostCodeOption {
   id: string
   code: string
   name: string
+  category?: CostCategory | null
 }
 
 export interface PnlAdjustment {
@@ -134,7 +135,7 @@ export async function loadPnl(
           .range(from, to)
       ),
       supabase.from('profiles').select('id, full_name, hourly_cost, active').order('full_name'),
-      supabase.from('cost_codes').select('id, code, name, active').order('code'),
+      supabase.from('cost_codes').select('id, code, name, category, active').order('code'),
       supabase.from('settings').select('gst_rate').eq('id', 1).maybeSingle(),
     ])
 
@@ -234,6 +235,6 @@ export async function loadPnl(
       .map((p) => ({ id: p.id, full_name: p.full_name, hourly_cost: num(p.hourly_cost) })),
     costCodes: (codesRes.data ?? [])
       .filter((c) => c.active || usedCodes.has(c.id))
-      .map((c) => ({ id: c.id, code: c.code, name: c.name })),
+      .map((c) => ({ id: c.id, code: c.code, name: c.name, category: (c.category as CostCategory | null) ?? null })),
   }
 }

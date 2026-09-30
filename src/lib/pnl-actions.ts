@@ -26,7 +26,8 @@ async function costFields(supabase: Supabase, d: CostLineInput) {
     return {
       date: d.date,
       description: d.description,
-      amount: round2(d.amount!),
+      // A price-list line's amount is always qty × unit cost.
+      amount: d.qty != null && d.unit_cost != null ? round2(d.qty * d.unit_cost) : round2(d.amount!),
       cost_code_id: d.cost_code_id,
       source: 'manual' as const,
       hours: null,

@@ -21,6 +21,7 @@ import {
   type PriceKind,
 } from '@/lib/price-list'
 import { removeUploadedObject } from '@/lib/storage-keys'
+import { fetchAll } from '@/lib/pnl-queries'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -146,21 +147,36 @@ export async function extractPriceListPdf(input: unknown): Promise<{ error?: str
 
 // ─── Review helpers ───────────────────────────────────────────────────────────
 
+/**
+ * Every saved item for exactly this supplier. The ilike only narrows the
+ * fetch ("ABC%Supplies" also matches "ABC Safety Supplies"); supplierKey()
+ * then keeps the exact supplier, so nothing downstream (matching, deactivate
+ * missing) can touch another supplier's items. Paged past PostgREST's 1000-row
+ * cap; throws on a query error rather than treating everything as new.
+ */
 async function existingForSupplier(supabase: Supabase, supplier: string): Promise<ExistingItem[]> {
-  // ilike on the trimmed name narrows the fetch; supplierKey() does the exact match.
-  const { data } = await supabase
-    .from('rate_items')
-    .select('id, supplier, product_code, name, cost, unit, active')
-    .ilike('supplier', supplier.trim().replace(/[%_\\]/g, (c) => `\\${c}`).replace(/\s+/g, '%'))
-  return (data ?? []).map((r) => ({
-    id: r.id,
-    supplier: r.supplier,
-    product_code: r.product_code,
-    name: r.name,
-    cost: Number(r.cost),
-    unit: r.unit,
-    active: r.active,
-  }))
+  const pattern = supplier.trim().replace(/[%_\\]/g, (c) => `\\${c}`).replace(/\s+/g, '%')
+  const rows = await fetchAll((from, to) =>
+    supabase
+      .from('rate_items')
+      .select('id, supplier, product_code, name, cost, unit, kind, active')
+      .ilike('supplier', pattern)
+      .order('id')
+      .range(from, to)
+  )
+  const key = supplierKey(supplier)
+  return rows
+    .filter((r) => r.supplier != null && supplierKey(r.supplier) === key)
+    .map((r) => ({
+      id: r.id,
+      supplier: r.supplier,
+      product_code: r.product_code,
+      name: r.name,
+      cost: Number(r.cost),
+      unit: r.unit,
+      kind: r.kind,
+      active: r.active,
+    }))
 }
 
 const lineSchema = z.object({
@@ -185,7 +201,13 @@ export async function matchPriceLines(input: unknown): Promise<{ error?: string;
   const parsed = matchSchema.safeParse(input)
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
   const supabase = await createClient()
-  const [existing, rate] = await Promise.all([existingForSupplier(supabase, parsed.data.supplier), gstRate(supabase)])
+  let existing: ExistingItem[]
+  let rate: number
+  try {
+    ;[existing, rate] = await Promise.all([existingForSupplier(supabase, parsed.data.supplier), gstRate(supabase)])
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Could not load the price list' }
+  }
   return {
     statuses: parsed.data.lines.map((l) =>
       matchLine({ ...l, unitPrice: toExGst(l.unitPrice, parsed.data.pricesIncludeGst, rate) }, parsed.data.supplier, existing)
@@ -221,9 +243,11 @@ export async function loadSupplierMapping(supplier: string): Promise<ColumnMappi
 export async function listSuppliers(): Promise<string[]> {
   await requireRole('admin', 'office')
   const supabase = await createClient()
-  const { data } = await supabase.from('rate_items').select('supplier').not('supplier', 'is', null)
+  const rows = await fetchAll((from, to) =>
+    supabase.from('rate_items').select('id, supplier').not('supplier', 'is', null).order('id').range(from, to)
+  ).catch(() => [] as { id: string; supplier: string | null }[])
   const byKey = new Map<string, string>()
-  for (const r of data ?? []) if (r.supplier) byKey.set(supplierKey(r.supplier), r.supplier)
+  for (const r of rows) if (r.supplier) byKey.set(supplierKey(r.supplier), r.supplier)
   return [...byKey.values()].sort((a, b) => a.localeCompare(b))
 }
 
@@ -262,7 +286,13 @@ export async function commitPriceListImport(input: unknown): Promise<CommitResul
   if (d.lines.some((l) => l.addToJob) && !d.job) return { error: 'Pick the job to add costs to' }
 
   const supabase = await createClient()
-  const [existing, rate] = await Promise.all([existingForSupplier(supabase, d.supplier), gstRate(supabase)])
+  let existing: ExistingItem[]
+  let rate: number
+  try {
+    ;[existing, rate] = await Promise.all([existingForSupplier(supabase, d.supplier), gstRate(supabase)])
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : 'Could not load the price list' }
+  }
 
   if (d.job) {
     const { data: parent } = await supabase
@@ -304,7 +334,7 @@ export async function commitPriceListImport(input: unknown): Promise<CommitResul
       itemIdByLine.set(i, row.id)
       touched.add(row.id)
       // Later duplicate lines in the same file match this one instead of inserting again.
-      existing.push({ id: row.id, supplier: d.supplier, product_code: line.code, name: line.name, cost: exPrice, unit: line.unit, active: true })
+      existing.push({ id: row.id, supplier: d.supplier, product_code: line.code, name: line.name, cost: exPrice, unit: line.unit, kind: line.kind, active: true })
       added++
     } else {
       itemIdByLine.set(i, status.id)
@@ -319,15 +349,16 @@ export async function commitPriceListImport(input: unknown): Promise<CommitResul
           cost: exPrice,
           unit: line.unit,
           kind: line.kind,
-          product_code: line.code,
-          notes: line.note,
+          // Keep a stored code/note when this document doesn't carry one.
+          ...(line.code ? { product_code: line.code } : {}),
+          ...(line.note ? { notes: line.note } : {}),
           active: true,
           updated_at: now,
         })
         .eq('id', status.id)
       if (error) return { error: error.message, added, updated }
       const e = existing.find((x) => x.id === status.id)
-      if (e) Object.assign(e, { cost: exPrice, unit: line.unit, active: true })
+      if (e) Object.assign(e, { cost: exPrice, unit: line.unit, kind: line.kind, active: true })
       updated++
     }
   }

@@ -8,6 +8,7 @@ import {
   type QuoteTemplateRow,
 } from '@/lib/quote-doc'
 import { SettingsTabs, type SettingsTab } from './settings-tabs'
+import { fetchAll } from '@/lib/pnl-queries'
 import { getXeroStatus } from '@/lib/xero/status'
 import type { XeroRunRow } from './xero-section'
 
@@ -89,11 +90,16 @@ export default async function SettingsPage({
       .from('profiles')
       .select('id, full_name, role, phone, position, hourly_cost, active')
       .order('full_name'),
-    supabase
-      .from('rate_items')
-      .select('id, kind, name, unit, cost, default_markup_pct, active, supplier, product_code')
-      .order('kind')
-      .order('name'),
+    // Price lists can run past PostgREST's 1000-row cap.
+    fetchAll((from, to) =>
+      supabase
+        .from('rate_items')
+        .select('id, kind, name, unit, cost, default_markup_pct, active, supplier, product_code')
+        .order('kind')
+        .order('name')
+        .order('id')
+        .range(from, to)
+    ).then((data) => ({ data })),
     supabase
       .from('cost_codes')
       .select('id, code, name, category, active')
@@ -338,6 +344,7 @@ export default async function SettingsPage({
         profiles={profiles ?? []}
         currentUserId={caller.id}
         rateItems={rateItems ?? []}
+        gstRate={Number(settings?.gst_rate ?? 10)}
         costCodes={costCodes ?? []}
         plant={plant ?? []}
         checklists={checklists ?? []}

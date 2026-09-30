@@ -4,6 +4,9 @@ import { createClient } from '@/lib/supabase/server'
 import { loadPnl } from '@/lib/pnl-queries'
 import { PnlPanel } from '@/components/pnl/PnlPanel'
 
+
+// Supplier-invoice import reads PDFs with AI from this page (30–60s+).
+export const maxDuration = 300
 export default async function ProjectPnlPage({
   params,
 }: {

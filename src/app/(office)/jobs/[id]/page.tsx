@@ -29,6 +29,9 @@ import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 
+
+// Supplier-invoice import reads PDFs with AI from this page (30–60s+).
+export const maxDuration = 300
 export default async function JobDetailPage({
   params,
 }: {

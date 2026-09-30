@@ -181,6 +181,8 @@ export interface ExistingItem {
   name: string
   cost: number
   unit: string
+  /** When known, a changed type counts as a change. */
+  kind?: string
   active: boolean
 }
 
@@ -201,7 +203,11 @@ export function matchLine(line: ImportLine, supplier: string, existing: Existing
     (line.code ? mine.find((e) => e.product_code != null && norm(e.product_code) === norm(line.code!)) : undefined) ??
     mine.find((e) => norm(e.name) === norm(line.name))
   if (!hit) return { status: 'new' }
-  const same = Math.abs(hit.cost - line.unitPrice) < 0.00005 && norm(hit.unit) === norm(line.unit) && hit.active
+  const same =
+    Math.abs(hit.cost - line.unitPrice) < 0.00005 &&
+    norm(hit.unit) === norm(line.unit) &&
+    (hit.kind == null || hit.kind === line.kind) &&
+    hit.active
   return same ? { status: 'unchanged', id: hit.id } : { status: 'changed', id: hit.id, oldCost: hit.cost }
 }
 

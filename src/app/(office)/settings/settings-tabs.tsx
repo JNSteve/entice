@@ -88,6 +88,7 @@ interface SettingsTabsProps {
   profiles: ProfileRow[]
   currentUserId: string
   rateItems: RateItemRow[]
+  gstRate: number
   costCodes: CostCodeRow[]
   plant: PlantRow[]
   checklists: ChecklistTemplateRow[]
@@ -120,6 +121,7 @@ export function SettingsTabs({
   profiles,
   currentUserId,
   rateItems,
+  gstRate,
   costCodes,
   plant,
   checklists,
@@ -170,7 +172,7 @@ export function SettingsTabs({
         <UsersSection profiles={profiles} currentUserId={currentUserId} />
       </TabsContent>
       <TabsContent value="rates" className="pt-4">
-        <RatesSection rateItems={rateItems} />
+        <RatesSection rateItems={rateItems} gstRate={gstRate} />
       </TabsContent>
       <TabsContent value="cost-codes" className="pt-4">
         <CostCodesSection costCodes={costCodes} />

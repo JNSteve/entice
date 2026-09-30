@@ -34,7 +34,7 @@ import { buildStorageKey } from '@/lib/storage-keys'
 import { cn } from '@/lib/utils'
 
 type Cell = string | number | boolean | Date | null
-type ReviewLine = ImportLine & { key: number; saveToList: boolean; addToJob: boolean }
+type ReviewLine = ImportLine & { key: number; saveToList: boolean; addToJob: boolean; qtyText: string }
 
 export interface ImportJobTarget {
   parent_type: 'job' | 'project'
@@ -51,7 +51,7 @@ interface PriceListImportProps {
 }
 
 function toImportLine(l: ReviewLine): ImportLine {
-  return { code: l.code, name: l.name, unit: l.unit, unitPrice: l.unitPrice, qty: l.qty, kind: l.kind, note: l.note }
+  return { code: l.code?.trim() || null, name: l.name.trim(), unit: l.unit.trim() || 'ea', unitPrice: l.unitPrice, qty: l.qty, kind: l.kind, note: l.note }
 }
 
 const SELECT = 'h-8 rounded-lg border bg-transparent px-2 text-base md:text-sm'
@@ -87,6 +87,7 @@ export function PriceListImport({ open, onClose, gstRate, job }: PriceListImport
   const [deactivateMissing, setDeactivateMissing] = useState(false)
   const [version, setVersion] = useState(0)
   const nextKey = useRef(0)
+  const matchRequest = useRef(0)
 
   useEffect(() => {
     if (!open) return
@@ -97,12 +98,15 @@ export function PriceListImport({ open, onClose, gstRate, job }: PriceListImport
   useEffect(() => {
     if (step !== 'review' || !supplier.trim() || lines.length === 0) return
     const t = setTimeout(async () => {
+      // Only the newest request may update the badges.
+      const id = ++matchRequest.current
       const res = await matchPriceLines({
         supplier: supplier.trim(),
         pricesIncludeGst: incGst,
         lines: lines.map(toImportLine),
       })
-      if (!res.error) setStatuses(res.statuses ?? null)
+      if (id !== matchRequest.current) return
+      setStatuses(res.error ? null : (res.statuses ?? null))
     }, 400)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -129,11 +133,13 @@ export function PriceListImport({ open, onClose, gstRate, job }: PriceListImport
   }
 
   function toReview(importLines: ImportLine[]) {
+    setStatuses(null)
     setLines(
       importLines.map((l) => ({
         ...l,
         key: nextKey.current++,
         saveToList: true,
+        qtyText: l.qty != null ? String(l.qty) : '',
         // Reusable equipment usually isn't a job cost — leave plant unticked.
         addToJob: Boolean(job) && l.kind !== 'plant',
       }))
@@ -526,8 +532,11 @@ export function PriceListImport({ open, onClose, gstRate, job }: PriceListImport
                           <input
                             className="w-28 rounded border bg-transparent px-1.5 py-0.5 text-base md:text-sm"
                             value={l.code ?? ''}
-                            onChange={(e) => updateLine(l.key, { code: e.target.value.trim() || null })}
-                            onBlur={() => setVersion((v) => v + 1)}
+                            onChange={(e) => updateLine(l.key, { code: e.target.value || null })}
+                            onBlur={() => {
+                              updateLine(l.key, { code: l.code?.trim() || null })
+                              setVersion((v) => v + 1)
+                            }}
                           />
                         </td>
                         <td className="px-2 py-1.5">
@@ -581,9 +590,14 @@ export function PriceListImport({ open, onClose, gstRate, job }: PriceListImport
                               step="any"
                               min="0"
                               className="w-16 rounded border bg-transparent px-1.5 py-0.5 text-right tabular-nums text-base md:text-sm"
-                              value={l.qty ?? ''}
+                              value={l.qtyText}
                               placeholder="1"
-                              onChange={(e) => updateLine(l.key, { qty: Number(e.target.value) > 0 ? Number(e.target.value) : null })}
+                              onChange={(e) =>
+                                updateLine(l.key, {
+                                  qtyText: e.target.value,
+                                  qty: Number(e.target.value) > 0 ? Number(e.target.value) : null,
+                                })
+                              }
                             />
                           </td>
                         )}

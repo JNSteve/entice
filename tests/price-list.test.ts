@@ -111,3 +111,13 @@ test('parseCsvTable handles quotes, embedded commas and CRLF', async () => {
     ['B2', 'Say "hi"', '3'],
   ])
 })
+
+test('a changed type counts as a change; other suppliers never deactivate', () => {
+  const existing: ExistingItem[] = [
+    { id: 'a', supplier: 'ABC Supplies', product_code: 'X1', name: 'Tape', cost: 5, unit: 'ea', kind: 'material', active: true },
+  ]
+  const line = { code: 'X1', name: 'Tape', unit: 'ea', unitPrice: 5, qty: null, kind: 'consumable' as const, note: null }
+  expect(matchLine(line, 'ABC Supplies', existing)).toEqual({ status: 'changed', id: 'a', oldCost: 5 })
+  expect(matchLine({ ...line, kind: 'material' }, 'ABC Supplies', existing)).toEqual({ status: 'unchanged', id: 'a' })
+  expect(matchLine(line, 'ABC Safety Supplies', existing)).toEqual({ status: 'new' })
+})

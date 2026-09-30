@@ -1,3 +1,4 @@
+import { fetchAll } from '@/lib/pnl-queries'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { RulerIcon } from 'lucide-react'
@@ -53,11 +54,15 @@ export default async function QuoteBuilderPage({
         .eq('quote_id', id)
         .order('position')
         .order('id'),
-      supabase
-        .from('rate_items')
-        .select('id, kind, name, unit, cost, default_markup_pct')
-        .eq('active', true)
-        .order('name'),
+      fetchAll((from, to) =>
+        supabase
+          .from('rate_items')
+          .select('id, kind, name, unit, cost, default_markup_pct')
+          .eq('active', true)
+          .order('name')
+          .order('id')
+          .range(from, to)
+      ).then((data) => ({ data })),
       supabase
         .from('profiles')
         .select('id, full_name')
