@@ -1,6 +1,10 @@
 'use client'
 
-import { CheckCircle2Icon, MailIcon, TriangleAlertIcon } from 'lucide-react'
+import { useTransition } from 'react'
+import { toast } from 'sonner'
+import { CheckCircle2Icon, MailIcon, SendIcon, TriangleAlertIcon } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { sendTestEmail } from './actions'
 import { Badge } from '@/components/ui/badge'
 import {
   Table,
@@ -58,6 +62,15 @@ export function EmailSection({
   rows: EmailLogRow[]
 }) {
   const configured = keyPresent && fromPresent
+  const [pending, startTransition] = useTransition()
+
+  function test() {
+    startTransition(async () => {
+      const result = await sendTestEmail()
+      if (result.error) toast.error(result.error)
+      else toast.success(`Test email sent to ${result.to} — check your inbox (and spam)`)
+    })
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -95,6 +108,13 @@ export function EmailSection({
           </div>
         </div>
       )}
+
+      <div>
+        <Button variant="outline" size="sm" onClick={test} disabled={pending}>
+          <SendIcon />
+          {pending ? 'Sending…' : 'Send test email to me'}
+        </Button>
+      </div>
 
       {/* The log */}
       <section className="flex flex-col gap-3">

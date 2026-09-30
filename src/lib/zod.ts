@@ -144,6 +144,9 @@ export const userCreateSchema = z.object({
   email: z.email('Invalid email address'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   role: z.enum(USER_ROLES),
+  phone: optionalText.optional(),
+  position: optionalText.optional(),
+  hourly_cost: z.number().min(0).nullable().optional(),
 })
 
 export type UserCreateInput = z.infer<typeof userCreateSchema>

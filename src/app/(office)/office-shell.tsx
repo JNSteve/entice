@@ -13,6 +13,7 @@ import {
   FolderClosedIcon,
   FolderKanbanIcon,
   HardHatIcon,
+  KeyRoundIcon,
   InboxIcon,
   LayoutDashboardIcon,
   LogOutIcon,
@@ -158,6 +159,10 @@ function UserMenu({ profile }: { profile: Profile }) {
         <DropdownMenuItem render={<Link href="/field" />}>
           <HardHatIcon className="size-4" />
           Field view
+        </DropdownMenuItem>
+        <DropdownMenuItem render={<Link href="/field/account" />}>
+          <KeyRoundIcon className="size-4" />
+          Change password
         </DropdownMenuItem>
         <DropdownMenuSeparator />
         <form action={signOut}>

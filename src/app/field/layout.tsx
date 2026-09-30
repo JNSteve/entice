@@ -1,4 +1,5 @@
-import { LogOutIcon } from 'lucide-react'
+import Link from 'next/link'
+import { KeyRoundIcon, LogOutIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { requireRole } from '@/lib/auth'
 import { signOut } from '@/lib/auth-actions'
@@ -32,6 +33,16 @@ export default async function FieldLayout({
               {firstName}
             </span>
           </div>
+          <div className="flex items-center">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-sidebar-foreground hover:bg-sidebar-accent hover:text-sidebar-foreground"
+            render={<Link href="/field/account" />}
+          >
+            <KeyRoundIcon />
+            <span className="sr-only">My account and password</span>
+          </Button>
           <form action={signOut}>
             <Button
               type="submit"
@@ -43,6 +54,7 @@ export default async function FieldLayout({
               <span className="sr-only">Sign out</span>
             </Button>
           </form>
+          </div>
         </div>
       </header>
 

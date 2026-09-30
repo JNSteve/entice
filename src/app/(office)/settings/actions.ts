@@ -33,6 +33,7 @@ import {
   extractionEnabled,
 } from '@/lib/extract-quote-template'
 import { signedUrl } from '@/lib/attachment-urls'
+import { renderEmail, sendEmail } from '@/lib/email'
 
 // ─── Company settings ────────────────────────────────────────────────────────
 
@@ -83,8 +84,48 @@ export async function createUser(
     return { error: error.message }
   }
 
+  // admin_create_user only takes the basics — set the rest on the profile.
+  const extra = {
+    phone: parsed.data.phone ?? null,
+    position: parsed.data.position ?? null,
+    hourly_cost: parsed.data.hourly_cost ?? null,
+  }
+  if (extra.phone || extra.position || extra.hourly_cost != null) {
+    const { error: pErr } = await supabase.from('profiles').update(extra).eq('id', id as string)
+    if (pErr) {
+      revalidatePath('/settings')
+      return { id: id as string, error: `User created, but saving the extra details failed: ${pErr.message}` }
+    }
+  }
+
   revalidatePath('/settings')
   return { id: id as string }
+}
+
+/** Admin: send a test email to yourself to confirm Resend is working. */
+export async function sendTestEmail(): Promise<{ error?: string; to?: string }> {
+  await requireRole('admin')
+  const supabase = await createSupabaseClient()
+  const { data } = await supabase.auth.getUser()
+  const to = data.user?.email
+  if (!to) return { error: 'Your account has no email address' }
+
+  const result = await sendEmail({
+    to,
+    subject: 'Entice test email',
+    html: renderEmail({
+      companyName: 'Entice',
+      heading: 'Email is working',
+      intro: 'This test was sent from Settings → Email. Client and office notifications will now be delivered.',
+    }),
+    template: 'test',
+  })
+  revalidatePath('/settings')
+  if (result.status === 'sent') return { to }
+  if (result.status === 'skipped') {
+    return { error: 'Not sent — RESEND_API_KEY and EMAIL_FROM are not both set on this deployment' }
+  }
+  return { error: `Resend rejected it: ${result.error ?? 'unknown error'}` }
 }
 
 export async function updateProfile(
