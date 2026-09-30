@@ -22,18 +22,12 @@ import {
 import { EmptyState } from '@/components/EmptyState'
 import { aud, pct } from '@/lib/format'
 import { lineSell } from '@/lib/money'
-import { RATE_KINDS, type RateKind } from '@/lib/zod'
+import { PRICE_KIND_LABELS, PRICE_KINDS, type PriceKind } from '@/lib/price-list'
 import { addLine } from '../actions'
 import type { RateItemData } from './quote-builder'
 import { BookOpenIcon, SearchIcon } from 'lucide-react'
 
-const KIND_LABELS: Record<RateKind, string> = {
-  labour: 'Labour',
-  plant: 'Plant',
-  material: 'Material',
-  subbie: 'Subbie',
-  other: 'Other',
-}
+const KIND_LABELS = PRICE_KIND_LABELS
 
 export function RatePickerDialog({
   quoteId,
@@ -48,7 +42,7 @@ export function RatePickerDialog({
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [search, setSearch] = useState('')
-  const [kind, setKind] = useState<'all' | RateKind>('all')
+  const [kind, setKind] = useState<'all' | PriceKind>('all')
 
   const filtered = rateItems.filter((r) => {
     if (kind !== 'all' && r.kind !== kind) return false
@@ -96,13 +90,13 @@ export function RatePickerDialog({
                 autoFocus
               />
             </div>
-            <Select value={kind} onValueChange={(v) => setKind(v as 'all' | RateKind)}>
+            <Select value={kind} onValueChange={(v) => setKind(v as 'all' | PriceKind)}>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All kinds</SelectItem>
-                {RATE_KINDS.map((k) => (
+                {PRICE_KINDS.map((k) => (
                   <SelectItem key={k} value={k}>
                     {KIND_LABELS[k]}
                   </SelectItem>
@@ -128,7 +122,7 @@ export function RatePickerDialog({
                     >
                       <span className="flex min-w-0 items-center gap-2">
                         <Badge variant="secondary" className="shrink-0">
-                          {KIND_LABELS[r.kind as RateKind] ?? r.kind}
+                          {KIND_LABELS[r.kind as PriceKind] ?? r.kind}
                         </Badge>
                         <span className="truncate font-medium">{r.name}</span>
                       </span>

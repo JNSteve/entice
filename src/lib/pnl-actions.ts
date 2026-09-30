@@ -33,6 +33,10 @@ async function costFields(supabase: Supabase, d: CostLineInput) {
       rate: null,
       worker_id: null,
       worker_name: null,
+      category: d.category,
+      rate_item_id: d.rate_item_id,
+      qty: d.qty,
+      unit_cost: d.unit_cost,
     }
   }
   // A staff worker is stored by id only; a typed name covers labour hire.
@@ -56,6 +60,10 @@ async function costFields(supabase: Supabase, d: CostLineInput) {
     rate,
     worker_id: d.worker_id,
     worker_name: d.worker_id ? null : d.worker_name,
+    category: null,
+    rate_item_id: null,
+    qty: null,
+    unit_cost: null,
   }
 }
 

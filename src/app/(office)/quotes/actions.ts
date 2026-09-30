@@ -1,5 +1,6 @@
 'use server'
 
+import { quoteKind } from '@/lib/price-list'
 import { redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { after } from 'next/server'
@@ -641,7 +642,7 @@ export async function addLine(data: unknown): Promise<Result> {
       markup_pct: Number(rateItem.default_markup_pct),
       unit_sell: lineSell(Number(rateItem.cost), Number(rateItem.default_markup_pct)),
       rate_item_id: rateItem.id,
-      kind: (rateItem.kind as string | null) ?? null,
+      kind: quoteKind((rateItem.kind as string | null) ?? null),
     }
   }
 

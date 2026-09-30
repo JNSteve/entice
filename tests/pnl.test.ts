@@ -20,6 +20,7 @@ test('costCategory prefers the cost code, then labour source, then other', () =>
   expect(costCategory('labour', null)).toBe('labour')
   expect(costCategory('labour', 'subcontract')).toBe('subcontract')
   expect(costCategory('docket', null)).toBe('other')
+  expect(costCategory('manual', 'plant', 'consumables')).toBe('consumables')
 })
 
 test('labourAmount rounds hours × rate', () => {
@@ -68,7 +69,7 @@ describe('computePnl', () => {
 
   test('category breakdown, total cost, margin and drawdown', () => {
     const s = computePnl(base)
-    expect(s.byCategory).toEqual({ labour: 1000, plant: 1200, materials: 0, subcontract: 0, other: 300 })
+    expect(s.byCategory).toEqual({ labour: 1000, plant: 1200, materials: 0, consumables: 0, subcontract: 0, other: 300 })
     expect(s.cost).toBe(2500)
     expect(s.margin).toBe(8500)
     expect(s.marginPct).toBeCloseTo(77.27, 2)

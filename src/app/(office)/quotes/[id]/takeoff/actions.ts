@@ -1,5 +1,6 @@
 'use server'
 
+import { quoteKind } from '@/lib/price-list'
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
@@ -544,7 +545,7 @@ export async function pushTakeoffToQuote(
       .from('rate_items')
       .select('id, kind')
       .in('id', rateIds)
-    for (const r of rates ?? []) kindByRate.set(r.id as string, r.kind as string)
+    for (const r of rates ?? []) kindByRate.set(r.id as string, quoteKind(r.kind as string) as string)
   }
 
   // Section find-or-create by title.

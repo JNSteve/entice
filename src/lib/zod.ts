@@ -637,6 +637,14 @@ export const costLineSchema = z
     rate: z.coerce.number().min(0, 'Rate cannot be negative').max(100_000).optional(),
     worker_id: z.uuid().nullish().transform((v) => v ?? null),
     worker_name: z.string().trim().max(120).nullish().transform((v) => v || null),
+    // "Other cost" picked from the price list (or a custom line with a category).
+    category: z
+      .enum(['labour', 'plant', 'materials', 'consumables', 'subcontract', 'other'])
+      .nullish()
+      .transform((v) => v ?? null),
+    rate_item_id: z.uuid().nullish().transform((v) => v ?? null),
+    qty: z.coerce.number().positive('Qty must be positive').max(1_000_000).nullish().transform((v) => v ?? null),
+    unit_cost: z.coerce.number().min(0).max(10_000_000).nullish().transform((v) => v ?? null),
   })
   .superRefine((v, ctx) => {
     if (v.kind === 'labour') {

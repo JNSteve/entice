@@ -1,12 +1,13 @@
 import { round2 } from './money'
 
-export type CostCategory = 'labour' | 'plant' | 'materials' | 'subcontract' | 'other'
+export type CostCategory = 'labour' | 'plant' | 'materials' | 'consumables' | 'subcontract' | 'other'
 export type CostSource = 'manual' | 'docket' | 'labour'
 
 export const COST_CATEGORIES: { key: CostCategory; label: string }[] = [
   { key: 'labour', label: 'Labour' },
   { key: 'plant', label: 'Plant & equipment' },
-  { key: 'materials', label: 'Materials & consumables' },
+  { key: 'materials', label: 'Materials' },
+  { key: 'consumables', label: 'Consumables' },
   { key: 'subcontract', label: 'Subcontract' },
   { key: 'other', label: 'Other' },
 ]
@@ -25,6 +26,8 @@ export interface PnlCostRow {
   source: CostSource
   /** The row's cost code category, null when it has no cost code. */
   category: CostCategory | null
+  /** Category picked on the cost line itself — wins over the cost code. */
+  rowCategory?: CostCategory | null
 }
 
 export interface PnlInput {
@@ -64,7 +67,12 @@ export function entryHours(startAt: string, endAt: string | null, now: Date): nu
   return ms > 0 ? ms / 3_600_000 : 0
 }
 
-export function costCategory(source: CostSource, codeCategory: CostCategory | null): CostCategory {
+export function costCategory(
+  source: CostSource,
+  codeCategory: CostCategory | null,
+  rowCategory: CostCategory | null = null
+): CostCategory {
+  if (rowCategory) return rowCategory
   if (codeCategory) return codeCategory
   return source === 'labour' ? 'labour' : 'other'
 }
@@ -105,9 +113,16 @@ export function computePnl(input: PnlInput): PnlSummary {
   const tsHours = round2(workers.reduce((s, w) => s + w.hours, 0))
   const tsCost = round2(workers.reduce((s, w) => s + w.cost, 0))
 
-  const byCategory: Record<CostCategory, number> = { labour: tsCost, plant: 0, materials: 0, subcontract: 0, other: 0 }
+  const byCategory: Record<CostCategory, number> = {
+    labour: tsCost,
+    plant: 0,
+    materials: 0,
+    consumables: 0,
+    subcontract: 0,
+    other: 0,
+  }
   for (const c of input.costs) {
-    const cat = costCategory(c.source, c.category)
+    const cat = costCategory(c.source, c.category, c.rowCategory ?? null)
     byCategory[cat] = round2(byCategory[cat] + c.amount)
   }
   const cost = round2(Object.values(byCategory).reduce((s, v) => s + v, 0))

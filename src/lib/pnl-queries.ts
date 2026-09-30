@@ -22,6 +22,10 @@ export interface PnlCostLine {
   worker_label: string | null
   cost_code_id: string | null
   cost_code_label: string | null
+  category: CostCategory | null
+  rate_item_id: string | null
+  qty: number | null
+  unit_cost: number | null
 }
 
 export interface PnlWorkerOption {
@@ -112,7 +116,7 @@ export async function loadPnl(
         supabase
           .from('costs')
           .select(
-            'id, date, description, amount, source, hours, rate, worker_id, worker_name, cost_code_id, cost_codes(code, name, category)'
+            'id, date, description, amount, source, hours, rate, worker_id, worker_name, cost_code_id, category, rate_item_id, qty, unit_cost, cost_codes(code, name, category)'
           )
           .eq('parent_type', parentType)
           .eq('parent_id', parentId)
@@ -163,6 +167,10 @@ export async function loadPnl(
       worker_label: c.worker_id ? nameById.get(c.worker_id) ?? 'Unknown' : c.worker_name,
       cost_code_id: c.cost_code_id,
       cost_code_label: code ? `${code.code} – ${code.name}` : null,
+      category: (c.category as CostCategory | null) ?? null,
+      rate_item_id: c.rate_item_id,
+      qty: num(c.qty),
+      unit_cost: num(c.unit_cost),
     }
   })
 
@@ -210,6 +218,7 @@ export async function loadPnl(
       source: c.source as CostSource,
       category:
         ((c.cost_codes as unknown as { category: CostCategory } | null)?.category ?? null),
+      rowCategory: (c.category as CostCategory | null) ?? null,
     })),
   })
 
