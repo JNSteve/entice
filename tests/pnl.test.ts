@@ -128,3 +128,10 @@ test('withGst adds GST for display', async () => {
   expect(withGst(2250, 10)).toBe(2475)
   expect(withGst(-1050, 10)).toBe(-1155)
 })
+
+test('exGstFrom backs GST out of a receipt total', async () => {
+  const { exGstFrom } = await import('../src/lib/pnl')
+  expect(exGstFrom(110, 10)).toBe(100)
+  expect(exGstFrom(57.5, 10)).toBe(52.27)
+  expect(exGstFrom(-3630, 10)).toBe(-3300)
+})

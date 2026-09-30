@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { MoneyInput } from '@/components/MoneyInput'
+import { GstAmountInput } from '@/components/GstAmountInput'
 import { aud, fmtDate } from '@/lib/format'
 import { addPriceAdjustment, deletePriceAdjustment, setJobBasePrice } from '@/lib/pnl-actions'
 import type { PnlAdjustment } from '@/lib/pnl-queries'
@@ -193,9 +193,14 @@ function AdjustmentDialog({
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label>Amount ex GST (negative to reduce)</Label>
-            <MoneyInput value={amount} onChange={setAmount} allowNegative placeholder="0.00" />
-            <GstHint exGst={amount} gstRate={gstRate} />
+            <Label>Amount (negative to reduce)</Label>
+            <GstAmountInput
+              value={amount}
+              onChange={setAmount}
+              gstRate={gstRate}
+              defaultMode="ex"
+              allowNegative
+            />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={pending || !amount || !description.trim()}>
@@ -243,9 +248,8 @@ function BasePriceDialog({
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="flex flex-col gap-1.5">
-            <Label>Price ex GST</Label>
-            <MoneyInput value={price} onChange={setPrice} placeholder="0.00" />
-            <GstHint exGst={price} gstRate={gstRate} />
+            <Label>Price</Label>
+            <GstAmountInput value={price} onChange={setPrice} gstRate={gstRate} defaultMode="ex" />
           </div>
           <DialogFooter>
             <Button type="submit" disabled={pending || price == null}>
@@ -258,15 +262,3 @@ function BasePriceDialog({
   )
 }
 
-/** Live inc-GST equivalent under an ex-GST input, so nobody enters a GST-inclusive figure by mistake. */
-export function GstHint({ exGst, gstRate }: { exGst: number | null; gstRate: number }) {
-  const inc = exGst != null ? withGst(exGst, gstRate) : null
-  return (
-    <p className="text-xs text-muted-foreground">
-      {inc != null
-        ? `= ${inc < 0 ? '−' : ''}${aud(Math.abs(inc))} inc GST. `
-        : 'Enter the amount excluding GST. '}
-      Got an inc-GST figure? Divide it by {(1 + gstRate / 100).toFixed(2)}.
-    </p>
-  )
-}

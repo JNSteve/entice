@@ -30,6 +30,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { MoneyInput } from '@/components/MoneyInput'
+import { GstAmountInput } from '@/components/GstAmountInput'
 import { aud, fmtDate } from '@/lib/format'
 import { labourAmount } from '@/lib/pnl'
 import { addCostLine, deleteCostLine, updateCostLine } from '@/lib/pnl-actions'
@@ -51,9 +52,17 @@ interface CostLinesTableProps {
   lines: PnlCostLine[]
   workers: PnlWorkerOption[]
   costCodes: PnlCostCodeOption[]
+  gstRate: number
 }
 
-export function CostLinesTable({ parentType, parentId, lines, workers, costCodes }: CostLinesTableProps) {
+export function CostLinesTable({
+  parentType,
+  parentId,
+  lines,
+  workers,
+  costCodes,
+  gstRate,
+}: CostLinesTableProps) {
   const [pending, startTransition] = useTransition()
   const [editing, setEditing] = useState<PnlCostLine | 'new' | null>(null)
 
@@ -153,6 +162,7 @@ export function CostLinesTable({ parentType, parentId, lines, workers, costCodes
           line={editing === 'new' ? null : editing}
           workers={workers}
           costCodes={costCodes}
+          gstRate={gstRate}
           onClose={() => setEditing(null)}
         />
       )}
@@ -166,10 +176,19 @@ interface CostLineDialogProps {
   line: PnlCostLine | null
   workers: PnlWorkerOption[]
   costCodes: PnlCostCodeOption[]
+  gstRate: number
   onClose: () => void
 }
 
-function CostLineDialog({ parentType, parentId, line, workers, costCodes, onClose }: CostLineDialogProps) {
+function CostLineDialog({
+  parentType,
+  parentId,
+  line,
+  workers,
+  costCodes,
+  gstRate,
+  onClose,
+}: CostLineDialogProps) {
   const [pending, startTransition] = useTransition()
   const [kind, setKind] = useState<'labour' | 'other'>(line ? (line.source === 'labour' ? 'labour' : 'other') : 'labour')
   const [date, setDate] = useState(line?.date ?? new Date().toISOString().slice(0, 10))
@@ -354,11 +373,13 @@ function CostLineDialog({ parentType, parentId, line, workers, costCodes, onClos
                 />
               </div>
               <div className="flex flex-col gap-1.5">
-                <Label>Amount ex GST</Label>
-                <MoneyInput value={amount} onChange={setAmount} placeholder="0.00" />
-                <p className="text-xs text-muted-foreground">
-                  From a receipt or invoice? Use the total before GST.
-                </p>
+                <Label>Amount</Label>
+                <GstAmountInput
+                  value={amount}
+                  onChange={setAmount}
+                  gstRate={gstRate}
+                  defaultMode={line ? 'ex' : 'inc'}
+                />
               </div>
             </>
           )}

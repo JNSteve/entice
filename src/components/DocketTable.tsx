@@ -27,7 +27,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { MoneyInput } from '@/components/MoneyInput'
+import { GstAmountInput } from '@/components/GstAmountInput'
 import { FileTextIcon, PlusIcon } from 'lucide-react'
 import { fmtDate } from '@/lib/format'
 import { createCostFromDocket } from '@/lib/docket-actions'
@@ -169,12 +169,9 @@ function CreateCostDialog({
             </Select>
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor="cfd-amount">Amount ex GST</Label>
-            <MoneyInput
-              value={amount}
-              onChange={setAmount}
-              placeholder="0.00"
-            />
+            <Label>Amount</Label>
+            {/* Dockets are receipts — typed inc GST by default, stored ex GST. */}
+            <GstAmountInput value={amount} onChange={setAmount} gstRate={10} />
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={onClose} disabled={pending}>

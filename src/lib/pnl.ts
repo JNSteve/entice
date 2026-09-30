@@ -137,3 +137,8 @@ export function drawdownTone(pct: number | null): 'ok' | 'warn' | 'over' {
 export function withGst(exGst: number, gstRate: number): number {
   return round2(exGst * (1 + gstRate / 100))
 }
+
+/** Ex-GST amount from a GST-inclusive figure (e.g. a receipt total). */
+export function exGstFrom(incGst: number, gstRate: number): number {
+  return round2(incGst / (1 + gstRate / 100))
+}

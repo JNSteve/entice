@@ -201,6 +201,7 @@ export function PnlPanel({ parentType, parentId, data, variationsHref }: PnlPane
         lines={costLines}
         workers={workers}
         costCodes={costCodes}
+        gstRate={gstRate}
       />
     </div>
   )
