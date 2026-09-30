@@ -23,6 +23,8 @@ interface PnlPanelProps {
   data: PnlData
   /** Project only — where the approved variations come from. */
   variationsHref?: string
+  /** Job/project number, used in the supplier-import dialog. */
+  parentLabel?: string
 }
 
 const TONE_BAR = { ok: 'bg-emerald-600', warn: 'bg-amber-500', over: 'bg-red-600' } as const
@@ -32,7 +34,7 @@ function pct(n: number | null): string {
   return n == null ? '—' : `${n.toFixed(1)}%`
 }
 
-export function PnlPanel({ parentType, parentId, data, variationsHref }: PnlPanelProps) {
+export function PnlPanel({ parentType, parentId, data, variationsHref, parentLabel }: PnlPanelProps) {
   const { summary, price, costLines, workers, costCodes, gstRate } = data
   const tone = drawdownTone(summary.drawdownPct)
   const categories = COST_CATEGORIES.filter((c) => summary.byCategory[c.key] !== 0)
@@ -202,6 +204,7 @@ export function PnlPanel({ parentType, parentId, data, variationsHref }: PnlPane
         workers={workers}
         costCodes={costCodes}
         gstRate={gstRate}
+        parentLabel={parentLabel}
       />
     </div>
   )

@@ -175,7 +175,10 @@ export type RateKind = (typeof RATE_KINDS)[number]
 
 export const rateItemSchema = z.object({
   id: z.string().uuid().optional(),
-  kind: z.enum(RATE_KINDS),
+  // Price-list items add 'consumable' (see PRICE_KINDS in lib/price-list).
+  kind: z.enum([...RATE_KINDS, 'consumable']),
+  supplier: optionalText.optional(),
+  product_code: optionalText.optional(),
   name: z.string().min(1, 'Name is required'),
   unit: z.string().min(1, 'Unit is required'),
   cost: z.coerce.number().min(0),

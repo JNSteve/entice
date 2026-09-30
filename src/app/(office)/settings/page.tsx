@@ -91,7 +91,7 @@ export default async function SettingsPage({
       .order('full_name'),
     supabase
       .from('rate_items')
-      .select('id, kind, name, unit, cost, default_markup_pct, active')
+      .select('id, kind, name, unit, cost, default_markup_pct, active, supplier, product_code')
       .order('kind')
       .order('name'),
     supabase

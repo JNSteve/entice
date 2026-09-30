@@ -172,7 +172,8 @@ export async function upsertRateItem(data: unknown): Promise<{ error?: string }>
   }
 
   const supabase = await createSupabaseClient()
-  const { id, ...rest } = parsed.data
+  const { id, ...fields } = parsed.data
+  const rest = { ...fields, updated_at: new Date().toISOString() }
 
   if (id) {
     const { error } = await supabase.from('rate_items').update(rest).eq('id', id)

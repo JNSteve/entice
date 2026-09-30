@@ -350,7 +350,7 @@ export default async function JobDetailPage({
           <div className="border-t" />
           <section className="flex flex-col gap-4">
             <h2 className="text-base font-semibold">Costs &amp; P&amp;L</h2>
-            <PnlPanel parentType="job" parentId={job.id} data={pnl} />
+            <PnlPanel parentType="job" parentId={job.id} data={pnl} parentLabel={job.number} />
           </section>
         </>
       )}

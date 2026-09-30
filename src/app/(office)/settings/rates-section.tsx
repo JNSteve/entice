@@ -34,14 +34,18 @@ import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud, pct } from '@/lib/format'
-import { RATE_KINDS, type RateKind } from '@/lib/zod'
+import { RATE_KINDS } from '@/lib/zod'
+import { PRICE_KIND_LABELS, PRICE_KINDS, type PriceKind } from '@/lib/price-list'
+import { PriceListImport } from '@/components/price-list/PriceListImport'
 import { importRateItems, setRateItemActive, upsertRateItem } from './actions'
 import { ActiveBadge, ToggleActiveButton } from './users-section'
 import { ListIcon, PencilIcon, PlusIcon, UploadIcon } from 'lucide-react'
 
 export interface RateItemRow {
   id: string
-  kind: RateKind
+  kind: PriceKind
+  supplier?: string | null
+  product_code?: string | null
   name: string
   unit: string
   cost: number
@@ -49,46 +53,75 @@ export interface RateItemRow {
   active: boolean
 }
 
-const KIND_LABELS: Record<RateKind, string> = {
-  labour: 'Labour',
-  plant: 'Plant',
-  material: 'Material',
-  subbie: 'Subbie',
-  other: 'Other',
-}
+const KIND_LABELS = PRICE_KIND_LABELS
 
-export function RatesSection({ rateItems }: { rateItems: RateItemRow[] }) {
-  const [kindFilter, setKindFilter] = useState<'all' | RateKind>('all')
+export function RatesSection({ rateItems, gstRate = 10 }: { rateItems: RateItemRow[]; gstRate?: number }) {
+  const [kindFilter, setKindFilter] = useState<'all' | PriceKind>('all')
+  const [supplierFilter, setSupplierFilter] = useState('all')
+  const [search, setSearch] = useState('')
+  const [importing, setImporting] = useState(false)
 
-  const filtered =
-    kindFilter === 'all'
-      ? rateItems
-      : rateItems.filter((r) => r.kind === kindFilter)
+  const suppliers = [...new Set(rateItems.map((r) => r.supplier).filter((x): x is string => Boolean(x)))].sort()
+  const term = search.trim().toLowerCase()
+  const filtered = rateItems.filter(
+    (r) =>
+      (kindFilter === 'all' || r.kind === kindFilter) &&
+      (supplierFilter === 'all' || (supplierFilter === 'none' ? !r.supplier : r.supplier === supplierFilter)) &&
+      (!term || [r.name, r.supplier, r.product_code].some((v) => v?.toLowerCase().includes(term)))
+  )
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center justify-between gap-4">
+      <div className="flex flex-wrap items-center gap-2">
         <Select
           value={kindFilter}
-          onValueChange={(v) => setKindFilter(v as 'all' | RateKind)}
+          onValueChange={(v) => setKindFilter(v as 'all' | PriceKind)}
         >
           <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All kinds</SelectItem>
-            {RATE_KINDS.map((k) => (
+            {PRICE_KINDS.map((k) => (
               <SelectItem key={k} value={k}>
                 {KIND_LABELS[k]}
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-2">
+        {suppliers.length > 0 && (
+          <Select value={supplierFilter} onValueChange={(v) => setSupplierFilter(String(v ?? 'all'))}>
+            <SelectTrigger className="w-44">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All suppliers</SelectItem>
+              {suppliers.map((sup) => (
+                <SelectItem key={sup} value={sup}>
+                  {sup}
+                </SelectItem>
+              ))}
+              <SelectItem value="none">No supplier</SelectItem>
+            </SelectContent>
+          </Select>
+        )}
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, code, supplier"
+          className="max-w-56"
+          aria-label="Search rates"
+        />
+        <div className="ml-auto flex items-center gap-2">
+          <Button variant="outline" onClick={() => setImporting(true)}>
+            <UploadIcon />
+            Import price list
+          </Button>
           <ImportCsvDialog />
           <RateItemDialog />
         </div>
       </div>
+      <PriceListImport open={importing} onClose={() => setImporting(false)} gstRate={gstRate} />
       <DataTable
         columns={[
           {
@@ -102,7 +135,14 @@ export function RatesSection({ rateItems }: { rateItems: RateItemRow[] }) {
             key: 'name',
             header: 'Name',
             render: (r: RateItemRow) => (
-              <span className="font-medium">{r.name}</span>
+              <span>
+                <span className="font-medium">{r.name}</span>
+                {(r.supplier || r.product_code) && (
+                  <span className="block text-xs text-muted-foreground">
+                    {[r.supplier, r.product_code].filter(Boolean).join(' · ')}
+                  </span>
+                )}
+              </span>
             ),
           },
           {
@@ -159,7 +199,7 @@ export function RatesSection({ rateItems }: { rateItems: RateItemRow[] }) {
             title={
               kindFilter === 'all'
                 ? 'No rate items yet'
-                : `No ${KIND_LABELS[kindFilter as RateKind].toLowerCase()} rates yet`
+                : `No ${KIND_LABELS[kindFilter as PriceKind].toLowerCase()} rates yet`
             }
             description="Add rate items to speed up quoting."
           />
@@ -173,7 +213,9 @@ function RateItemDialog({ item }: { item?: RateItemRow }) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
-  const [kind, setKind] = useState<RateKind>(item?.kind ?? 'labour')
+  const [kind, setKind] = useState<PriceKind>(item?.kind ?? 'labour')
+  const [supplier, setSupplier] = useState(item?.supplier ?? '')
+  const [productCode, setProductCode] = useState(item?.product_code ?? '')
   const [name, setName] = useState(item?.name ?? '')
   const [unit, setUnit] = useState(item?.unit ?? 'ea')
   const [cost, setCost] = useState<number | null>(item?.cost ?? null)
@@ -194,6 +236,8 @@ function RateItemDialog({ item }: { item?: RateItemRow }) {
     startTransition(async () => {
       const result = await upsertRateItem({
         id: item?.id,
+        supplier,
+        product_code: productCode,
         kind,
         name,
         unit,
@@ -232,12 +276,12 @@ function RateItemDialog({ item }: { item?: RateItemRow }) {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ri-kind">Kind</Label>
-              <Select value={kind} onValueChange={(v) => setKind(v as RateKind)}>
+              <Select value={kind} onValueChange={(v) => setKind(v as PriceKind)}>
                 <SelectTrigger id="ri-kind" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {RATE_KINDS.map((k) => (
+                  {PRICE_KINDS.map((k) => (
                     <SelectItem key={k} value={k}>
                       {KIND_LABELS[k]}
                     </SelectItem>
@@ -254,6 +298,16 @@ function RateItemDialog({ item }: { item?: RateItemRow }) {
                 placeholder="Labourer — standard"
                 required
               />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ri-supplier">Supplier (optional)</Label>
+                <Input id="ri-supplier" value={supplier} onChange={(e) => setSupplier(e.target.value)} placeholder="Allens Industrial" />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="ri-code">Product code (optional)</Label>
+                <Input id="ri-code" value={productCode} onChange={(e) => setProductCode(e.target.value)} />
+              </div>
             </div>
             <div className="grid grid-cols-3 gap-3">
               <div className="flex flex-col gap-1.5">
