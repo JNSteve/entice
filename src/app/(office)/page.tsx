@@ -72,6 +72,8 @@ import {
   type TodayOnSiteGroup,
   type UnpaidInvoicesData,
 } from './dashboard-cards'
+import { MarginsPanel } from './margins-panel'
+import { loadPortfolioPnl } from '@/lib/pnl-portfolio-queries'
 
 type Db = Awaited<ReturnType<typeof createClient>>
 
@@ -1335,6 +1337,7 @@ export default async function DashboardPage() {
     portalActivity,
     portalEngagement,
     quality,
+    margins,
   ] = await Promise.all([
     showMoney ? settle(() => loadClaimsDue(supabase, today)) : none,
     showMoney ? settle(() => loadQuotesAwaiting(supabase, today)) : none,
@@ -1361,6 +1364,7 @@ export default async function DashboardPage() {
     showMoney ? settle(() => loadPortalActivity(supabase, today)) : none,
     showMoney ? settle(() => loadPortalEngagement(supabase, todayAU())) : none,
     settle(() => loadQuality(supabase)),
+    showMoney ? settle(() => loadPortfolioPnl(supabase)) : none,
   ])
 
   return (
@@ -1376,6 +1380,7 @@ export default async function DashboardPage() {
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
         {showMoney && (
           <>
+            <MarginsPanel data={margins ?? null} />
             <PortalActivityCard data={portalActivity ?? null} />
             <PortalEngagementCard data={portalEngagement ?? null} />
             <ClaimsDueCard data={claimsDue ?? null} />
