@@ -24,9 +24,11 @@ import {
   WorkStatusBadge,
   WorkTimeline,
   type PortalBranding,
+  type PortalSignoffRow,
   type PortalWorkDetail,
 } from '../../../portal-ui'
 import { DocRows, isPhoto, PhotoGallery } from '../../../work-ui'
+import { SignoffList } from '../../../signoff-ui'
 import { FeedbackCard } from '../../../sites/[siteId]/feedback-card'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
@@ -63,18 +65,22 @@ export default async function PortalWorkPage({
     redirect(`/portal/${token}/sites/${branding.site_id}`)
   }
 
-  const [{ data: detailData }, { data: feedbackData }] = await Promise.all([
-    supabase.rpc('portal_work_detail', { p_token: token, p_kind: kind, p_id: id }),
-    supabase.rpc('portal_my_feedback', { p_token: token, p_site: null }),
-    supabase.rpc('portal_log_view', {
-      p_token: token,
-      p_site: null,
-      p_path: `/portal/works/${kind}/${id}`,
-    }),
-  ])
+  const [{ data: detailData }, { data: feedbackData }, { data: signoffsData }] =
+    await Promise.all([
+      supabase.rpc('portal_work_detail', { p_token: token, p_kind: kind, p_id: id }),
+      supabase.rpc('portal_my_feedback', { p_token: token, p_site: null }),
+      supabase.rpc('portal_signoffs', { p_token: token, p_kind: kind, p_id: id }),
+      supabase.rpc('portal_log_view', {
+        p_token: token,
+        p_site: null,
+        p_path: `/portal/works/${kind}/${id}`,
+      }),
+    ])
   const work = (detailData ?? null) as PortalWorkDetail | null
   if (!work) notFound()
 
+  // Daily sign-off sheets for this work (quantities only, never money).
+  const signoffs = ((signoffsData ?? []) as PortalSignoffRow[]) ?? []
   const feedback = ((feedbackData ?? []) as PortalFeedbackRow[]) ?? []
   const givenRating = feedback.find((f) =>
     work.kind === 'job' ? f.job_id === work.id : f.project_id === work.id
@@ -144,6 +150,16 @@ export default async function PortalWorkPage({
           <p className="whitespace-pre-wrap text-sm text-slate-600">{work.description}</p>
         )}
       </PortalCard>
+
+      {/* Daily sign-offs */}
+      {signoffs.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Daily sign-offs
+          </h2>
+          <SignoffList token={token} rows={signoffs} />
+        </div>
+      )}
 
       {/* Quote */}
       {work.quote && (

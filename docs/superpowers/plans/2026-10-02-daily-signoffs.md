@@ -58,7 +58,7 @@ Spec: `docs/superpowers/specs/2026-10-01-daily-signoffs-design.md`
 - [ ] Owner pastes the file into the Supabase SQL editor, then:
 ```sql
 insert into supabase_migrations.schema_migrations (version, name, statements)
-values ('0068', 'daily_signoffs', array[]::text[]);
+values ('20261002090000', '0068_daily_signoffs', array[]::text[]);
 ```
 - [ ] Verify: `select count(*) from daily_signoffs;` returns 0 and `select field_catalogue_search('ab');` runs.
 

@@ -10,6 +10,7 @@ import { EditJobDialog } from './edit-job-dialog'
 import { ScheduleWorkDialog } from './schedule-work-dialog'
 import { ChecklistSection } from './checklist-section'
 import { WorkLogSection } from './work-log-section'
+import { SignoffRegister } from '@/components/signoffs/SignoffRegister'
 import { PnlPanel } from '@/components/pnl/PnlPanel'
 import { loadPnl, type PnlData } from '@/lib/pnl-queries'
 import { InvoiceSection, type JobInvoiceRow } from './invoice-section'
@@ -323,6 +324,18 @@ export default async function JobDetailPage({
 
       {/* Work log */}
       <WorkLogSection jobId={job.id} entries={workLogData} />
+
+      <div className="border-t" />
+
+      {/* Daily sign-offs */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">Daily sign-offs</h2>
+        <SignoffRegister
+          kind="job"
+          workId={job.id}
+          canManage={profile.role === 'admin' || profile.role === 'office'}
+        />
+      </section>
 
       {/* Maintenance log — read-only; managed on the property page */}
       {maintenanceEntries.length > 0 && (

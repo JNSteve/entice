@@ -11,6 +11,7 @@ import { buildQuotePdfResponse } from '@/pdf/build-quote-pdf'
 import { buildComplianceReportResponse } from '@/pdf/build-compliance-report'
 import { buildTakeoffPdfResponse } from '@/pdf/build-takeoff-pdf'
 import { buildInvoicePdfResponse } from '@/pdf/build-invoice-pdf'
+import { buildSignoffPdfResponse } from '@/pdf/build-signoff-pdf'
 import { ensureRegisterLink } from '@/lib/client-links'
 import { buildHandoverPdfResponse } from '@/pdf/build-handover-pdf'
 import { PoPdf } from '@/pdf/PoPdf'
@@ -212,7 +213,7 @@ async function dispatch(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register' || type === 'waste-loads' || type === 'waste-reconciliation' || type === 'itp' || type === 'lot'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register' || type === 'waste-loads' || type === 'waste-reconciliation' || type === 'itp' || type === 'lot' || type === 'signoff'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -308,6 +309,10 @@ async function dispatch(
       const supabase = await createClient()
       return buildTakeoffPdfResponse(supabase, id)
     }
+    case 'signoff':
+      // [id] = daily_signoffs row id → daily field sign-off sheet
+      // (quantities only, so supervisors may export it — OPS_ROLES above).
+      return signoffPdf(id)
     case 'portal-register':
       // [id] = site id → "Asbestos register — scan to view" wall poster,
       // pointing at the site's compliance-only register portal link
@@ -322,6 +327,12 @@ async function invoicePdf(id: string): Promise<Response> {
   // Shared builder (also used by the token-gated portal proxy).
   const supabase = await createClient()
   return buildInvoicePdfResponse(supabase, id)
+}
+
+async function signoffPdf(id: string): Promise<Response> {
+  // Shared builder (also usable by a token-gated portal proxy).
+  const supabase = await createClient()
+  return buildSignoffPdfResponse(supabase, id)
 }
 
 async function quotePdf(id: string): Promise<Response> {

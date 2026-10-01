@@ -1,8 +1,9 @@
 'use client'
 
 import React, { useEffect, useRef, useState, useTransition } from 'react'
+import Link from 'next/link'
 import { toast } from 'sonner'
-import { MapPinIcon, PhoneIcon, LogInIcon, LogOutIcon, ChevronDownIcon, ChevronUpIcon } from 'lucide-react'
+import { MapPinIcon, PhoneIcon, LogInIcon, LogOutIcon, ChevronDownIcon, ChevronUpIcon, PackageIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -246,6 +247,23 @@ function AssignmentCardItem({
               {pending ? 'Checking in…' : 'Check in'}
             </Button>
           )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="mt-2 w-full text-xs"
+            render={
+              <Link
+                href={
+                  assignment.job_id
+                    ? `/field/usage?job=${assignment.job_id}`
+                    : `/field/usage?project=${assignment.project_id}`
+                }
+              />
+            }
+          >
+            <PackageIcon className="size-3.5 mr-1" />
+            Log materials &amp; plant
+          </Button>
         </div>
       </CardContent>
     </Card>
