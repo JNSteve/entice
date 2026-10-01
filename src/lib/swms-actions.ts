@@ -76,6 +76,7 @@ export async function createSwmsInstance(data: unknown): Promise<Result> {
     project_details: parsed.data.project_details,
     hrcw_answers: hrcwAnswers,
     emergency_contacts: parsed.data.emergency_contacts,
+    title_page: parsed.data.title_page,
     version: 1,
     status: 'active',
   })
