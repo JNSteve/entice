@@ -10,7 +10,9 @@ import type { TimesheetSource, UsageSource } from '@/lib/signoffs'
 export function sourceHash(input: { timesheets: TimesheetSource[]; usage: UsageSource[] }): string {
   const canonical = {
     t: input.timesheets
-      .map((t) => [t.id, t.start_at, t.end_at, t.approved] as const)
+      // approved is deliberately excluded: approving time later changes no
+      // quantity, so it must not flag every sent sheet as "source changed".
+      .map((t) => [t.id, t.start_at, t.end_at] as const)
       .sort((a, b) => a[0].localeCompare(b[0])),
     u: input.usage
       .map((u) => [u.id, u.updated_at] as const)

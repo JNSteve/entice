@@ -145,6 +145,13 @@ describe('sourceHash', () => {
     expect(sourceHash({ timesheets, usage: items })).toMatch(/^[0-9a-f]{64}$/)
   })
 
+  it('ignores timesheet approval (it changes no quantity)', () => {
+    const approvedLater = timesheets.map((t) => ({ ...t, approved: !t.approved }))
+    expect(sourceHash({ timesheets: approvedLater, usage: items })).toBe(
+      sourceHash({ timesheets, usage: items })
+    )
+  })
+
   it('changes when a source row changes', () => {
     const before = sourceHash({ timesheets, usage: items })
     const edited = [entry({ id: 't1', end_at: '2026-10-01T06:00:00Z' }), timesheets[1]]

@@ -50,6 +50,7 @@ export async function GET(
   }
 
   return buildSignoffPdfResponse(admin, id, {
+    clientVisibleOnly: true,
     watermark: `Issued to ${branding.client_name} via the client portal — ${fmtDate(todayAU())}`,
   })
 }

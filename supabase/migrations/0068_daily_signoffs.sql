@@ -103,11 +103,14 @@ create table field_day_notes (
 alter table field_day_notes enable row level security;
 create policy field_day_notes_select_authenticated on field_day_notes
   for select to authenticated using (auth.uid() is not null);
+-- The day's note is shared by the crew on that work (anyone on site may
+-- improve it), but a field user always stamps the change as themselves.
 create policy field_day_notes_insert on field_day_notes
   for insert to authenticated
   with check (
     current_app_role() in ('admin','office','supervisor')
-    or (current_app_role() = 'field' and field_edit_window_ok(date)));
+    or (current_app_role() = 'field' and field_edit_window_ok(date)
+        and updated_by = auth.uid()));
 create policy field_day_notes_update on field_day_notes
   for update to authenticated
   using (
@@ -115,7 +118,8 @@ create policy field_day_notes_update on field_day_notes
     or (current_app_role() = 'field' and field_edit_window_ok(date)))
   with check (
     current_app_role() in ('admin','office','supervisor')
-    or (current_app_role() = 'field' and field_edit_window_ok(date)));
+    or (current_app_role() = 'field' and field_edit_window_ok(date)
+        and updated_by = auth.uid()));
 
 ------------------------------------------------------------------------------
 -- 3. daily_signoffs + lines + responses
@@ -142,7 +146,8 @@ create table daily_signoffs (
   constraint daily_signoffs_project_version_key unique (project_id, date, version)
 );
 -- At most one live (draft / released / signed) version per work per day. A
--- disputed version may coexist with its revision draft until that releases.
+-- disputed version may coexist with its revision draft until that releases;
+-- revising a released (unanswered) sheet withdraws it first (-> superseded).
 create unique index daily_signoffs_live_idx
   on daily_signoffs (coalesce(job_id, project_id), date)
   where status in ('draft','released','signed');
@@ -178,20 +183,52 @@ create table daily_signoff_responses (
   signed_at timestamptz not null default now()
 );
 
--- A sent sheet is a record: once out of draft only status/release fields
--- move; lines are editable only while the sheet is a draft.
+-- A sent sheet is a record. A draft is freely editable and can only move to
+-- released. Once out of draft nothing but the status may change, and only
+-- along these edges:
+--   released -> signed | disputed   (a client response must exist and match)
+--   released -> superseded          (PM withdrew it to revise)
+--   disputed -> superseded          (its revision was released)
+-- So no one (office included, via the API) can reopen, re-sign or alter a
+-- record the client has seen. Lines are editable only while a draft.
 create or replace function daily_signoffs_freeze() returns trigger
 language plpgsql as $$
+declare
+  v_disputes jsonb;
 begin
-  if old.status <> 'draft' and (
-       new.summary is distinct from old.summary
-    or new.photo_ids is distinct from old.photo_ids
-    or new.date is distinct from old.date
-    or new.version is distinct from old.version
-    or new.job_id is distinct from old.job_id
-    or new.project_id is distinct from old.project_id
-    or new.source_hash is distinct from old.source_hash) then
+  if old.status = 'draft' then
+    if new.status not in ('draft','released') then
+      raise exception 'A draft sign-off can only be released';
+    end if;
+    return new;
+  end if;
+
+  if new.summary is distinct from old.summary
+     or new.photo_ids is distinct from old.photo_ids
+     or new.date is distinct from old.date
+     or new.version is distinct from old.version
+     or new.job_id is distinct from old.job_id
+     or new.project_id is distinct from old.project_id
+     or new.source_hash is distinct from old.source_hash
+     or new.built_at is distinct from old.built_at
+     or new.built_by is distinct from old.built_by
+     or new.released_at is distinct from old.released_at
+     or new.released_by is distinct from old.released_by
+     or new.supersedes_id is distinct from old.supersedes_id then
     raise exception 'This sign-off has been released and can no longer be edited';
+  end if;
+
+  if new.status is distinct from old.status then
+    if old.status = 'released' and new.status in ('signed','disputed') then
+      select disputes into v_disputes from daily_signoff_responses
+       where signoff_id = old.id;
+      if v_disputes is null
+         or (new.status = 'signed') <> (jsonb_array_length(v_disputes) = 0) then
+        raise exception 'A sign-off is signed or disputed only by the client response';
+      end if;
+    elsif not (old.status in ('released','disputed') and new.status = 'superseded') then
+      raise exception 'A sign-off cannot move from % to %', old.status, new.status;
+    end if;
   end if;
   return new;
 end $$;
@@ -275,7 +312,7 @@ begin
   return jsonb_build_object(
     'scope', coalesce((
       select jsonb_agg(jsonb_build_object(
-          'id', ql.id, 'description', ql.description, 'unit', ql.unit,
+          'id', ql.id, 'description', left(ql.description, 300), 'unit', ql.unit,
           'section', qs.title)
         order by qs.position nulls first, ql.position, ql.id)
       from quote_lines ql
@@ -397,9 +434,13 @@ begin
   end if;
   if v_client is distinct from l.client_id then return null; end if;
 
-  select id into v_replaced from daily_signoffs
-   where supersedes_id = s.id and status in ('released','signed','disputed')
-   order by version desc limit 1;
+  -- Newest non-draft later version of the same day (follows v1, v2, v3...).
+  if s.status = 'superseded' then
+    select d.id into v_replaced from daily_signoffs d
+     where coalesce(d.job_id, d.project_id) = coalesce(s.job_id, s.project_id)
+       and d.date = s.date and d.version > s.version and d.status <> 'draft'
+     order by d.version desc limit 1;
+  end if;
 
   return jsonb_build_object(
     'id', s.id,
@@ -464,13 +505,16 @@ begin
   l := portal_live_link(p_token);
   if l.id is null or coalesce(l.scope, 'full') <> 'full' then return null; end if;
 
-  select * into s from daily_signoffs where id = p_id;
+  -- Row lock: concurrent submits queue here and the loser sees the new status.
+  select * into s from daily_signoffs where id = p_id for update;
   if s.id is null then return null; end if;
 
   if s.job_id is not null then
-    select client_id, number into v_client, v_number from jobs where id = s.job_id;
+    select client_id, number into v_client, v_number from jobs
+     where id = s.job_id and not archived;
   else
-    select client_id, number into v_client, v_number from projects where id = s.project_id;
+    select client_id, number into v_client, v_number from projects
+     where id = s.project_id and not archived;
   end if;
   if v_client is distinct from l.client_id then return null; end if;
 
@@ -516,14 +560,18 @@ begin
     v_ip := null;
   end;
 
-  -- Atomic status guard: only a released sheet can be answered, once.
-  update daily_signoffs set status = v_status
-   where id = s.id and status = 'released';
-  if not found then return jsonb_build_object('error', 'not_acceptable'); end if;
+  -- Only a released sheet can be answered, once (row is locked above).
+  if s.status <> 'released' then
+    return jsonb_build_object('error', 'not_acceptable');
+  end if;
 
+  -- Response first: the freeze trigger only lets the status move to
+  -- signed/disputed when a matching response exists.
   insert into daily_signoff_responses
     (signoff_id, client_id, client_link_id, signer_name, signature_data, disputes, ip)
   values (s.id, v_client, l.id, v_signer, p_signature, v_disputes, v_ip);
+
+  update daily_signoffs set status = v_status where id = s.id;
 
   return jsonb_build_object('ok', true, 'number', v_number, 'status', v_status);
 end $$;
@@ -546,9 +594,11 @@ begin
   if s.id is null then return null; end if;
 
   if s.job_id is not null then
-    select client_id, number, site_id into v_client, v_number, v_site from jobs where id = s.job_id;
+    select client_id, number, site_id into v_client, v_number, v_site from jobs
+     where id = s.job_id and not archived;
   else
-    select client_id, number, site_id into v_client, v_number, v_site from projects where id = s.project_id;
+    select client_id, number, site_id into v_client, v_number, v_site from projects
+     where id = s.project_id and not archived;
   end if;
   if v_client is distinct from l.client_id then return null; end if;
 

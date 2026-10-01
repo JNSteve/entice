@@ -2,6 +2,7 @@ import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { currentSourceHash } from '@/lib/signoff-build'
 import { PageHeader } from '@/components/PageHeader'
 import { fmtDate } from '@/lib/format'
 import { SignoffStatusBadge } from '@/components/signoffs/SignoffStatusBadge'
@@ -46,7 +47,7 @@ export default async function SignoffDetailPage({
   const { data: signoffRaw } = await supabase
     .from('daily_signoffs')
     .select(
-      `id, job_id, project_id, date, version, status, summary, photo_ids, built_at, released_at,
+      `id, job_id, project_id, date, version, status, summary, photo_ids, built_at, released_at, source_hash, supersedes_id,
        jobs(id, number, title, client_id, clients(name)),
        projects(id, number, name, clients(name)),
        released_by_profile:profiles!daily_signoffs_released_by_fkey(full_name),
@@ -67,6 +68,8 @@ export default async function SignoffDetailPage({
     photo_ids: string[] | null
     built_at: string
     released_at: string | null
+    source_hash: string | null
+    supersedes_id: string | null
     jobs: JobRel | JobRel[] | null
     projects: ProjectRel | ProjectRel[] | null
     released_by_profile: NameRel
@@ -77,6 +80,18 @@ export default async function SignoffDetailPage({
   const workId = (signoff.job_id ?? signoff.project_id) as string
   const job = one(signoff.jobs)
   const project = one(signoff.projects)
+
+  // Drafts warn when crew changed the day's entries after the build (the
+  // overnight draft is built at 6 am; crew may still fix yesterday).
+  let sourceChanged = false
+  if (signoff.status === 'draft' && signoff.source_hash) {
+    try {
+      sourceChanged =
+        (await currentSourceHash(supabase, { kind, id: workId }, signoff.date)) !== signoff.source_hash
+    } catch {
+      sourceChanged = false
+    }
+  }
   const workNumber = job?.number ?? project?.number ?? ''
   const workTitle = job?.title ?? project?.name ?? ''
   const clientName = one(job?.clients ?? project?.clients ?? null)?.name ?? null
@@ -230,6 +245,8 @@ export default async function SignoffDetailPage({
         lines={lines}
         response={response}
         versions={versions}
+        isRevision={Boolean(signoff.supersedes_id)}
+        sourceChanged={sourceChanged}
       />
     </div>
   )

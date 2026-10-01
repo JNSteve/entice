@@ -84,6 +84,8 @@ export function SignoffEditor({
   lines,
   response,
   versions,
+  isRevision,
+  sourceChanged,
 }: {
   signoffId: string
   kind: 'job' | 'project'
@@ -97,6 +99,10 @@ export function SignoffEditor({
   lines: EditorLine[]
   response: EditorResponse | null
   versions: EditorVersion[]
+  /** A revision of a disputed/withdrawn sheet — never rebuilt from entries. */
+  isRevision: boolean
+  /** Draft only: crew changed the day's entries after this draft was built. */
+  sourceChanged: boolean
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -133,9 +139,21 @@ export function SignoffEditor({
     })
   }
 
+  const draftDirty =
+    summary !== initialSummary ||
+    photoIds.length !== initialPhotoIds.length ||
+    photoIds.some((id) => !initialPhotoIds.includes(id))
+
   function onRelease() {
     if (!confirm('Release to the client portal? The client will be emailed and the sheet locks.')) return
-    run(() => releaseSignoff(signoffId), 'Released to client')
+    // Unsaved summary/photo changes go out with the release, never get lost.
+    run(async () => {
+      if (draftDirty) {
+        const saved = await updateSignoffDraft(signoffId, { summary, photo_ids: photoIds })
+        if (saved.error) return saved
+      }
+      return releaseSignoff(signoffId)
+    }, 'Released to client')
   }
 
   function onDeleteDraft() {
@@ -144,6 +162,12 @@ export function SignoffEditor({
   }
 
   function onRevise() {
+    if (
+      status === 'released' &&
+      !confirm('Withdraw this sheet from the client and draft a corrected version?')
+    ) {
+      return
+    }
     run(() => reviseSignoff(signoffId), 'Revision drafted', (newId) => {
       if (newId) router.push(`/signoffs/${newId}`)
       else router.refresh()
@@ -161,9 +185,11 @@ export function SignoffEditor({
             <Button onClick={onRelease} disabled={pending || blocking}>
               Release to client
             </Button>
-            <Button variant="outline" onClick={onRebuild} disabled={pending}>
-              Rebuild from entries
-            </Button>
+            {!isRevision && (
+              <Button variant="outline" onClick={onRebuild} disabled={pending}>
+                Rebuild from entries
+              </Button>
+            )}
             <Button variant="destructive" onClick={onDeleteDraft} disabled={pending}>
               Delete draft
             </Button>
@@ -172,6 +198,11 @@ export function SignoffEditor({
         {canEdit && status === 'disputed' && (
           <Button onClick={onRevise} disabled={pending}>
             Revise
+          </Button>
+        )}
+        {canEdit && status === 'released' && (
+          <Button variant="outline" onClick={onRevise} disabled={pending}>
+            Withdraw &amp; revise
           </Button>
         )}
         <a
@@ -183,6 +214,14 @@ export function SignoffEditor({
           PDF
         </a>
       </div>
+
+      {status === 'draft' && sourceChanged && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
+          {isRevision
+            ? 'Crew entries for this day have changed since the original sheet was built. Check the lines before releasing.'
+            : 'Crew entries for this day have changed since this draft was built. Use “Rebuild from entries” to pick them up (this replaces manual edits), or check the lines before releasing.'}
+        </div>
+      )}
 
       {/* Versions */}
       {versions.length > 1 && (

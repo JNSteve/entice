@@ -32,12 +32,13 @@ type SignoffRow = {
   summary: string
   photo_ids: string[]
   supersedes_id: string | null
+  source_hash: string | null
 }
 
 async function loadSignoff(supabase: Supabase, id: string): Promise<SignoffRow | null> {
   const { data } = await supabase
     .from('daily_signoffs')
-    .select('id, job_id, project_id, date, version, status, summary, photo_ids, supersedes_id')
+    .select('id, job_id, project_id, date, version, status, summary, photo_ids, supersedes_id, source_hash')
     .eq('id', id)
     .maybeSingle()
   return (data as SignoffRow | null) ?? null
@@ -321,7 +322,24 @@ export async function reviseSignoff(id: string): Promise<Result> {
   const supabase = await createClient()
   const signoff = await loadSignoff(supabase, id)
   if (!signoff) return { error: 'Sign-off not found' }
-  if (signoff.status !== 'disputed') return { error: 'Only a disputed sign-off can be revised' }
+  if (signoff.status !== 'disputed' && signoff.status !== 'released') {
+    return { error: 'Only a released or disputed sign-off can be revised' }
+  }
+
+  // A released sheet nobody has answered yet is withdrawn from the client
+  // first (one live version per day); a disputed one stays on record until
+  // its revision is released.
+  if (signoff.status === 'released') {
+    const { data: withdrawn, error: wErr } = await supabase
+      .from('daily_signoffs')
+      .update({ status: 'superseded' })
+      .eq('id', id)
+      .eq('status', 'released')
+      .select('id')
+      .maybeSingle()
+    if (wErr) return { error: wErr.message }
+    if (!withdrawn) return { error: 'The client has just answered this sheet — refresh the page' }
+  }
 
   const [{ data: lines }, { data: response }] = await Promise.all([
     supabase
@@ -351,6 +369,7 @@ export async function reviseSignoff(id: string): Promise<Result> {
       photo_ids: signoff.photo_ids,
       built_by: profile.id,
       supersedes_id: signoff.id,
+      source_hash: signoff.source_hash,
     })
     .select('id')
     .single()

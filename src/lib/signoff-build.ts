@@ -72,8 +72,10 @@ export async function loadSnapshotSource(
     company: (u.company as string | null) ?? null,
     headcount: u.headcount === null ? null : Number(u.headcount),
     hours: u.hours === null ? null : Number(u.hours),
+    // quote_lines.description is unbounded; the snapshot column caps at 500.
     scope_label:
-      one(u.quote_lines as { description: string } | { description: string }[] | null)?.description ?? null,
+      one(u.quote_lines as { description: string } | { description: string }[] | null)?.description?.slice(0, 500) ??
+      null,
     updated_at: u.updated_at as string,
   }))
 
@@ -109,19 +111,26 @@ export async function buildSignoffDraft(
 
   const { data: existing, error: exErr } = await sb
     .from('daily_signoffs')
-    .select('id, status, version')
+    .select('id, status, version, supersedes_id')
     .eq(col, work.id)
     .eq('date', date)
     .order('version', { ascending: false })
     .limit(1)
   if (exErr) return { error: exErr.message }
-  const latest = existing?.[0] as { id: string; status: string; version: number } | undefined
+  const latest = existing?.[0] as
+    | { id: string; status: string; version: number; supersedes_id: string | null }
+    | undefined
 
   if (latest && (latest.status === 'released' || latest.status === 'signed')) {
     return { error: 'This day has already been released to the client' }
   }
   if (latest && latest.status === 'disputed') {
     return { error: 'The client disputed this day — open it and use Revise' }
+  }
+  if (latest && latest.status === 'draft' && latest.supersedes_id) {
+    // Rebuilding would drop the client's agreed figures carried into the
+    // revision — edit its lines directly instead.
+    return { error: 'This is a revision — edit its lines directly rather than rebuilding' }
   }
 
   let source: Awaited<ReturnType<typeof loadSnapshotSource>>
@@ -151,8 +160,6 @@ export async function buildSignoffDraft(
       .eq('id', signoffId)
       .eq('status', 'draft')
     if (upErr) return { error: upErr.message }
-    const { error: delErr } = await sb.from('daily_signoff_lines').delete().eq('signoff_id', signoffId)
-    if (delErr) return { error: delErr.message }
   } else {
     const { data: created, error: insErr } = await sb
       .from('daily_signoffs')
@@ -178,10 +185,22 @@ export async function buildSignoffDraft(
     signoffId = created.id as string
   }
 
-  const { error: linesErr } = await sb
+  // New lines go in before the old ones come out, so a failed insert never
+  // leaves an empty draft.
+  const { data: inserted, error: linesErr } = await sb
     .from('daily_signoff_lines')
     .insert(lines.map((l) => ({ ...l, signoff_id: signoffId })))
+    .select('id')
   if (linesErr) return { error: linesErr.message }
+  const keep = (inserted ?? []).map((r) => r.id as string)
+  if (keep.length > 0) {
+    const { error: delErr } = await sb
+      .from('daily_signoff_lines')
+      .delete()
+      .eq('signoff_id', signoffId)
+      .not('id', 'in', `(${keep.join(',')})`)
+    if (delErr) return { error: delErr.message }
+  }
 
   return { id: signoffId }
 }

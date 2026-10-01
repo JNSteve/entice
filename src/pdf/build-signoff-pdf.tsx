@@ -51,7 +51,7 @@ function fmtDateAU(iso: string): string {
 export async function buildSignoffPdfResponse(
   supabase: SupabaseClient,
   id: string,
-  opts: { watermark?: string | null } = {}
+  opts: { watermark?: string | null; clientVisibleOnly?: boolean } = {}
 ): Promise<Response> {
   const [{ data: signoff }, { data: lines }, { data: response }, { data: settings }] =
     await Promise.all([
@@ -111,11 +111,15 @@ export async function buildSignoffPdfResponse(
   const photoIds = ((signoff.photo_ids as string[] | null) ?? []).slice(0, MAX_PHOTOS)
   let photos: DailySignoffPdfPhoto[] = []
   if (photoIds.length > 0) {
-    const { data: photoRows } = await supabase
+    let photoQuery = supabase
       .from('attachments')
       .select('id, path, caption, content_type')
       .in('id', photoIds)
       .eq('kind', 'photo')
+    // The portal copy (service role) must only embed photos the client may
+    // see — office may have hidden one after release.
+    if (opts.clientVisibleOnly) photoQuery = photoQuery.eq('client_visible', true)
+    const { data: photoRows } = await photoQuery
     const usable = (photoRows ?? []).filter((p) =>
       PHOTO_CONTENT_TYPES.includes(p.content_type as string)
     )
