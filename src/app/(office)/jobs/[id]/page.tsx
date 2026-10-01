@@ -27,6 +27,10 @@ import {
 } from '@/components/MaintenanceLog'
 import { fetchSwmsInstances, toSwmsDocumentOptions } from '@/lib/swms-queries'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
+import {
+  buildSwmsTitlePagePrefill,
+  type TitlePageContactOption,
+} from '@/lib/swms-title-page'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 
@@ -61,8 +65,8 @@ export default async function JobDetailPage({
       .from('jobs')
       .select(
         `*,
-         clients(id, name),
-         sites(id, name),
+         clients(id, name, address, contacts(id, name, role, phone, email)),
+         sites(id, name, address, suburb, state, postcode),
          supervisor:profiles!jobs_supervisor_id_fkey(id, full_name),
          pm:profiles!jobs_pm_id_fkey(id, full_name),
          quotes(id, number, status)`
@@ -115,8 +119,28 @@ export default async function JobDetailPage({
 
   if (!job) notFound()
 
-  const clientRel = job.clients as unknown as { id: string; name: string } | null
-  const siteRel = job.sites as unknown as { id: string; name: string } | null
+  const clientRel = job.clients as unknown as {
+    id: string
+    name: string
+    address: string | null
+    contacts: TitlePageContactOption[] | null
+  } | null
+  const siteRel = job.sites as unknown as {
+    id: string
+    name: string
+    address: string | null
+    suburb: string | null
+    state: string | null
+    postcode: string | null
+  } | null
+  const swmsTitlePagePrefill = buildSwmsTitlePagePrefill({
+    parentRef: `${job.number} — ${job.title}`,
+    client: clientRel,
+    site: siteRel,
+    start: job.scheduled_start,
+    end: job.scheduled_end,
+    contacts: [...(clientRel?.contacts ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+  })
   const supervisorRel = job.supervisor as unknown as { id: string; full_name: string } | null
   const pmRel = job.pm as unknown as { id: string; full_name: string } | null
   const quoteRel = job.quotes as unknown as { id: string; number: string; status: string } | null
@@ -358,6 +382,7 @@ export default async function JobDetailPage({
         documents={toSwmsDocumentOptions(attachments)}
         canManage={canMutate}
         canSupersede={canSeeCosts}
+        titlePagePrefill={swmsTitlePagePrefill}
       />
 
       {/* Costs & P&L — admin/office only */}

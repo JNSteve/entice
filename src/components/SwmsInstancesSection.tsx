@@ -64,6 +64,13 @@ import {
   supersedeSwmsInstance,
 } from '@/lib/swms-actions'
 import type { SwmsDocumentOption, SwmsInstanceListRow } from '@/lib/swms-queries'
+import {
+  EMPTY_TITLE_PAGE_PREFILL,
+  SWMS_TITLE_PAGE_LABELS,
+  contactFields,
+  type SwmsTitlePage,
+  type SwmsTitlePagePrefill,
+} from '@/lib/swms-title-page'
 
 export interface SwmsTemplateOption {
   id: string
@@ -84,6 +91,8 @@ interface SwmsInstancesSectionProps {
   canManage: boolean
   /** admin/office — supersede. */
   canSupersede: boolean
+  /** Title-page values pre-filled from the job/project, client and site. */
+  titlePagePrefill?: SwmsTitlePagePrefill
 }
 
 export function SwmsInstancesSection({
@@ -94,6 +103,7 @@ export function SwmsInstancesSection({
   documents,
   canManage,
   canSupersede,
+  titlePagePrefill = EMPTY_TITLE_PAGE_PREFILL,
 }: SwmsInstancesSectionProps) {
   return (
     <section className="flex flex-col gap-4">
@@ -105,6 +115,7 @@ export function SwmsInstancesSection({
             parentId={parentId}
             templates={templates}
             documents={documents}
+            titlePagePrefill={titlePagePrefill}
           />
         )}
       </div>
@@ -387,6 +398,16 @@ const DETAIL_TEXTAREA_KEYS: ReadonlySet<keyof SwmsProjectDetails> = new Set([
 
 const EMPTY_DETAILS: SwmsProjectDetails = swmsProjectDetailsSchema.parse({})
 const EMPTY_CONTACTS: SwmsEmergencyContacts = swmsEmergencyContactsSchema.parse({})
+// work_dates / client_contact are covered by the title page — hidden when
+// issuing, still rendered on older SWMS that have them.
+const ISSUE_DETAIL_KEYS = (
+  Object.keys(SWMS_PROJECT_DETAIL_LABELS) as (keyof SwmsProjectDetails)[]
+).filter((key) => key !== 'work_dates' && key !== 'client_contact')
+const MANUAL_CONTACT = '__manual'
+const TITLE_PAGE_WIDE_KEYS: ReadonlySet<keyof SwmsTitlePage> = new Set([
+  'job_ref',
+  'site_address',
+])
 
 function IssueSectionHeading({ title, hint }: { title: string; hint?: string }) {
   return (
@@ -404,11 +425,13 @@ function AddSwmsDialog({
   parentId,
   templates,
   documents,
+  titlePagePrefill,
 }: {
   parentType: 'project' | 'job'
   parentId: string
   templates: SwmsTemplateOption[]
   documents: SwmsDocumentOption[]
+  titlePagePrefill: SwmsTitlePagePrefill
 }) {
   const [open, setOpen] = useState(false)
   const [source, setSource] = useState<'template' | 'document'>('template')
@@ -419,6 +442,18 @@ function AddSwmsDialog({
   const [contacts, setContacts] = useState<SwmsEmergencyContacts>({
     ...EMPTY_CONTACTS,
   })
+  const [titlePage, setTitlePage] = useState<SwmsTitlePage>({
+    ...titlePagePrefill.values,
+  })
+  const [contactId, setContactId] = useState(
+    titlePagePrefill.contactId ?? MANUAL_CONTACT
+  )
+
+  function pickContact(id: string) {
+    setContactId(id)
+    const contact = titlePagePrefill.contacts.find((c) => c.id === id) ?? null
+    setTitlePage((t) => ({ ...t, ...contactFields(contact) }))
+  }
 
   const selectedTemplate = templates.find((t) => t.id === templateId)
   const hrcwItems = parseHrcwItems(selectedTemplate?.hrcw_items)
@@ -436,6 +471,8 @@ function AddSwmsDialog({
     setDetails({ ...EMPTY_DETAILS })
     setAnswers({})
     setContacts({ ...EMPTY_CONTACTS })
+    setTitlePage({ ...titlePagePrefill.values })
+    setContactId(titlePagePrefill.contactId ?? MANUAL_CONTACT)
   }
 
   function handleSubmit(e: React.FormEvent) {
@@ -448,6 +485,7 @@ function AddSwmsDialog({
         project_details: details,
         hrcw_answers: answers,
         emergency_contacts: contacts,
+        title_page: titlePage,
       })
       if (result.error) {
         toast.error(result.error)
@@ -527,13 +565,62 @@ function AddSwmsDialog({
               {selectedTemplate && (
                 <>
                   <IssueSectionHeading
+                    title="Title page"
+                    hint="Filled from the job, client and site — edit anything that's wrong. Saved with this SWMS."
+                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {titlePagePrefill.contacts.length > 0 && (
+                      <div className="flex flex-col gap-1.5 sm:col-span-2">
+                        <Label htmlFor="swms-title-contact-pick">Pick a client contact</Label>
+                        <Select
+                          value={contactId}
+                          onValueChange={(v) => pickContact(v ?? MANUAL_CONTACT)}
+                        >
+                          <SelectTrigger id="swms-title-contact-pick" className="w-full">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {titlePagePrefill.contacts.map((c) => (
+                              <SelectItem key={c.id} value={c.id}>
+                                {c.role ? `${c.name} — ${c.role}` : c.name}
+                              </SelectItem>
+                            ))}
+                            <SelectItem value={MANUAL_CONTACT}>Type manually</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    {(Object.keys(SWMS_TITLE_PAGE_LABELS) as (keyof SwmsTitlePage)[]).map(
+                      (key) => (
+                        <div
+                          key={key}
+                          className={
+                            TITLE_PAGE_WIDE_KEYS.has(key)
+                              ? 'flex flex-col gap-1.5 sm:col-span-2'
+                              : 'flex flex-col gap-1.5'
+                          }
+                        >
+                          <Label htmlFor={`swms-title-${key}`}>
+                            {SWMS_TITLE_PAGE_LABELS[key]}
+                          </Label>
+                          <Input
+                            id={`swms-title-${key}`}
+                            value={titlePage[key]}
+                            onChange={(e) =>
+                              setTitlePage((t) => ({ ...t, [key]: e.target.value }))
+                            }
+                          />
+                        </div>
+                      )
+                    )}
+                  </div>
+
+                  <IssueSectionHeading
                     title="Project-specific details"
                     hint="Filled at issue — these appear on the SWMS the crew reads and signs."
                   />
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {(
-                      Object.keys(SWMS_PROJECT_DETAIL_LABELS) as (keyof SwmsProjectDetails)[]
-                    ).map((key) => (
+                    {ISSUE_DETAIL_KEYS.map((key) => (
                       <div
                         key={key}
                         className={
