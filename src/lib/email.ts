@@ -32,6 +32,8 @@ export const EMAIL_TEMPLATES = [
   'client_portal_invite',
   'office_daily_digest',
   'office_xero_reconnect',
+  'client_signoff_released',
+  'office_signoff_response',
   'test',
 ] as const
 
@@ -49,6 +51,8 @@ export const EMAIL_TEMPLATE_LABELS: Record<EmailTemplate, string> = {
   client_portal_invite: 'Client — portal invite',
   office_daily_digest: 'Office — daily digest',
   office_xero_reconnect: 'Office alert — Xero needs reconnecting',
+  client_signoff_released: 'Client — daily sign-off ready to sign',
+  office_signoff_response: 'Office alert — client signed / disputed a daily sign-off',
   test: 'Test email',
 }
 

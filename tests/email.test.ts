@@ -254,6 +254,13 @@ describe('averageRating (customer_satisfaction_avg)', () => {
 })
 
 describe('email template registry', () => {
+  it('registers the daily sign-off templates with labels', () => {
+    expect(EMAIL_TEMPLATES).toContain('client_signoff_released')
+    expect(EMAIL_TEMPLATES).toContain('office_signoff_response')
+    expect(EMAIL_TEMPLATE_LABELS.client_signoff_released).toMatch(/sign-off/)
+    expect(EMAIL_TEMPLATE_LABELS.office_signoff_response).toMatch(/sign-off/)
+  })
+
   it('registers the quote-sent and portal-invite client templates with labels', () => {
     expect(EMAIL_TEMPLATES).toContain('client_quote_sent')
     expect(EMAIL_TEMPLATES).toContain('client_portal_invite')
