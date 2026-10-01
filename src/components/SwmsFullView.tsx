@@ -19,6 +19,7 @@ import {
   type SwmsProjectDetails,
   type SwmsStructure,
 } from '@/lib/swms'
+import { SWMS_TITLE_PAGE_LABELS } from '@/lib/swms-title-page'
 
 // ─── Risk chips ──────────────────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ export function SwmsFullView({ structure }: { structure: SwmsStructure }) {
     emergencyScenarios,
     emergencyContacts,
     referencesList,
+    titlePage,
   } = structure
 
   const hasDocControl =
@@ -133,6 +135,13 @@ export function SwmsFullView({ structure }: { structure: SwmsStructure }) {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Title page — client, job, site, contact */}
+      {titlePage && (
+        <Section title="Title page">
+          <LabelValueList labels={SWMS_TITLE_PAGE_LABELS} values={titlePage} />
+        </Section>
+      )}
+
       {/* Scope & document control */}
       {hasDocControl && (
         <Section title="Scope & document control">

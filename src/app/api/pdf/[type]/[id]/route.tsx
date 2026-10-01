@@ -35,6 +35,7 @@ import {
   type SwmsProjectDetails,
   type SwmsRequirements,
 } from '@/lib/swms'
+import { SWMS_TITLE_PAGE_LABELS } from '@/lib/swms-title-page'
 import { ProgrammePdf, type ProgrammePdfHoldPoint } from '@/pdf/ProgrammePdf'
 import { FormPdf, type FormPdfSignon } from '@/pdf/FormPdf'
 import { IncidentPdf, type IncidentPdfAction } from '@/pdf/IncidentPdf'
@@ -972,6 +973,11 @@ async function swmsPdf(id: string): Promise<Response> {
         date: fmtDate(instance.created_at),
       }}
       company={toCompany(settings)}
+      titlePage={
+        structure.titlePage
+          ? labelValueRows(SWMS_TITLE_PAGE_LABELS, structure.titlePage)
+          : []
+      }
       docControl={docControlRows}
       scopeNote={structure.docControl.scope_note.trim()}
       projectDetails={labelValueRows(

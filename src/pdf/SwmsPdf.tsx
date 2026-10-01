@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react'
 import { View, Text, Image, StyleSheet } from '@react-pdf/renderer'
 import { DocShell, type DocCompany } from './DocShell'
-import { palette, fontSize, tableStyles } from './theme'
+import { palette, fontSize, font, tableStyles } from './theme'
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -52,6 +52,8 @@ export type SwmsPdfProps = {
     date: string
   }
   company: DocCompany
+  /** Title-page rows (client, job, site, contact…). Non-empty → cover page. */
+  titlePage?: SwmsPdfRow[]
   /** Document control rows (prepared by, approved by, project, …). */
   docControl: SwmsPdfRow[]
   scopeNote: string
@@ -75,6 +77,26 @@ export type SwmsPdfProps = {
 // ─── Styles ──────────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  coverKicker: {
+    fontSize: fontSize.md,
+    fontFamily: font.bold,
+    color: palette.slate500,
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginTop: 40,
+  },
+  coverTitle: {
+    fontSize: fontSize.title,
+    fontFamily: font.bold,
+    color: palette.navy,
+    marginTop: 6,
+    marginBottom: 24,
+  },
+  coverMeta: {
+    fontSize: fontSize.md,
+    color: palette.slate700,
+    marginTop: 4,
+  },
   scopeText: {
     fontSize: fontSize.base,
     color: palette.slate900,
@@ -392,6 +414,7 @@ export function ChangeRecordTable({ changes }: { changes: SwmsPdfChange[] }) {
 export function SwmsPdf({
   swms,
   company,
+  titlePage = [],
   docControl,
   scopeNote,
   projectDetails,
@@ -414,6 +437,24 @@ export function SwmsPdf({
       company={company}
       footerText={`SWMS — ${swms.title} (v${swms.version}) — ${swms.parentLabel}`}
     >
+      {/* Title page */}
+      {titlePage.length > 0 && (
+        <>
+          <View>
+            <Text style={styles.coverKicker}>Safe Work Method Statement</Text>
+            <Text style={styles.coverTitle}>{swms.title}</Text>
+            <SectionTable title="Title page">
+              <LabelValueRows rows={titlePage} />
+            </SectionTable>
+            <Text style={styles.coverMeta}>
+              Version {swms.version} · Issued {swms.date}
+              {swms.status === 'superseded' ? ' · Superseded' : ''}
+            </Text>
+          </View>
+          <View break />
+        </>
+      )}
+
       {/* Document control */}
       <SectionTable title="Document control">
         <LabelValueRows
