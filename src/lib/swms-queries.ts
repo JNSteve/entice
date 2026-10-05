@@ -113,7 +113,8 @@ export async function fetchMyFieldSwms(
 export interface SwmsRegisterRow {
   user_id: string
   name: string
-  role: 'supervisor' | 'field'
+  /** supervisor/field are the expected crew; admin/office appear only once they've signed. */
+  role: 'supervisor' | 'field' | 'admin' | 'office'
   /** Signed-at timestamp for the CURRENT instance version, or null = outstanding. */
   signed_at: string | null
 }
@@ -180,6 +181,22 @@ export async function fetchSwmsInstances(
       instances.map((i) => i.id as string)
     )
 
+  // Logged-in signers outside the field/supervisor crew (e.g. an admin signing
+  // from the field app) — look them up so their signature isn't dropped.
+  const crewIds = new Set((crew ?? []).map((p) => p.id as string))
+  const otherSignerIds = [
+    ...new Set(
+      (signatures ?? [])
+        .filter((s) => s.user_id !== null && s.external !== true)
+        .map((s) => s.user_id as string)
+        .filter((id) => !crewIds.has(id))
+    ),
+  ]
+  const { data: otherSigners } = otherSignerIds.length
+    ? await supabase.from('profiles').select('id, full_name, role').in('id', otherSignerIds)
+    : { data: [] }
+  const otherSignerById = new Map((otherSigners ?? []).map((p) => [p.id as string, p]))
+
   return instances.map((instance) => {
     const currentSigs = (signatures ?? []).filter(
       (s) =>
@@ -195,9 +212,22 @@ export async function fetchSwmsInstances(
     const register: SwmsRegisterRow[] = (crew ?? []).map((p) => ({
       user_id: p.id as string,
       name: p.full_name as string,
-      role: p.role as 'supervisor' | 'field',
+      role: p.role as SwmsRegisterRow['role'],
       signed_at: signedAtByUser.get(p.id as string) ?? null,
     }))
+
+    const otherSigs = currentSigs.filter(
+      (s) => s.user_id !== null && s.external !== true && !crewIds.has(s.user_id as string)
+    )
+    for (const s of otherSigs) {
+      const p = otherSignerById.get(s.user_id as string)
+      register.push({
+        user_id: s.user_id as string,
+        name: (p?.full_name as string | undefined) ?? (s.name as string),
+        role: ((p?.role as string | undefined) ?? 'office') as SwmsRegisterRow['role'],
+        signed_at: s.signed_at as string,
+      })
+    }
 
     const externalSigners: SwmsExternalSigner[] = currentSigs
       .filter((s) => s.external === true || s.user_id === null)

@@ -239,7 +239,7 @@ function SwmsInstanceCard({
             className="flex items-center gap-1 self-start text-xs text-muted-foreground hover:text-foreground"
             aria-expanded={open}
           >
-            {instance.signedCount} of {instance.registerTotal} field staff signed
+            {instance.signedCount} of {instance.registerTotal} signed
             {instance.externalSigners.length > 0 &&
               ` · ${instance.externalSigners.length} external`}
             {open ? (
