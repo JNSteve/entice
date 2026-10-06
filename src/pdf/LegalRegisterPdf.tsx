@@ -217,10 +217,10 @@ export function LegalRegisterPdf({
 
         <View style={styles.footer} fixed>
           <Text style={styles.footerText}>
-            Legal & Compliance Obligations Register — compliance state is
-            derived from the latest evaluation on each obligation (append-only
-            history); a gap escalates into the NCR/CAPA register. Seed content
-            is Rev A — HSEQ review before relying on this for audit.
+            Legal & Compliance Obligations Register (IMS-R-06) — compliance
+            state is derived from the latest evaluation on each obligation
+            (append-only history, evaluated annually under SMS-03); a gap
+            escalates into the corrective action register (SMS-R-08).
           </Text>
           <Text
             style={styles.pageNumber}

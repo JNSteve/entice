@@ -9,6 +9,7 @@ import { notifyClientRequestStatus, syncRequestsForQuote } from '@/lib/notify'
 import {
   jobCreateSchema,
   jobUpdateSchema,
+  jobRecordProfileSchema,
   jobScheduleSchema,
   jobStatusSchema,
   checklistItemSchema,
@@ -115,6 +116,35 @@ export async function updateJob(
   if (error) return { error: error.message }
 
   revalidateJob(jobId)
+  return {}
+}
+
+// ─── Job records (SMS-02) ─────────────────────────────────────────────────────
+
+/**
+ * Sets the two facts that decide which records the job folder must hold
+ * (src/lib/job-records.ts): the licensed removal class and regulated waste.
+ */
+export async function updateJobRecordProfile(
+  jobId: string,
+  data: unknown
+): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const parsed = jobRecordProfileSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createClient()
+  const { error } = await supabase
+    .from('jobs')
+    .update(parsed.data)
+    .eq('id', jobId)
+
+  if (error) return { error: error.message }
+
+  revalidatePath(`/jobs/${jobId}`)
   return {}
 }
 

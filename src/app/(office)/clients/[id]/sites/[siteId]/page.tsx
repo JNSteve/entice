@@ -72,6 +72,7 @@ export default async function SiteDetailPage({
       .from('documents')
       .select('id, doc_number, title')
       .eq('status', 'issued')
+      .neq('category', 'record')
       .not('file_path', 'is', null)
       .order('title'),
     supabase

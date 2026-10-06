@@ -7,6 +7,21 @@ export type Profile = {
   id: string
   full_name: string
   role: Role
+  /** IMS-M-01 defined position, e.g. 'Director (Compliance and Technical)'. */
+  position?: string | null
+}
+
+/** The position that maintains the IMS and alone closes corrective actions (SMS-05). */
+export const COMPLIANCE_DIRECTOR = 'Director (Compliance and Technical)'
+
+/** Directors by defined position — mirrors is_director() in migration 0072. */
+export function isDirector(profile: Pick<Profile, 'position'> | null | undefined): boolean {
+  return !!profile?.position?.startsWith('Director (')
+}
+
+/** Mirrors is_compliance_director() in migration 0072. */
+export function isComplianceDirector(profile: Pick<Profile, 'position'> | null | undefined): boolean {
+  return profile?.position === COMPLIANCE_DIRECTOR
 }
 
 /**
@@ -23,7 +38,7 @@ export async function getProfile(): Promise<Profile | null> {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, full_name, role')
+    .select('id, full_name, role, position')
     .eq('id', user.id)
     .single()
   if (!profile) return null

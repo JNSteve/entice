@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { IMS_HIDDEN } from '@/lib/ims-scope'
 
 type Tab = {
   label: string
@@ -10,6 +11,8 @@ type Tab = {
   suffix: string
   /** Money tabs are hidden from supervisors. */
   money?: boolean
+  /** Outside the certified IMS (src/lib/ims-scope.ts). */
+  hidden?: boolean
 }
 
 const TABS: Tab[] = [
@@ -23,7 +26,7 @@ const TABS: Tab[] = [
   { label: 'Procurement', suffix: '/procurement', money: true },
   { label: 'Diary', suffix: '/diary' },
   { label: 'WHS', suffix: '/whs' },
-  { label: 'Quality', suffix: '/quality' },
+  { label: 'Quality', suffix: '/quality', hidden: IMS_HIDDEN.itpLots },
   { label: 'Risk', suffix: '/risk' },
   { label: 'Environment', suffix: '/env' },
   { label: 'Documents', suffix: '/documents' },
@@ -38,7 +41,7 @@ export function ProjectTabs({
 }) {
   const pathname = usePathname()
   const base = `/projects/${projectId}`
-  const tabs = TABS.filter((t) => showMoney || !t.money)
+  const tabs = TABS.filter((t) => !t.hidden && (showMoney || !t.money))
 
   return (
     <nav className="flex gap-1 overflow-x-auto border-b">

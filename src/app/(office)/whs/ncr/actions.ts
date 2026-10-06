@@ -1,9 +1,9 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { requireRole } from '@/lib/auth'
+import { isComplianceDirector, requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { nextNumber } from '@/lib/numbering'
+import { nextCarNumber } from '@/lib/numbering'
 import {
   ncrCreateSchema,
   ncrUpdateSchema,
@@ -34,8 +34,8 @@ export async function createNcr(
 
   const supabase = await createClient()
 
-  const number = await nextNumber(supabase, 'ncr').catch((err) => {
-    throw new Error(`Failed to get next NCR number: ${err.message}`)
+  const number = await nextCarNumber(supabase).catch((err) => {
+    throw new Error(`Failed to get next CAR number: ${err.message}`)
   })
 
   const { data: row, error } = await supabase
@@ -43,11 +43,15 @@ export async function createNcr(
     .insert({
       number,
       source: parsed.data.source,
+      source_detail: parsed.data.source_detail,
+      classification: parsed.data.classification,
       category: parsed.data.category,
       severity: parsed.data.severity,
       title: parsed.data.title,
       description: parsed.data.description,
       immediate_action: parsed.data.immediate_action,
+      assigned_to_text: parsed.data.assigned_to_text,
+      due_date: parsed.data.due_date,
       project_id: parsed.data.project_id,
       job_id: parsed.data.job_id,
       vendor_id: parsed.data.vendor_id,
@@ -82,9 +86,9 @@ export async function updateNcr(ncrId: string, data: unknown): Promise<Result> {
     .select('id, status')
     .eq('id', ncrId)
     .single()
-  if (!existing) return { error: 'NCR not found' }
+  if (!existing) return { error: 'Corrective action not found' }
   if (existing.status === 'closed') {
-    return { error: 'Cannot edit a closed NCR' }
+    return { error: 'Cannot edit a closed CAR' }
   }
 
   const { error } = await supabase.from('ncrs').update(parsed.data).eq('id', ncrId)
@@ -121,7 +125,7 @@ export async function setNcrStatus(ncrId: string, data: unknown): Promise<Result
     .select('id, status')
     .eq('id', ncrId)
     .single()
-  if (!existing) return { error: 'NCR not found' }
+  if (!existing) return { error: 'Corrective action not found' }
 
   const target = parsed.data.status
   const allowed = VALID_TRANSITIONS[existing.status] ?? []
@@ -132,7 +136,7 @@ export async function setNcrStatus(ncrId: string, data: unknown): Promise<Result
   // Reopen (closed → verified) is admin-only.
   if (existing.status === 'closed' && target === 'verified') {
     if (profile.role !== 'admin') {
-      return { error: 'Only admins can reopen a closed NCR' }
+      return { error: 'Only admins can reopen a closed CAR' }
     }
   }
 
@@ -173,6 +177,13 @@ export async function setNcrStatus(ncrId: string, data: unknown): Promise<Result
     if ((openCapa ?? 0) > 0) {
       return {
         error: `Cannot close — ${openCapa} CAPA action${openCapa === 1 ? '' : 's'} still open`,
+      }
+    }
+    // SMS-05: close-out is the compliance director's alone. The ncrs_close_guard
+    // trigger (0072) enforces the same in the database.
+    if (!isComplianceDirector(profile)) {
+      return {
+        error: 'Only the Director (Compliance and Technical) closes a corrective action (SMS-05).',
       }
     }
   }
@@ -218,9 +229,9 @@ async function ncrActionsLocked(
     .select('status')
     .eq('id', ncrId)
     .single()
-  if (!parent) return 'NCR not found'
+  if (!parent) return 'Corrective action not found'
   if (parent.status === 'verified' || parent.status === 'closed') {
-    return 'This NCR is verified/closed — reopen it to change its corrective actions.'
+    return 'This CAR is verified/closed — reopen it to change its CAPA actions.'
   }
   return null
 }

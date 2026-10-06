@@ -1720,6 +1720,7 @@ async function documentRegisterPdf(): Promise<Response> {
          review_due, approved_at, issued_at,
          approver:profiles!documents_approved_by_fkey(full_name)`
       )
+      .neq('category', 'record') // records are filed, not part of the controlled register
       .order('system')
       .order('doc_number', { nullsFirst: false })
       .order('title'),

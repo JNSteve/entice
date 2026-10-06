@@ -28,12 +28,9 @@ export default async function WhsNcrPage() {
     supabase
       .from('ncrs')
       .select(
-        `id, number, source, severity, title, status, occurred_on, created_at,
-         raised_by, project_id, job_id, vendor_id,
-         projects(number, name),
-         jobs(number, title),
-         vendors(name),
-         profiles!ncrs_raised_by_fkey(full_name)`
+        `id, number, classification, source, source_detail, title, description,
+         status, occurred_on, created_at, assigned_to_text, due_date,
+         implemented, verification_notes, closed_at, project_id`
       )
       .order('created_at', { ascending: false }),
     supabase
@@ -65,29 +62,28 @@ export default async function WhsNcrPage() {
   }
 
   const rows: NcrRow[] = (ncrs ?? []).map((n) => {
-    const project = n.projects as unknown as {
-      number: string
-      name: string
-    } | null
-    const job = n.jobs as unknown as { number: string; title: string } | null
-    const vendor = n.vendors as unknown as { name: string } | null
-    const raiser = n.profiles as unknown as { full_name: string } | null
     const counts = capasByNcr.get(n.id as string) ?? { open: 0, overdue: 0 }
+    const closedAt = (n.closed_at as string | null) ?? null
     return {
       id: n.id as string,
       number: n.number as string,
+      classification: (n.classification as string | null) ?? null,
+      // Date raised = occurred_on; field reports leave it blank, so fall back
+      // to the Brisbane day the record was entered.
+      raised_on:
+        (n.occurred_on as string | null) ??
+        todayAU(new Date(n.created_at as string)),
       source: n.source as NcrSource,
-      severity: Number(n.severity),
+      source_detail: (n.source_detail as string | null) ?? null,
       title: n.title as string,
+      description: n.description as string,
+      assigned_to_text: (n.assigned_to_text as string | null) ?? null,
+      due_date: (n.due_date as string | null) ?? null,
+      implemented: (n.implemented as string | null) ?? null,
+      verification_notes: (n.verification_notes as string | null) ?? null,
       status: n.status as string,
-      raised_by_name: raiser?.full_name ?? null,
-      occurred_on: (n.occurred_on as string | null) ?? null,
-      created_at: n.created_at as string,
+      closed_on: closedAt ? todayAU(new Date(closedAt)) : null,
       project_id: (n.project_id as string | null) ?? null,
-      project_label: project ? `${project.number} — ${project.name}` : null,
-      job_id: (n.job_id as string | null) ?? null,
-      job_label: job ? `${job.number} — ${job.title}` : null,
-      vendor_label: vendor?.name ?? null,
       open_capa_count: counts.open,
       overdue_capa_count: counts.overdue,
     }
@@ -113,11 +109,12 @@ export default async function WhsNcrPage() {
   return (
     <div className="flex flex-col gap-4">
       <PageHeader
-        title="NCR / CAPA register"
-        description="Nonconformances and corrective/preventive actions — driven to verified close (ISO 9001/14001 §10.2)."
+        title="Corrective actions"
+        description="SMS-R-08 register · closed by the Director (Compliance and Technical) (SMS-05)"
       />
       <NcrTable
         ncrs={rows}
+        today={today}
         projects={projectOptions}
         jobs={jobOptions}
         vendors={vendorOptions}

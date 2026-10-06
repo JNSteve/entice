@@ -28,6 +28,9 @@ import { fetchSwmsInstances, toSwmsDocumentOptions } from '@/lib/swms-queries'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
+import { todayAU } from '@/lib/tz'
+import { lastShiftOnSite, type LicensedRemoval } from '@/lib/job-records'
+import { JobRecordsCard } from './job-records-card'
 
 
 // Supplier-invoice import reads PDFs with AI from this page (30–60s+).
@@ -212,6 +215,13 @@ export default async function JobDetailPage({
     ? `${fmtDate(job.scheduled_start)}${job.scheduled_end ? ` – ${fmtDate(job.scheduled_end)}` : ''}`
     : null
 
+  // SMS-02 filing clock: records are due 7 days after the last shift on site.
+  const lastShift = lastShiftOnSite(
+    job.scheduled_start ?? null,
+    job.scheduled_end ?? null,
+    job.completed_at ? todayAU(new Date(job.completed_at)) : null
+  )
+
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
@@ -371,9 +381,9 @@ export default async function JobDetailPage({
         </>
       )}
 
-      {/* Photos */}
+      {/* Photos — anchor for "Add photos" in Job records */}
       <div className="border-t" />
-      <section className="flex flex-col gap-4">
+      <section id="photos" className="flex flex-col gap-4 scroll-mt-20">
         <h2 className="text-base font-semibold">Photos</h2>
         <PhotoUpload
           parentType="job"
@@ -413,6 +423,26 @@ export default async function JobDetailPage({
           canCreateCost={canSeeCosts}
         />
       </section>
+
+      {/* Job records — the SMS-02 job folder; edits admin/office only */}
+      <div className="border-t" />
+      <JobRecordsCard
+        jobId={job.id}
+        jobNumber={job.number}
+        scheduledStart={job.scheduled_start ?? null}
+        scheduledEnd={job.scheduled_end ?? null}
+        lastShift={lastShift}
+        licensedRemoval={(job.licensed_removal as LicensedRemoval | null) ?? 'none'}
+        regulatedWaste={Boolean(job.regulated_waste)}
+        files={attachments.map((a) => ({
+          filename: a.filename,
+          caption: a.caption,
+          kind: a.kind,
+          url: a.signedUrl,
+        }))}
+        today={todayAU()}
+        canManage={canDeleteAttachment}
+      />
 
       {/* Documents */}
       <div className="border-t" />

@@ -71,6 +71,7 @@ const CARD_CHIP: Record<
   'SWMS outstanding': { icon: FileSignatureIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   'Hold points': { icon: FileWarningIcon, tint: 'bg-blue-100 dark:bg-blue-950', fg: 'text-blue-700 dark:text-blue-300' },
   'Diaries missing': { icon: NotebookPenIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
+  'Job records to file': { icon: FileClockIcon, tint: 'bg-blue-100 dark:bg-blue-950', fg: 'text-blue-700 dark:text-blue-300' },
   'Portal engagement': { icon: HeartHandshakeIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   'Pre-starts today': { icon: ShieldCheckIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   Safety: { icon: ShieldAlertIcon, tint: 'bg-red-100 dark:bg-red-950', fg: 'text-red-700 dark:text-red-300' },
@@ -1232,6 +1233,59 @@ export function DiariesMissingCard({
               </Link>
               <span className="shrink-0 text-xs font-medium text-amber-600 tabular-nums dark:text-amber-400">
                 {fmtDate(d.missingDate)}
+              </span>
+            </div>
+          ))}
+          <MoreNote total={data.length} />
+        </>
+      )}
+    </DashboardCard>
+  )
+}
+
+// ─── 11b. Job records to file (SMS-02, 7 days after the last shift) ───────────
+
+export type JobRecordsDueRow = {
+  jobId: string
+  jobNumber: string
+  title: string
+  /** Labels of the records still to file, in filing order. */
+  missing: string[]
+  /** Filing due date (last shift + 7 days) — today or earlier. */
+  due: string
+}
+
+export function JobRecordsDueCard({
+  data,
+}: {
+  data: JobRecordsDueRow[] | null
+}) {
+  return (
+    <DashboardCard title="Job records to file" href="/jobs">
+      {data === null ? (
+        <LoadError />
+      ) : data.length === 0 ? (
+        <Muted>All job records filed.</Muted>
+      ) : (
+        <>
+          {data.slice(0, MAX_ROWS).map((j) => (
+            <div
+              key={j.jobId}
+              className="flex items-center justify-between gap-2 text-sm"
+            >
+              <div className="flex min-w-0 flex-col">
+                <Link
+                  href={`/jobs/${j.jobId}`}
+                  className="truncate hover:underline"
+                >
+                  {j.jobNumber} — {j.title}
+                </Link>
+                <span className="truncate text-xs text-muted-foreground">
+                  {`${j.missing.length} to file: ${j.missing.slice(0, 3).join(', ')}${j.missing.length > 3 ? ', …' : ''}`}
+                </span>
+              </div>
+              <span className="shrink-0 text-xs font-medium text-red-600 tabular-nums dark:text-red-400">
+                {fmtDate(j.due)}
               </span>
             </div>
           ))}

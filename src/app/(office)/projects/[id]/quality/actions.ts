@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { nextNumber } from '@/lib/numbering'
+import { nextCarNumber, nextNumber } from '@/lib/numbering'
 import { todayAU } from '@/lib/tz'
 import {
   itpAdoptSchema,
@@ -483,7 +483,7 @@ export async function raiseNcrFromLot(
     return { error: 'Cannot raise an NCR from a closed lot' }
   }
 
-  const number = await nextNumber(supabase, 'ncr')
+  const number = await nextCarNumber(supabase)
 
   const { data: ncr, error: ncrError } = await supabase
     .from('ncrs')

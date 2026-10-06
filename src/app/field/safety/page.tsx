@@ -107,6 +107,7 @@ export default async function FieldSafetyPage() {
       .from('documents')
       .select('id, title, category, version, file_path')
       .eq('status', 'issued')
+      .neq('category', 'record') // records are evidence, not documents to work to
       .order('title'),
   ])
 

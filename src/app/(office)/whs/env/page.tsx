@@ -20,6 +20,7 @@ import {
   type ProjectOption,
 } from './facilities-section'
 import { WASTE_LOAD_SELECT, shapeLoadRow } from './load-queries'
+import { IMS_HIDDEN } from '@/lib/ims-scope'
 
 export default async function WhsEnvPage() {
   const profile = await requireRole('admin', 'office', 'supervisor')
@@ -190,12 +191,30 @@ export default async function WhsEnvPage() {
         <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
       </Link>
 
-      <AspectsSection
-        aspects={aspects}
-        objectives={objectives}
-        canManage={canManage}
-        isAdmin={isAdmin}
-      />
+      {IMS_HIDDEN.envAspects ? (
+        // The certified register is the issued IMS-R-01 spreadsheet: it marks
+        // significance Y/N against IMS-01 4.3, which the scored L×S screen can't hold.
+        <Link
+          href="/documents"
+          className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3 transition-colors hover:bg-muted"
+        >
+          <div className="flex min-w-0 flex-col">
+            <span className="text-sm font-semibold">Aspects and impacts register</span>
+            <span className="text-xs text-muted-foreground">
+              IMS-R-01, held as the issued register in Documents and reviewed at the
+              management review.
+            </span>
+          </div>
+          <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+        </Link>
+      ) : (
+        <AspectsSection
+          aspects={aspects}
+          objectives={objectives}
+          canManage={canManage}
+          isAdmin={isAdmin}
+        />
+      )}
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">Waste loads register</h2>
