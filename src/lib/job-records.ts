@@ -135,10 +135,31 @@ export function isMultiDay(start: string | null, end: string | null): boolean {
   return !!start && !!end && end > start
 }
 
+/**
+ * A file on the job. `kind` is the attachment kind ('photo', 'document', …) or
+ * a record held elsewhere in the portal that stands in for a file: 'swms' — a
+ * SWMS built in the portal and in force on the job; 'quote' — the job's quote,
+ * accepted in the quote module (the contract review record, IMS-03).
+ */
 export type JobFile = { filename: string | null; caption: string | null; kind: string | null }
 
-function codedPrefix(jobNumber: string, code: string) {
-  return `${jobNumber}-${code}-`.toUpperCase()
+/** Portal records that satisfy a coded slot whatever their title. */
+const PORTAL_RECORD_CODE: Record<string, string> = { swms: 'SWMS', quote: 'QTE' }
+
+/**
+ * The numbers a job's records can carry: the job number, and — for work quoted
+ * as RQ26018 that became RJ26018 — the quote number, since a SWMS or plan
+ * prepared at quote stage keeps it.
+ */
+function recordNumbers(jobNumber: string): string[] {
+  const m = jobNumber.match(/^RJ(\d+)$/i)
+  return m ? [jobNumber, `RQ${m[1]}`] : [jobNumber]
+}
+
+/** `<number>-<CODE>-<seq>` anywhere in the name (filed copies are often prefixed, e.g. "01 RJ26013-SWMS-01 …"). */
+function codedPattern(jobNumber: string, code: string): RegExp {
+  const numbers = recordNumbers(jobNumber).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  return new RegExp(`(?:^|[^A-Z0-9])(?:${numbers.join('|')})-${code}-(\\d+)`, 'i')
 }
 
 /** The job's files that satisfy a slot. Register slots never match a file. */
@@ -150,22 +171,27 @@ export function filesForSlot(jobNumber: string, slot: JobRecordSlot, files: JobF
       return []
     case 'coded':
       return files.filter((f) => {
-        const name = (f.filename ?? '').toUpperCase()
-        return (slot.codes ?? []).some((c) => name.startsWith(codedPrefix(jobNumber, c)))
+        const portalCode = f.kind ? PORTAL_RECORD_CODE[f.kind] : undefined
+        if (portalCode) return (slot.codes ?? []).includes(portalCode)
+        return (slot.codes ?? []).some((c) => codedPattern(jobNumber, c).test(f.filename ?? ''))
       })
     case 'dated':
-      return files.filter((f) => f.kind !== 'photo' && slot.match!.test(`${f.filename ?? ''} ${f.caption ?? ''}`))
+      return files.filter(
+        (f) =>
+          f.kind !== 'photo' &&
+          !(f.kind && PORTAL_RECORD_CODE[f.kind]) &&
+          slot.match!.test(`${f.filename ?? ''} ${f.caption ?? ''}`)
+      )
   }
 }
 
 /** Next two-digit sequence for a coded record (RJ26013-SWMS-02 after -01). */
 export function nextRecordSeq(jobNumber: string, code: string, filenames: (string | null)[]): string {
-  const prefix = codedPrefix(jobNumber, code)
+  const pattern = codedPattern(jobNumber, code)
   let max = 0
   for (const f of filenames) {
-    const name = (f ?? '').toUpperCase()
-    if (!name.startsWith(prefix)) continue
-    const n = parseInt(name.slice(prefix.length, prefix.length + 2), 10)
+    const m = (f ?? '').match(pattern)
+    const n = m ? parseInt(m[1], 10) : NaN
     if (Number.isFinite(n) && n > max) max = n
   }
   return String(max + 1).padStart(2, '0')

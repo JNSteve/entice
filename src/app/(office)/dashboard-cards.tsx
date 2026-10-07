@@ -75,7 +75,7 @@ const CARD_CHIP: Record<
   'Portal engagement': { icon: HeartHandshakeIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   'Pre-starts today': { icon: ShieldCheckIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   Safety: { icon: ShieldAlertIcon, tint: 'bg-red-100 dark:bg-red-950', fg: 'text-red-700 dark:text-red-300' },
-  NCRs: { icon: HardHatIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
+  'Corrective actions': { icon: HardHatIcon, tint: 'bg-amber-100 dark:bg-amber-950', fg: 'text-amber-700 dark:text-amber-300' },
   Environment: { icon: LeafIcon, tint: 'bg-green-100 dark:bg-green-950', fg: 'text-green-700 dark:text-green-300' },
   'System health': { icon: ServerIcon, tint: 'bg-primary/10', fg: 'text-primary' },
   'Client portal': { icon: MessagesSquareIcon, tint: 'bg-primary/10', fg: 'text-primary' },
@@ -1136,7 +1136,7 @@ export type NcrData = {
 
 export function NcrCard({ data }: { data: NcrData | null }) {
   return (
-    <DashboardCard title="NCRs" href="/whs/ncr">
+    <DashboardCard title="Corrective actions" href="/whs/ncr">
       {data === null ? (
         <LoadError />
       ) : (
@@ -1160,7 +1160,7 @@ export function NcrCard({ data }: { data: NcrData | null }) {
             {data.openCount === 0 &&
             data.investigatingCount === 0 &&
             data.actionsCount === 0 ? (
-              <Muted>No open NCRs.</Muted>
+              <Muted>No open corrective actions.</Muted>
             ) : null}
           </div>
 

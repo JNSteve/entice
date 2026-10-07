@@ -902,7 +902,7 @@ async function loadJobRecordsDue(
   const { data: jobs, error } = await supabase
     .from('jobs')
     .select(
-      'id, number, title, scheduled_start, scheduled_end, completed_at, licensed_removal, regulated_waste'
+      'id, number, title, quote_id, scheduled_start, scheduled_end, completed_at, licensed_removal, regulated_waste'
     )
     .eq('archived', false)
     .in('status', WORKED_JOB_STATUSES)
@@ -938,6 +938,35 @@ async function loadJobRecordsDue(
     const list = filesByJob.get(f.parent_id as string) ?? []
     list.push({ filename: f.filename, caption: f.caption, kind: f.kind })
     filesByJob.set(f.parent_id as string, list)
+  }
+  // A SWMS built in the portal and in force is the job's SWMS.
+  const { data: swms, error: swmsError } = await supabase
+    .from('swms_instances')
+    .select('job_id, title')
+    .eq('status', 'active')
+    .in('job_id', candidates.map((c) => c.job.id as string))
+  if (swmsError) throw swmsError
+  for (const s of swms ?? []) {
+    const list = filesByJob.get(s.job_id as string) ?? []
+    list.push({ filename: s.title as string, caption: null, kind: 'swms' })
+    filesByJob.set(s.job_id as string, list)
+  }
+  // The signed quote is the contract review record (IMS-03): accepted in the quote module.
+  const quoteIds = candidates.map((c) => c.job.quote_id as string | null).filter((q): q is string => !!q)
+  if (quoteIds.length > 0) {
+    const { data: accepted, error: quoteError } = await supabase
+      .from('quotes')
+      .select('id, number')
+      .eq('status', 'accepted')
+      .in('id', quoteIds)
+    if (quoteError) throw quoteError
+    for (const q of accepted ?? []) {
+      for (const c of candidates.filter((c) => c.job.quote_id === q.id)) {
+        const list = filesByJob.get(c.job.id as string) ?? []
+        list.push({ filename: `${q.number} accepted`, caption: null, kind: 'quote' })
+        filesByJob.set(c.job.id as string, list)
+      }
+    }
   }
 
   return candidates

@@ -133,3 +133,52 @@ describe('lastShiftOnSite', () => {
     expect(lastShiftOnSite(null, null, null)).toBeNull()
   })
 })
+
+describe('matching filed copies as they are actually named', () => {
+  const one = (licensed: 'none' | 'class_b') =>
+    requiredJobRecords({ licensed, multiDay: false, regulatedWaste: false })
+
+  it('finds the code anywhere in the name ("01 RJ26013-SWMS-01 …")', () => {
+    const swms = one('class_b').find((s) => s.key === 'swms')!
+    const files: JobFile[] = [
+      { filename: '01 RJ26013-SWMS-01 Safe Work Method Statement Rev 1 (sign-on at the back).pdf', caption: null, kind: 'document' },
+    ]
+    expect(filesForSlot('RJ26013', swms, files)).toHaveLength(1)
+  })
+
+  it('accepts the quote number for documents prepared at quote stage (RQ26018 → RJ26018)', () => {
+    const ra = one('none').find((s) => s.key === 'ra_swms')!
+    const files: JobFile[] = [{ filename: 'RQ26018-SWMS-01 Safe Work Method Statement Rev 1.pdf', caption: null, kind: 'document' }]
+    expect(filesForSlot('RJ26018', ra, files)).toHaveLength(1)
+    expect(filesForSlot('RJ26019', ra, files)).toHaveLength(0)
+  })
+
+  it('does not match a code embedded in a longer number', () => {
+    const ra = one('none').find((s) => s.key === 'ra_swms')!
+    expect(filesForSlot('RJ2601', ra, [{ filename: 'XRJ2601-RA-01.pdf', caption: null, kind: 'document' }])).toHaveLength(0)
+    expect(filesForSlot('RJ2601', ra, [{ filename: 'RJ26013-RA-01.pdf', caption: null, kind: 'document' }])).toHaveLength(0)
+  })
+
+  it('a portal SWMS in force counts as the SWMS, whatever its title, and only for SWMS slots', () => {
+    const portal: JobFile = { filename: 'Class B asbestos removal, awning and soffits', caption: null, kind: 'swms' }
+    const slots = one('class_b')
+    expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'swms')!, [portal])).toHaveLength(1)
+    expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'arcp')!, [portal])).toHaveLength(0)
+    expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'prestart')!, [portal])).toHaveLength(0)
+  })
+
+  it('numbering continues after quote-stage and prefixed copies', () => {
+    expect(nextRecordSeq('RJ26018', 'SWMS', ['RQ26018-SWMS-01 Safe Work Method Statement Rev 0.pdf'])).toBe('02')
+    expect(nextRecordSeq('RJ26013', 'SWMS', ['01 RJ26013-SWMS-03 x.pdf'])).toBe('04')
+  })
+})
+
+describe('records held in the portal', () => {
+  it('an accepted quote in the quote module is the signed quote', () => {
+    const slots = requiredJobRecords({ licensed: 'none', multiDay: false, regulatedWaste: false })
+    const quote: JobFile = { filename: 'RQ26013 accepted', caption: null, kind: 'quote' }
+    expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'quote')!, [quote])).toHaveLength(1)
+    expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'ra_swms')!, [quote])).toHaveLength(0)
+    expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'prestart')!, [quote])).toHaveLength(0)
+  })
+})

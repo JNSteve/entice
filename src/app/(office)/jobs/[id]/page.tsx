@@ -215,6 +215,17 @@ export default async function JobDetailPage({
     ? `${fmtDate(job.scheduled_start)}${job.scheduled_end ? ` – ${fmtDate(job.scheduled_end)}` : ''}`
     : null
 
+  // The signed quote is the contract review record (IMS-03): a quote accepted in
+  // the quote module is filed.
+  const { data: acceptedQuote } = job.quote_id
+    ? await supabase
+        .from('quotes')
+        .select('id, number')
+        .eq('id', job.quote_id)
+        .eq('status', 'accepted')
+        .maybeSingle()
+    : { data: null }
+
   // SMS-02 filing clock: records are due 7 days after the last shift on site.
   const lastShift = lastShiftOnSite(
     job.scheduled_start ?? null,
@@ -345,8 +356,8 @@ export default async function JobDetailPage({
         </>
       )}
 
-      {/* SWMS */}
-      <div className="border-t" />
+      {/* SWMS — anchor for portal SWMS links in Job records */}
+      <div id="swms" className="scroll-mt-20 border-t" />
       <SwmsInstancesSection
         parentType="job"
         parentId={job.id}
@@ -434,12 +445,26 @@ export default async function JobDetailPage({
         lastShift={lastShift}
         licensedRemoval={(job.licensed_removal as LicensedRemoval | null) ?? 'none'}
         regulatedWaste={Boolean(job.regulated_waste)}
-        files={attachments.map((a) => ({
-          filename: a.filename,
-          caption: a.caption,
-          kind: a.kind,
-          url: a.signedUrl,
-        }))}
+        files={[
+          ...attachments.map((a) => ({
+            filename: a.filename,
+            caption: a.caption,
+            kind: a.kind,
+            url: a.signedUrl,
+          })),
+          // A SWMS built in the portal and in force is the job's SWMS.
+          ...swmsInstances
+            .filter((s) => s.status === 'active')
+            .map((s) => ({ filename: s.title, caption: null, kind: 'swms', url: '#swms' })),
+          ...(acceptedQuote
+            ? [{
+                filename: `${acceptedQuote.number} accepted`,
+                caption: null,
+                kind: 'quote',
+                url: `/quotes/${acceptedQuote.id}`,
+              }]
+            : []),
+        ]}
         today={todayAU()}
         canManage={canDeleteAttachment}
       />

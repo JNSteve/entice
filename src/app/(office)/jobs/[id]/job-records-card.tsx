@@ -273,7 +273,15 @@ function RecordRow({
               {matched.map((f, i) => (
                 <li key={i} className="flex items-start gap-1.5 text-xs">
                   <CheckIcon className="mt-px size-3.5 shrink-0 text-green-600" />
-                  {f.url ? (
+                  {f.kind === 'swms' || f.kind === 'quote' ? (
+                    // Held in the portal (SWMS builder / quote module), not as a file.
+                    <a
+                      href={f.url ?? '#swms'}
+                      className="min-w-0 break-words underline underline-offset-2 hover:text-muted-foreground"
+                    >
+                      {`${f.filename} (${f.kind === 'swms' ? 'portal SWMS' : 'quote module'})`}
+                    </a>
+                  ) : f.url ? (
                     <a
                       href={f.url}
                       target="_blank"
