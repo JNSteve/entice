@@ -2,6 +2,7 @@ import { renderToBuffer } from '@react-pdf/renderer'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { docTotals } from '@/lib/money'
 import { fmtDate } from '@/lib/format'
+import { sortLinesGrouped } from '@/lib/quote-lines'
 import { QuotePdf, type QuotePdfAcceptance, type QuotePdfSection } from '@/pdf/QuotePdf'
 import type { DocCompany } from '@/pdf/DocShell'
 import {
@@ -55,7 +56,7 @@ export async function buildQuotePdfResponse(
       .order('id'),
     supabase
       .from('quote_lines')
-      .select('section_id, position, description, qty, unit, unit_sell')
+      .select('id, section_id, position, kind, description, qty, unit, unit_sell')
       .eq('quote_id', id)
       .order('position')
       .order('id'),
@@ -75,13 +76,20 @@ export async function buildQuotePdfResponse(
 
   if (!quote) return new Response('Not found', { status: 404 })
 
-  const allLines = (lines ?? []).map((l) => ({
-    section_id: l.section_id as string | null,
-    description: l.description as string,
-    qty: Number(l.qty),
-    unit: l.unit as string,
-    unit_sell: Number(l.unit_sell),
-  }))
+  // Same order as the builder: category group, then position. Headings are
+  // not printed — the client just sees labour, then plant, then materials…
+  const allLines = sortLinesGrouped(
+    (lines ?? []).map((l) => ({
+      id: l.id as string,
+      position: Number(l.position),
+      kind: (l.kind as string | null) ?? null,
+      section_id: l.section_id as string | null,
+      description: l.description as string,
+      qty: Number(l.qty),
+      unit: l.unit as string,
+      unit_sell: Number(l.unit_sell),
+    }))
+  )
 
   const pdfSections: QuotePdfSection[] = (sections ?? [])
     .map((s) => ({
