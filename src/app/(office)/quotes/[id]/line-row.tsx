@@ -29,9 +29,9 @@ export interface LineData {
 }
 
 export const LINE_GRID_COLS_EDITABLE =
-  'grid-cols-[minmax(10rem,1fr)_8rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem_5.5rem]'
+  'grid-cols-[minmax(10rem,1fr)_10rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem_5.5rem]'
 export const LINE_GRID_COLS_READONLY =
-  'grid-cols-[minmax(10rem,1fr)_8rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem]'
+  'grid-cols-[minmax(10rem,1fr)_10rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem]'
 
 interface LinePayload {
   description: string

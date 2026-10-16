@@ -60,8 +60,9 @@ Within a section, lines render under category headings in a fixed order:
   `<select aria-label="Category">` with the six options above (Uncategorised
   = empty value). Read-only rows show the label as muted text, or "—" for an
   uncategorised line.
-- Grid templates (`LINE_GRID_COLS_EDITABLE` / `_READONLY`) gain a `7rem`
-  column; the section header row gains a "Category" heading.
+- Grid templates (`LINE_GRID_COLS_EDITABLE` / `_READONLY`) gain a `10rem`
+  column (wide enough for "Plant & equipment" in a native select); the
+  section header row gains a "Category" heading.
 - Changing the select saves immediately (same save path as the other fields).
 - `quoteLineUpdateSchema` gains `kind: z.enum(RATE_KINDS).nullable()`;
   `updateLine` writes it. When the kind actually changes, the server also sets
