@@ -121,6 +121,23 @@ describe('LinesGrid', () => {
     expect(screen.queryByRole('button', { name: /^Add line/ })).toBeNull()
   })
 
+  test('arrows are gated per group, not across the section', () => {
+    render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={LINES} editable />)
+    const groups = screen.getAllByRole('group')
+
+    // Plant & equipment has two lines: vehicle first, scaffold last.
+    const plantUp = within(groups[0]).getAllByRole('button', { name: 'Move line up' })
+    const plantDown = within(groups[0]).getAllByRole('button', { name: 'Move line down' })
+    expect(plantUp.map((b) => (b as HTMLButtonElement).disabled)).toEqual([true, false])
+    expect(plantDown.map((b) => (b as HTMLButtonElement).disabled)).toEqual([false, true])
+
+    // Materials has one line: both arrows disabled even though plant lines
+    // sit above it in the section.
+    const materials = within(groups[1])
+    expect((materials.getByRole('button', { name: 'Move line up' }) as HTMLButtonElement).disabled).toBe(true)
+    expect((materials.getByRole('button', { name: 'Move line down' }) as HTMLButtonElement).disabled).toBe(true)
+  })
+
   test('empty list shows the placeholder', () => {
     render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={[]} editable />)
     expect(screen.getByText('No lines yet.')).toBeTruthy()

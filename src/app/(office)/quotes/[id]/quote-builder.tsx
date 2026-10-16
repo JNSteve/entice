@@ -206,7 +206,7 @@ export function QuoteBuilder({
         <Card>
           <CardContent className="flex flex-col gap-3">
             <h3 className="text-sm font-semibold text-muted-foreground">
-              Ungrouped lines
+              Lines without a section
             </h3>
             <LinesGrid
               quoteId={quote.id}

@@ -90,9 +90,12 @@ Consumers:
 - **Builder** (`quote-builder.tsx`): `LinesGrid` groups with
   `groupLinesByKind`; `isFirst`/`isLast` are per group. `TotalsCard` reuses
   `LINE_KIND_LABELS`/`LINE_KIND_ORDER` instead of its own copies.
-- **Quote PDF** (`src/app/api/pdf/[type]/[id]/route.tsx`): selects `kind`
-  and applies `sortLinesGrouped` to each section's lines, so the PDF prints
-  the same order the screen shows. Category headings are **not** printed.
+- **Quote PDF** (`src/pdf/build-quote-pdf.tsx`, shared by the office and
+  portal PDF routes): selects `kind` and applies `sortLinesGrouped` to each
+  section's lines, so the PDF prints the same order the screen shows.
+  Category headings are **not** printed.
+- **Invoice from quote** (`invoices/actions.ts`): the same grouped order
+  within each section, so the invoice lists lines as the accepted quote did.
 - **Conversion** (`convertQuoteToJob`, `convertQuoteToProject` in
   `quotes/actions.ts`): select `kind` and apply `sortLinesGrouped` before
   building the scope summary and budget lines.

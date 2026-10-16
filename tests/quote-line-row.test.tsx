@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 
 const updateLine = vi.fn()
 const refresh = vi.fn()
+const toastError = vi.fn()
 
 vi.mock('../src/app/(office)/quotes/actions', () => ({
   updateLine: (...args: unknown[]) => updateLine(...args),
@@ -11,7 +12,9 @@ vi.mock('../src/app/(office)/quotes/actions', () => ({
   deleteLine: vi.fn(),
 }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: (m: string) => toastError(m) },
+}))
 
 import { LineRow, type LineData } from '../src/app/(office)/quotes/[id]/line-row'
 
@@ -35,6 +38,7 @@ beforeEach(() => {
   updateLine.mockReset()
   updateLine.mockResolvedValue({})
   refresh.mockReset()
+  toastError.mockReset()
 })
 afterEach(cleanup)
 
@@ -88,5 +92,17 @@ describe('LineRow category', () => {
     unmount()
     render(<LineRow line={line()} editable={false} isFirst isLast />)
     expect(screen.getByText('—')).toBeTruthy()
+  })
+
+  test('a failed category save reverts the select and reports the error', async () => {
+    updateLine.mockResolvedValueOnce({ error: 'Quote is not editable' })
+    render(<LineRow line={line({ kind: 'labour' })} editable isFirst isLast />)
+    const select = screen.getByLabelText('Category') as HTMLSelectElement
+
+    fireEvent.change(select, { target: { value: 'plant' } })
+
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith('Quote is not editable'))
+    await waitFor(() => expect(select.value).toBe('labour'))
+    expect(refresh).not.toHaveBeenCalled()
   })
 })

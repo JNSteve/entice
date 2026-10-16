@@ -11,6 +11,7 @@ import { notifyClientInvoiceSent } from '@/lib/notify'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { docTotals, round2 } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
+import { sortLinesGrouped } from '@/lib/quote-lines'
 import { nowAU } from '@/lib/tz'
 import { getXeroStatus } from '@/lib/xero/status'
 import { pushInvoiceToXero } from '@/lib/xero/push'
@@ -102,7 +103,7 @@ export async function createInvoiceFromJob(
           .order('id'),
         supabase
           .from('quote_lines')
-          .select('section_id, position, description, qty, unit, unit_sell, kind')
+          .select('id, section_id, position, description, qty, unit, unit_sell, kind')
           .eq('quote_id', job.quote_id)
           .order('position')
           .order('id'),
@@ -115,20 +116,32 @@ export async function createInvoiceFromJob(
       return { error: 'Linked quote has no lines' }
     }
 
-    // Flatten in document order: lines grouped by section position, orphans last.
+    // Flatten in document order: by section position (orphans last), and
+    // within a section in the same category-then-position order the quote
+    // builder and PDF use, so the invoice matches what the client accepted.
+    // Array.sort is stable, so the grouped order survives the section sort.
     const sectionOrder = new Map((sections ?? []).map((s, i) => [s.id, i]))
-    const ordered = [...quoteLines].sort((a, b) => {
-      const sa = a.section_id != null ? sectionOrder.get(a.section_id) ?? Infinity : Infinity
-      const sb = b.section_id != null ? sectionOrder.get(b.section_id) ?? Infinity : Infinity
-      return sa - sb || a.position - b.position
-    })
+    const sectionIndex = (l: { section_id: string | null }) =>
+      l.section_id != null ? sectionOrder.get(l.section_id) ?? Infinity : Infinity
+    const ordered = sortLinesGrouped(
+      quoteLines.map((l) => ({
+        id: l.id as string,
+        position: Number(l.position),
+        kind: (l.kind as string | null) ?? null,
+        section_id: l.section_id as string | null,
+        description: l.description as string,
+        qty: Number(l.qty),
+        unit: l.unit as string,
+        unit_sell: Number(l.unit_sell),
+      }))
+    ).sort((a, b) => sectionIndex(a) - sectionIndex(b))
 
     lines = ordered.map((l) => ({
       description: l.description,
-      qty: Number(l.qty),
+      qty: l.qty,
       unit: l.unit,
-      unit_sell: Number(l.unit_sell),
-      kind: (l.kind as string | null) ?? null,
+      unit_sell: l.unit_sell,
+      kind: l.kind,
     }))
   } else if (parsed.data === 'costs') {
     const { data: costs } = await supabase
