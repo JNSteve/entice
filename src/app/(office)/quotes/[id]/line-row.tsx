@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud } from '@/lib/format'
 import { lineSell, lineTotal } from '@/lib/money'
+import { LINE_KIND_LABELS, LINE_KIND_ORDER, lineKindLabel } from '@/lib/quote-lines'
 import { cn } from '@/lib/utils'
+import type { RateKind } from '@/lib/zod'
 import { deleteLine, moveLine, updateLine } from '../actions'
 import { ArrowDownIcon, ArrowUpIcon, Trash2Icon } from 'lucide-react'
 
@@ -27,9 +29,9 @@ export interface LineData {
 }
 
 export const LINE_GRID_COLS_EDITABLE =
-  'grid-cols-[minmax(10rem,1fr)_4.5rem_4rem_7rem_5rem_7rem_6.5rem_5.5rem]'
+  'grid-cols-[minmax(10rem,1fr)_8rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem_5.5rem]'
 export const LINE_GRID_COLS_READONLY =
-  'grid-cols-[minmax(10rem,1fr)_4.5rem_4rem_7rem_5rem_7rem_6.5rem]'
+  'grid-cols-[minmax(10rem,1fr)_8rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem]'
 
 interface LinePayload {
   description: string
@@ -39,6 +41,8 @@ interface LinePayload {
   markup_pct: number
   unit_sell: number
   sell_overridden: boolean
+  /** Cost category; null = uncategorised. */
+  kind: RateKind | null
 }
 
 export function LineRow({
@@ -62,6 +66,7 @@ export function LineRow({
   const [cost, setCost] = useState<number>(line.unit_cost)
   const [markup, setMarkup] = useState(String(line.markup_pct))
   const [sell, setSell] = useState<number>(line.unit_sell)
+  const [kind, setKind] = useState<RateKind | null>((line.kind as RateKind | null) ?? null)
   // A sell that doesn't match cost+markup was manually overridden. The override
   // sticks until cost or markup change again (which recompute the sell).
   const [overridden, setOverridden] = useState(
@@ -75,6 +80,7 @@ export function LineRow({
     setCost(line.unit_cost)
     setMarkup(String(line.markup_pct))
     setSell(line.unit_sell)
+    setKind((line.kind as RateKind | null) ?? null)
     setOverridden(line.unit_sell !== lineSell(line.unit_cost, line.markup_pct))
   }
 
@@ -87,6 +93,7 @@ export function LineRow({
       markup_pct: parseFloat(markup) || 0,
       unit_sell: sell,
       sell_overridden: overridden,
+      kind,
       ...overrides,
     }
     startTransition(async () => {
@@ -130,6 +137,13 @@ export function LineRow({
     save({ unit_sell: newSell, sell_overridden: isOverride })
   }
 
+  function handleKindChange(value: string) {
+    const next = (value || null) as RateKind | null
+    if (next === kind) return
+    setKind(next)
+    save({ kind: next })
+  }
+
   function handleMove(dir: 'up' | 'down') {
     startTransition(async () => {
       const result = await moveLine(line.id, dir)
@@ -165,6 +179,9 @@ export function LineRow({
         )}
       >
         <span className="truncate">{description || '—'}</span>
+        <span className="truncate text-muted-foreground">
+          {line.kind ? lineKindLabel(line.kind) : '—'}
+        </span>
         <span className="text-right tabular-nums">{line.qty}</span>
         <span className="text-muted-foreground">{unit}</span>
         <span className="text-right tabular-nums">{aud(cost)}</span>
@@ -186,6 +203,19 @@ export function LineRow({
         }}
         placeholder="Line description…"
       />
+      <select
+        aria-label="Category"
+        className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-base shadow-xs md:text-sm"
+        value={kind ?? ''}
+        onChange={(e) => handleKindChange(e.target.value)}
+      >
+        <option value="">{LINE_KIND_LABELS.uncategorised}</option>
+        {LINE_KIND_ORDER.map((k) => (
+          <option key={k} value={k}>
+            {LINE_KIND_LABELS[k]}
+          </option>
+        ))}
+      </select>
       <Input
         aria-label="Quantity"
         type="number"
