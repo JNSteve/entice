@@ -70,6 +70,10 @@ export type SwmsPdfProps = {
   earlierSignatureCount: number
   /** Review / change record (issue + revisions), oldest first. */
   changes: SwmsPdfChange[]
+  /** false = omit the digital sign-on register (portal "SWMS as issued"). Default true. */
+  showSignatures?: boolean
+  /** Fixed watermark + footer line (portal issue stamp). */
+  watermark?: string | null
 }
 
 // ─── Styles ──────────────────────────────────────────────────────────────────
@@ -405,6 +409,8 @@ export function SwmsPdf({
   signatures,
   earlierSignatureCount,
   changes,
+  showSignatures = true,
+  watermark = null,
 }: SwmsPdfProps) {
   return (
     <DocShell
@@ -413,6 +419,7 @@ export function SwmsPdf({
       docDate={swms.date}
       company={company}
       footerText={`SWMS — ${swms.title} (v${swms.version}) — ${swms.parentLabel}`}
+      watermark={watermark}
     >
       {/* Document control */}
       <SectionTable title="Document control">
@@ -528,10 +535,12 @@ export function SwmsPdf({
       )}
 
       {/* Digital sign-on register */}
-      <SignatureTable
-        signatures={signatures}
-        earlierSignatureCount={earlierSignatureCount}
-      />
+      {showSignatures && (
+        <SignatureTable
+          signatures={signatures}
+          earlierSignatureCount={earlierSignatureCount}
+        />
+      )}
 
       {/* Review / change record */}
       <ChangeRecordTable changes={changes} />
