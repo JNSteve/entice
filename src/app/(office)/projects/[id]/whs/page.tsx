@@ -16,6 +16,10 @@ import {
 import { StatusBadge } from '@/components/StatusBadge'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import { fetchSwmsDocumentOptions, fetchSwmsInstances } from '@/lib/swms-queries'
+import {
+  buildSwmsTitlePagePrefill,
+  type TitlePageContactOption,
+} from '@/lib/swms-title-page'
 import { fmtDate } from '@/lib/format'
 import {
   FORM_KIND_COLORS as KIND_COLORS,
@@ -55,7 +59,15 @@ export default async function ProjectWhsPage({
     { data: holdPoints },
     swmsDocuments,
   ] = await Promise.all([
-    supabase.from('projects').select('id, number, name').eq('id', id).single(),
+    supabase
+      .from('projects')
+      .select(
+        `id, number, name, start_date,
+         clients(name, address, contacts(id, name, role, phone, email)),
+         sites(address, suburb, state, postcode)`
+      )
+      .eq('id', id)
+      .single(),
     fetchSwmsInstances(supabase, 'project', id),
     supabase
       .from('swms_templates')
@@ -97,6 +109,27 @@ export default async function ProjectWhsPage({
   ])
 
   if (!project) notFound()
+
+  const projectClient = project.clients as unknown as {
+    name: string
+    address: string | null
+    contacts: TitlePageContactOption[] | null
+  } | null
+  const swmsTitlePagePrefill = buildSwmsTitlePagePrefill({
+    parentRef: `${project.number} — ${project.name}`,
+    client: projectClient,
+    site: project.sites as unknown as {
+      address: string | null
+      suburb: string | null
+      state: string | null
+      postcode: string | null
+    } | null,
+    start: project.start_date,
+    end: null,
+    contacts: [...(projectClient?.contacts ?? [])].sort((a, b) =>
+      a.name.localeCompare(b.name)
+    ),
+  })
 
   // ── Shape rows ─────────────────────────────────────────────────────────────
 
@@ -151,6 +184,7 @@ export default async function ProjectWhsPage({
         documents={swmsDocuments}
         canManage
         canSupersede={canSupersede}
+        titlePagePrefill={swmsTitlePagePrefill}
       />
 
       {/* Forms */}

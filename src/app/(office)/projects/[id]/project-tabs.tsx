@@ -25,6 +25,7 @@ const TABS: Tab[] = [
   { label: 'Claims', suffix: '/claims', money: true },
   { label: 'Procurement', suffix: '/procurement', money: true },
   { label: 'Diary', suffix: '/diary' },
+  { label: 'Sign-offs', suffix: '/signoffs' },
   { label: 'WHS', suffix: '/whs' },
   { label: 'Quality', suffix: '/quality', hidden: IMS_HIDDEN.itpLots },
   { label: 'Risk', suffix: '/risk' },

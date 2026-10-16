@@ -3,6 +3,7 @@ import { timingSafeEqual } from 'node:crypto'
 import { createAdminClient } from '@/lib/supabase/server'
 import { runDailyDigests } from '@/lib/notify'
 import { runXeroSync } from '@/lib/xero/pull'
+import { buildYesterdayDrafts } from '@/lib/signoff-build'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -19,6 +20,7 @@ export const maxDuration = 300
  *   * per-client compliance digest (items due ≤30 days / overdue), gated by
  *     an active portal link with notifications_enabled, one per Brisbane day
  *     (email_log idempotency — a second run the same day skips);
+ *   * daily sign-off drafts for yesterday (src/lib/signoff-build.ts);
  *   * a focused office digest (compliance counts, open requests, unread
  *     portal messages, expiring facility licences/permits), only when
  *     something needs attention.
@@ -64,7 +66,16 @@ export async function GET(request: Request) {
       xero = { error: err instanceof Error ? err.message : String(err) }
       console.error('[notify] xero sync failed:', xero)
     }
-    return NextResponse.json({ ok: true, ...result, xero })
+    // Daily sign-off drafts for yesterday — stored for the PM to review and
+    // release; nothing is sent to clients here.
+    let signoffs: unknown = null
+    try {
+      signoffs = await buildYesterdayDrafts(admin)
+    } catch (err) {
+      signoffs = { error: err instanceof Error ? err.message : String(err) }
+      console.error('[notify] sign-off drafts failed:', signoffs)
+    }
+    return NextResponse.json({ ok: true, ...result, xero, signoffs })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     console.error('[notify] digest run failed:', message)

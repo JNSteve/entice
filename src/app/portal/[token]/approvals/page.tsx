@@ -16,7 +16,9 @@ import {
   PortalShell,
   type PortalApprovalsPayload,
   type PortalBranding,
+  type PortalSignoffRow,
 } from '../portal-ui'
+import { SignoffList } from '../signoff-ui'
 import { redirect } from 'next/navigation'
 
 // Public, token-gated, no auth — always resolve the token fresh, never cache.
@@ -46,8 +48,9 @@ export default async function PortalApprovalsPage({
     redirect(`/portal/${token}/sites/${branding.site_id}`)
   }
 
-  const [{ data: approvalsData }] = await Promise.all([
+  const [{ data: approvalsData }, { data: signoffsData }] = await Promise.all([
     supabase.rpc('portal_approvals', { p_token: token }),
+    supabase.rpc('portal_signoffs', { p_token: token, p_kind: null, p_id: null }),
     supabase.rpc('portal_log_view', {
       p_token: token,
       p_site: null,
@@ -61,6 +64,10 @@ export default async function PortalApprovalsPage({
   // Signed on the glass vs decided in the office (migration 0062 adds source).
   const signed = approvals.decided.filter((d) => d.source !== 'office')
   const officeDecided = approvals.decided.filter((d) => d.source === 'office')
+  // Daily sign-off sheets released for this client's signature (quantities only).
+  const signoffsAwaiting = ((signoffsData ?? []) as PortalSignoffRow[]).filter(
+    (s) => s.status === 'released'
+  )
 
   return (
     <PortalShell branding={branding} token={token} active="quotes">
@@ -82,6 +89,16 @@ export default async function PortalApprovalsPage({
           </p>
         </div>
       </div>
+
+      {/* Daily sign-offs awaiting the client */}
+      {signoffsAwaiting.length > 0 && (
+        <div className="flex flex-col gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">
+            Daily sign-offs awaiting you
+          </h2>
+          <SignoffList token={token} rows={signoffsAwaiting} showWork />
+        </div>
+      )}
 
       {/* Pending */}
       <div className="flex flex-col gap-3">

@@ -11,6 +11,8 @@ import { buildQuotePdfResponse } from '@/pdf/build-quote-pdf'
 import { buildComplianceReportResponse } from '@/pdf/build-compliance-report'
 import { buildTakeoffPdfResponse } from '@/pdf/build-takeoff-pdf'
 import { buildInvoicePdfResponse } from '@/pdf/build-invoice-pdf'
+import { buildSignoffPdfResponse } from '@/pdf/build-signoff-pdf'
+import { buildSwmsPdfResponse } from '@/pdf/build-swms-pdf'
 import { ensureRegisterLink } from '@/lib/client-links'
 import { buildHandoverPdfResponse } from '@/pdf/build-handover-pdf'
 import { PoPdf } from '@/pdf/PoPdf'
@@ -212,7 +214,7 @@ async function dispatch(
   const { type, id } = await params
 
   const allowedRoles =
-    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register' || type === 'waste-loads' || type === 'waste-reconciliation' || type === 'itp' || type === 'lot'
+    type.startsWith('diary') || type === 'swms' || type === 'programme' || type === 'form' || type === 'incident' || type === 'ncr' || type === 'audit' || type === 'qr-poster' || type === 'document-register' || type === 'training-matrix' || type === 'competency' || type === 'risk-register' || type === 'objectives' || type === 'mgmt-review' || type === 'legal-register' || type === 'waste-loads' || type === 'waste-reconciliation' || type === 'itp' || type === 'lot' || type === 'signoff'
       ? OPS_ROLES
       : MONEY_ROLES
   if (!allowedRoles.includes(profile.role)) {
@@ -237,7 +239,7 @@ async function dispatch(
       return diaryRangePdf(id, url.searchParams.get('from'), url.searchParams.get('to'))
     }
     case 'swms':
-      return swmsPdf(id)
+      return buildSwmsPdfResponse(await createClient(), id)
     case 'programme':
       // [id] = project id
       return programmePdf(id)
@@ -308,6 +310,10 @@ async function dispatch(
       const supabase = await createClient()
       return buildTakeoffPdfResponse(supabase, id)
     }
+    case 'signoff':
+      // [id] = daily_signoffs row id → daily field sign-off sheet
+      // (quantities only, so supervisors may export it — OPS_ROLES above).
+      return signoffPdf(id)
     case 'portal-register':
       // [id] = site id → "Asbestos register — scan to view" wall poster,
       // pointing at the site's compliance-only register portal link
@@ -322,6 +328,12 @@ async function invoicePdf(id: string): Promise<Response> {
   // Shared builder (also used by the token-gated portal proxy).
   const supabase = await createClient()
   return buildInvoicePdfResponse(supabase, id)
+}
+
+async function signoffPdf(id: string): Promise<Response> {
+  // Shared builder (also usable by a token-gated portal proxy).
+  const supabase = await createClient()
+  return buildSignoffPdfResponse(supabase, id)
 }
 
 async function quotePdf(id: string): Promise<Response> {
@@ -747,254 +759,6 @@ async function diaryPdf(id: string): Promise<Response> {
     headers: {
       'Content-Type': 'application/pdf',
       'Content-Disposition': `inline; filename="diary-${projectRel.number}-${diary.date}.pdf"`,
-    },
-  })
-}
-
-// ─── SWMS ────────────────────────────────────────────────────────────────────
-
-/** Non-empty {label, value} rows from a label map + values record. */
-function labelValueRows(
-  labels: Record<string, string>,
-  values: Record<string, string>
-): SwmsPdfRow[] {
-  return Object.entries(labels)
-    .filter(([key]) => values[key]?.trim())
-    .map(([key, label]) => ({ label, value: values[key] }))
-}
-
-async function swmsPdf(id: string): Promise<Response> {
-  const supabase = await createClient()
-
-  const [{ data: instance }, { data: signatures }, { data: auditRows }, { data: settings }] =
-    await Promise.all([
-      supabase
-        .from('swms_instances')
-        .select(
-          `id, title, body, hazards, version, status, created_at, document_attachment_id,
-           document:attachments!swms_instances_document_attachment_id_fkey(bucket, path, filename),
-           ${SWMS_STRUCTURE_COLUMNS},
-           projects(number, name), jobs(number, title)`
-        )
-        .eq('id', id)
-        .single(),
-      supabase
-        .from('swms_signatures')
-        .select(
-          'name, company, external, signature_path, signature_data, version, signed_at, profiles(role)'
-        )
-        .eq('swms_instance_id', id)
-        .order('signed_at'),
-      supabase
-        .from('audit_log')
-        .select('at, actor_name, action, detail')
-        .eq('entity_type', 'swms_instances')
-        .eq('entity_id', id)
-        .order('at'),
-      supabase
-        .from('settings')
-        .select('company_name, abn, address, phone, email, logo_path')
-        .eq('id', 1)
-        .single(),
-    ])
-
-  if (!instance) return new Response('Not found', { status: 404 })
-
-  const projectRel = instance.projects as unknown as {
-    number: string
-    name: string
-  } | null
-  const jobRel = instance.jobs as unknown as { number: string; title: string } | null
-  const parentLabel = projectRel
-    ? `${projectRel.number} — ${projectRel.name}`
-    : jobRel
-      ? `${jobRel.number} — ${jobRel.title}`
-      : '—'
-
-  const structure = parseSwmsStructure(instance)
-
-  const currentVersion = Number(instance.version)
-  const currentSigs = (signatures ?? []).filter(
-    (s) => Number(s.version) === currentVersion
-  )
-  const earlierSignatureCount = (signatures ?? []).length - currentSigs.length
-
-  // Batch-sign signature image URLs — react-pdf fetches them at render time.
-  // Missing objects (e.g. seeded rows) simply render without an image.
-  // External rows store the PNG inline (signature_data) instead of a path.
-  const pathSigs = currentSigs.filter((s) => s.signature_path)
-  const urlByPath = new Map<string, string>()
-  if (pathSigs.length > 0) {
-    const { data: signed } = await supabase.storage
-      .from('attachments')
-      .createSignedUrls(pathSigs.map((s) => s.signature_path as string), 3600)
-    for (const entry of signed ?? []) {
-      if (entry.signedUrl && entry.path) urlByPath.set(entry.path, entry.signedUrl)
-    }
-  }
-
-  const pdfSignatures: SwmsPdfSignature[] = currentSigs.map((s) => {
-    const company = s.company as string | null
-    const external = Boolean(s.external)
-    const profileRel = s.profiles as unknown as { role: string } | null
-    const role = external
-      ? 'External'
-      : profileRel?.role
-        ? profileRel.role.charAt(0).toUpperCase() + profileRel.role.slice(1)
-        : '—'
-    return {
-      name: s.name as string,
-      role,
-      company: external ? (company ?? '—') : (settings?.company_name ?? '—'),
-      date: fmtDate(s.signed_at),
-      version: Number(s.version),
-      imageUrl: s.signature_path
-        ? (urlByPath.get(s.signature_path as string) ?? null)
-        : ((s.signature_data as string | null) ?? null),
-    }
-  })
-
-  // Review/change record: issue + version bumps + supersede from the audit log.
-  const changes: SwmsPdfChange[] = []
-  for (const row of auditRows ?? []) {
-    const detail = (row.detail ?? {}) as {
-      changed?: Record<string, { from?: unknown; to?: unknown }>
-    }
-    if (row.action === 'insert') {
-      changes.push({
-        date: fmtDate(row.at as string),
-        description: 'Issued (v1)',
-        by: (row.actor_name as string) ?? 'system',
-      })
-    } else if (row.action === 'update' && detail.changed?.version) {
-      changes.push({
-        date: fmtDate(row.at as string),
-        description: `Revised to v${detail.changed.version.to} — workers must re-sign`,
-        by: (row.actor_name as string) ?? 'system',
-      })
-    } else if (row.action === 'update' && detail.changed?.status) {
-      changes.push({
-        date: fmtDate(row.at as string),
-        description: `Status changed to ${String(detail.changed.status.to).replace(/"/g, '')}`,
-        by: (row.actor_name as string) ?? 'system',
-      })
-    }
-  }
-
-  const documentRel = instance.document as unknown as {
-    bucket: string
-    path: string
-    filename: string
-  } | null
-  if (documentRel) {
-    // Uploaded-PDF SWMS → "signed copy": original pages + register pages.
-    // Generated on demand; the stored original is never modified.
-    let originalBytes: Uint8Array | null = null
-    const { data: blob } = await supabase.storage
-      .from(documentRel.bucket ?? 'attachments')
-      .download(documentRel.path)
-    if (blob) originalBytes = new Uint8Array(await blob.arrayBuffer())
-    const check = await checkOriginalPdf(originalBytes)
-
-    const renderRegister = (originalProblem: string | null) =>
-      renderToBuffer(
-        <SwmsRegisterPdf
-          swms={{
-            title: instance.title,
-            parentLabel,
-            version: currentVersion,
-            status: instance.status,
-            date: fmtDate(instance.created_at),
-          }}
-          company={toCompany(settings)}
-          sourceFilename={documentRel.filename}
-          generatedAt={format(nowAU(), 'dd/MM/yyyy HH:mm')}
-          signatures={pdfSignatures}
-          earlierSignatureCount={earlierSignatureCount}
-          changes={changes}
-          originalProblem={originalProblem}
-        />
-      )
-
-    let bytes: Uint8Array
-    if (check.ok) {
-      const register = await renderRegister(null)
-      try {
-        bytes = await appendPdf(check.doc, new Uint8Array(register))
-      } catch {
-        // Loaded leniently but can't be re-saved (damaged xref/objects):
-        // fall back to the register alone, with the reason printed on it.
-        bytes = new Uint8Array(await renderRegister('the PDF could not be merged'))
-      }
-    } else {
-      bytes = new Uint8Array(await renderRegister(check.reason))
-    }
-
-    // ASCII-only, header-safe: the title is free text.
-    const fileTitle =
-      instance.title.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 80) ||
-      'swms'
-    return new Response(new Uint8Array(bytes), {
-      headers: {
-        'Content-Type': 'application/pdf',
-        'Content-Disposition': `inline; filename="${fileTitle}-v${currentVersion}-signed.pdf"`,
-      },
-    })
-  }
-
-  const docControlRows: SwmsPdfRow[] = [
-    structure.docControl.prepared_by.trim()
-      ? { label: 'Prepared by', value: structure.docControl.prepared_by }
-      : null,
-    structure.docControl.approved_by.trim()
-      ? { label: 'Approved by', value: structure.docControl.approved_by }
-      : null,
-  ].filter((r): r is SwmsPdfRow => r !== null)
-
-  const buffer = await renderToBuffer(
-    <SwmsPdf
-      swms={{
-        title: instance.title,
-        parentLabel,
-        version: currentVersion,
-        status: instance.status,
-        date: fmtDate(instance.created_at),
-      }}
-      company={toCompany(settings)}
-      docControl={docControlRows}
-      scopeNote={structure.docControl.scope_note.trim()}
-      projectDetails={labelValueRows(
-        SWMS_PROJECT_DETAIL_LABELS,
-        structure.projectDetails as SwmsProjectDetails
-      )}
-      hrcw={structure.hrcwItems.map((item) => ({
-        label: item.label,
-        value: structure.hrcwAnswers[item.id]
-          ? HRCW_ANSWER_LABELS[structure.hrcwAnswers[item.id]]
-          : '—',
-      }))}
-      requirements={labelValueRows(
-        SWMS_REQUIREMENT_LABELS,
-        structure.requirements as SwmsRequirements
-      )}
-      steps={structure.steps}
-      stopWorkTriggers={structure.stopWorkTriggers}
-      emergencyContacts={labelValueRows(
-        SWMS_EMERGENCY_CONTACT_LABELS,
-        structure.emergencyContacts as SwmsEmergencyContacts
-      )}
-      emergencyScenarios={structure.emergencyScenarios}
-      referencesList={structure.referencesList}
-      signatures={pdfSignatures}
-      earlierSignatureCount={earlierSignatureCount}
-      changes={changes}
-    />
-  )
-
-  return new Response(new Uint8Array(buffer), {
-    headers: {
-      'Content-Type': 'application/pdf',
-      'Content-Disposition': `inline; filename="swms-v${currentVersion}.pdf"`,
     },
   })
 }

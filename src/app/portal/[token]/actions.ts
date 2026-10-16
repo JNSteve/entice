@@ -11,12 +11,14 @@ import {
   notifyOfficeNewMessage,
   notifyOfficeNewRequest,
   notifyOfficeNewUpload,
+  notifyOfficeSignoffResponse,
 } from '@/lib/notify'
 import {
   MAX_REQUEST_PHOTOS,
   REQUEST_URGENCIES,
   type RequestUrgency,
 } from '@/lib/portal-interactions'
+import type { DisputeInput } from '@/lib/signoffs'
 
 /**
  * Public (no-auth) portal interactions. All real validation, entitlement
@@ -329,4 +331,62 @@ export async function declinePortalApproval(input: {
   })
   if (error) return { error: GENERIC_FAILURE }
   return mapRpcResult(data, GENERIC_FAILURE)
+}
+
+// ─── Daily sign-offs ─────────────────────────────────────────────────────────
+
+/**
+ * Sign a released daily sign-off, optionally disputing lines (client's figure
+ * + reason each). portal_signoff_respond re-validates everything and is
+ * status-guarded, so a double submit gets 'not_acceptable'.
+ */
+export async function respondPortalSignoff(input: {
+  token: string
+  id: string
+  signerName: string
+  signature: string
+  disputes: DisputeInput[]
+}): Promise<PortalActionResult & { status?: 'signed' | 'disputed' }> {
+  const signerName = (input.signerName ?? '').trim()
+  const signature = input.signature ?? ''
+  if (!signerName) return { error: 'Enter your full name' }
+  if (
+    !signature.startsWith(SIGNATURE_DATA_URL_PREFIX) ||
+    signature.length > MAX_SIGNATURE_CHARS
+  ) {
+    return { error: 'Signature is missing or too large — clear and sign again' }
+  }
+  const disputes = Array.isArray(input.disputes) ? input.disputes : []
+  for (const d of disputes) {
+    if (typeof d?.reason !== 'string' || !d.reason.trim()) {
+      return { error: 'Give a reason for each disputed line' }
+    }
+    if (typeof d.client_qty !== 'number' || !Number.isFinite(d.client_qty) || d.client_qty < 0) {
+      return { error: 'Enter your figure for each disputed line (0 or more)' }
+    }
+  }
+
+  const supabase = createPublicClient()
+  const { data, error } = await supabase.rpc('portal_signoff_respond', {
+    p_token: input.token,
+    p_id: input.id,
+    p_signer_name: signerName,
+    p_signature: signature,
+    p_disputes: disputes.map((d) => ({
+      line_id: d.line_id,
+      client_qty: d.client_qty,
+      reason: d.reason.trim(),
+    })),
+    p_ip: await requestIp(),
+  })
+  if (error) return { error: GENERIC_FAILURE }
+  const result = (data ?? null) as { ok?: boolean; error?: string; status?: string } | null
+  if (result?.error === 'invalid') {
+    return { error: 'Some details were not accepted — check each disputed line has a figure and a reason' }
+  }
+  const mapped = mapRpcResult(data, GENERIC_FAILURE)
+  if ('error' in mapped) return mapped
+
+  after(() => notifyOfficeSignoffResponse({ token: input.token, signoffId: input.id }))
+  return { ...mapped, status: result?.status === 'disputed' ? 'disputed' : 'signed' }
 }

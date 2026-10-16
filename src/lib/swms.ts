@@ -1,5 +1,11 @@
 import { z } from 'zod'
 import { RISK_LEVELS, swmsHazardSchema, type SwmsHazard } from '@/lib/zod'
+import {
+  EMPTY_SWMS_TITLE_PAGE,
+  parseTitlePage,
+  swmsTitlePageSchema,
+  type SwmsTitlePage,
+} from '@/lib/swms-title-page'
 
 /**
  * SWMS 2.0 structured shapes — mirror the jsonb columns added by migration
@@ -162,6 +168,7 @@ export const swmsInstanceCreateV2Schema = z
     project_details: swmsProjectDetailsSchema,
     hrcw_answers: hrcwAnswersSchema,
     emergency_contacts: swmsEmergencyContactsSchema,
+    title_page: swmsTitlePageSchema.default(EMPTY_SWMS_TITLE_PAGE),
   })
   .refine(
     (d) => d.project_id !== null || d.job_id !== null,
@@ -298,6 +305,8 @@ export interface SwmsStructure {
   emergencyContacts: SwmsEmergencyContacts
   projectDetails: SwmsProjectDetails
   referencesList: string[]
+  /** Null on pre-title-page rows, uploaded-PDF SWMS and templates. */
+  titlePage: SwmsTitlePage | null
 }
 
 /** Raw swms_instances / swms_templates row → typed structure (tolerant). */
@@ -312,6 +321,7 @@ export function parseSwmsStructure(row: {
   emergency_contacts?: unknown
   project_details?: unknown
   references_list?: unknown
+  title_page?: unknown
   body?: string | null
   hazards?: unknown
 }): SwmsStructure {
@@ -336,9 +346,10 @@ export function parseSwmsStructure(row: {
     emergencyContacts: parseEmergencyContacts(row.emergency_contacts),
     projectDetails: parseProjectDetails(row.project_details),
     referencesList: parseStringList(row.references_list),
+    titlePage: parseTitlePage(row.title_page),
   }
 }
 
 /** Column list shared by every full-structure select on swms_instances. */
 export const SWMS_STRUCTURE_COLUMNS =
-  'doc_control, hrcw_items, hrcw_answers, requirements, steps, stop_work_triggers, emergency_scenarios, emergency_contacts, project_details, references_list'
+  'doc_control, hrcw_items, hrcw_answers, requirements, steps, stop_work_triggers, emergency_scenarios, emergency_contacts, project_details, references_list, title_page'

@@ -167,6 +167,59 @@ export interface PortalWorkSummary {
   quote_number: string | null
 }
 
+// ─── Daily sign-offs (portal_signoffs / portal_signoff, migration 0068) ─────
+
+export type PortalSignoffStatus = 'released' | 'signed' | 'disputed' | 'superseded'
+
+export interface PortalSignoffRow {
+  id: string
+  kind: 'job' | 'project'
+  work_id: string
+  work_number: string
+  work_title: string
+  date: string
+  version: number
+  status: PortalSignoffStatus
+  released_on: string | null
+  line_count: number
+  signer_name: string | null
+  signed_on: string | null
+  dispute_count: number
+}
+
+export interface PortalSignoffLine {
+  id: string
+  section: 'labour' | 'subbie' | 'plant' | 'material'
+  description: string
+  qty: number
+  unit: string
+  detail: string | null
+  scope_label: string | null
+}
+
+export interface PortalSignoffDetail {
+  id: string
+  kind: 'job' | 'project'
+  work_id: string
+  work_number: string
+  work_title: string
+  site_name: string | null
+  date: string
+  version: number
+  status: PortalSignoffStatus
+  summary: string
+  released_on: string | null
+  /** The newer released version that replaced this one, if any. */
+  replaced_by: string | null
+  lines: PortalSignoffLine[]
+  photos: PortalAttachment[]
+  response: {
+    signer_name: string
+    signed_on: string
+    disputes: { line_id: string; client_qty: number; reason: string }[]
+  } | null
+}
+
 export interface PortalSiteRow {
   id: string
   name: string

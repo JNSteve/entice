@@ -174,6 +174,24 @@ describe('swmsInstanceCreateV2Schema', () => {
     expect(parsed.project_details.work_location).toBe('Site A')
     expect(parsed.project_details.nearest_hospital).toBe('')
     expect(parsed.emergency_contacts.first_aid).toBe('')
+    expect(parsed.title_page.client_name).toBe('')
+  })
+
+  it('keeps a supplied title page', () => {
+    const parsed = swmsInstanceCreateV2Schema.parse({
+      ...base,
+      title_page: { client_name: 'Acme', site_address: '12 Site St' },
+    })
+    expect(parsed.title_page.client_name).toBe('Acme')
+    expect(parsed.title_page.site_address).toBe('12 Site St')
+    expect(parsed.title_page.contact_name).toBe('')
+  })
+
+  it('exposes the title page through parseSwmsStructure', () => {
+    expect(parseSwmsStructure({}).titlePage).toBeNull()
+    expect(
+      parseSwmsStructure({ title_page: { client_name: 'Acme' } }).titlePage?.client_name
+    ).toBe('Acme')
   })
 
   it('requires a project or job', () => {

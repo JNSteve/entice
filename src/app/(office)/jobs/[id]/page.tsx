@@ -10,6 +10,7 @@ import { EditJobDialog } from './edit-job-dialog'
 import { ScheduleWorkDialog } from './schedule-work-dialog'
 import { ChecklistSection } from './checklist-section'
 import { WorkLogSection } from './work-log-section'
+import { SignoffRegister } from '@/components/signoffs/SignoffRegister'
 import { PnlPanel } from '@/components/pnl/PnlPanel'
 import { loadPnl, type PnlData } from '@/lib/pnl-queries'
 import { InvoiceSection, type JobInvoiceRow } from './invoice-section'
@@ -26,6 +27,10 @@ import {
 } from '@/components/MaintenanceLog'
 import { fetchSwmsInstances, toSwmsDocumentOptions } from '@/lib/swms-queries'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
+import {
+  buildSwmsTitlePagePrefill,
+  type TitlePageContactOption,
+} from '@/lib/swms-title-page'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 import { todayAU } from '@/lib/tz'
@@ -63,8 +68,8 @@ export default async function JobDetailPage({
       .from('jobs')
       .select(
         `*,
-         clients(id, name),
-         sites(id, name),
+         clients(id, name, address, contacts(id, name, role, phone, email)),
+         sites(id, name, address, suburb, state, postcode),
          supervisor:profiles!jobs_supervisor_id_fkey(id, full_name),
          pm:profiles!jobs_pm_id_fkey(id, full_name),
          quotes(id, number, status)`
@@ -117,8 +122,28 @@ export default async function JobDetailPage({
 
   if (!job) notFound()
 
-  const clientRel = job.clients as unknown as { id: string; name: string } | null
-  const siteRel = job.sites as unknown as { id: string; name: string } | null
+  const clientRel = job.clients as unknown as {
+    id: string
+    name: string
+    address: string | null
+    contacts: TitlePageContactOption[] | null
+  } | null
+  const siteRel = job.sites as unknown as {
+    id: string
+    name: string
+    address: string | null
+    suburb: string | null
+    state: string | null
+    postcode: string | null
+  } | null
+  const swmsTitlePagePrefill = buildSwmsTitlePagePrefill({
+    parentRef: `${job.number} — ${job.title}`,
+    client: clientRel,
+    site: siteRel,
+    start: job.scheduled_start,
+    end: job.scheduled_end,
+    contacts: [...(clientRel?.contacts ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
+  })
   const supervisorRel = job.supervisor as unknown as { id: string; full_name: string } | null
   const pmRel = job.pm as unknown as { id: string; full_name: string } | null
   const quoteRel = job.quotes as unknown as { id: string; number: string; status: string } | null
@@ -345,6 +370,18 @@ export default async function JobDetailPage({
       {/* Work log */}
       <WorkLogSection jobId={job.id} entries={workLogData} />
 
+      <div className="border-t" />
+
+      {/* Daily sign-offs */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">Daily sign-offs</h2>
+        <SignoffRegister
+          kind="job"
+          workId={job.id}
+          canManage={profile.role === 'admin' || profile.role === 'office'}
+        />
+      </section>
+
       {/* Maintenance log — read-only; managed on the property page */}
       {maintenanceEntries.length > 0 && (
         <>
@@ -366,6 +403,7 @@ export default async function JobDetailPage({
         documents={toSwmsDocumentOptions(attachments)}
         canManage={canMutate}
         canSupersede={canSeeCosts}
+        titlePagePrefill={swmsTitlePagePrefill}
       />
 
       {/* Costs & P&L — admin/office only */}

@@ -425,6 +425,124 @@ export async function notifyClientQuoteSent(input: { quoteId: string }): Promise
 }
 
 /**
+ * Client update: the PM released a daily sign-off to the portal. Deep-links
+ * to the sign page. Office action context.
+ */
+export async function notifyClientSignoffReleased(input: { signoffId: string }): Promise<void> {
+  try {
+    const supabase = await createClient()
+    const { data: signoff } = await supabase
+      .from('daily_signoffs')
+      .select('id, date, version, jobs(number, title, client_id), projects(number, name, client_id)')
+      .eq('id', input.signoffId)
+      .single()
+    if (!signoff) return
+    const job = (Array.isArray(signoff.jobs) ? signoff.jobs[0] : signoff.jobs) as
+      | { number: string; title: string; client_id: string }
+      | null
+    const project = (Array.isArray(signoff.projects) ? signoff.projects[0] : signoff.projects) as
+      | { number: string; name: string; client_id: string }
+      | null
+    const clientId = job?.client_id ?? project?.client_id
+    if (!clientId) return
+    const workLabel = job ? `${job.number} — ${job.title}` : `${project!.number} — ${project!.name}`
+
+    const [{ data: contacts }, { data: links }, { data: settings }] = await Promise.all([
+      supabase.from('contacts').select('name, email').eq('client_id', clientId).order('name'),
+      supabase
+        .from('client_links')
+        .select('id, token, revoked_at, expires_at')
+        .eq('client_id', clientId)
+        .eq('scope', 'full')
+        .order('created_at', { ascending: false }),
+      supabase.from('settings').select('company_name').eq('id', 1).single(),
+    ])
+
+    const link = pickLiveLink((links ?? []) as LinkRow[])
+    const base = appBaseUrl()
+    const portalUrl = base && link ? `${base}/portal/${link.token}/signoffs/${signoff.id}` : null
+    const company = settings?.company_name ?? 'Entice'
+    const day = fmtDate(signoff.date as string)
+    const revised = Number(signoff.version) > 1
+
+    await sendEmail({
+      to: primaryContactEmail((contacts ?? []) as ContactRow[]),
+      subject: `${revised ? 'Revised daily' : 'Daily'} sign-off for ${day} — ${job?.number ?? project!.number}`,
+      template: 'client_signoff_released',
+      entityKind: 'daily_signoff',
+      entityId: signoff.id as string,
+      html: renderEmail({
+        companyName: company,
+        heading: revised ? 'Revised daily sign-off ready' : 'Daily sign-off ready to review',
+        intro: `${company} has recorded the labour, plant and materials for ${day}. Please review the quantities and sign, or dispute any line you don't agree with.`,
+        rows: [
+          { label: 'Work', value: workLabel },
+          { label: 'Day', value: day },
+        ],
+        cta: portalUrl ? { label: 'Review and sign in your portal', url: portalUrl } : null,
+        footnote: portalUrl ? null : 'Ask us for a portal link to review and sign daily sign-offs online.',
+      }),
+    })
+  } catch (err) {
+    console.error('[notify] client signoff-released email failed:', err)
+  }
+}
+
+/**
+ * Office alert: a client signed or disputed a daily sign-off. Runs in the
+ * ANONYMOUS portal action context — reads go through token-validated RPCs.
+ */
+export async function notifyOfficeSignoffResponse(input: {
+  token: string
+  signoffId: string
+}): Promise<void> {
+  try {
+    const supabase = createPublicClient()
+    const [{ data: resolved }, { data: detail }] = await Promise.all([
+      supabase.rpc('portal_resolve_link', { p_token: input.token }),
+      supabase.rpc('portal_signoff', { p_token: input.token, p_id: input.signoffId }),
+    ])
+    const branding = (resolved ?? null) as PortalBrandingLite | null
+    const signoff = (detail ?? null) as {
+      id: string
+      work_number: string
+      work_title: string
+      date: string
+      status: string
+      response: { signer_name: string; disputes: unknown[] } | null
+    } | null
+    if (!branding || !signoff) return
+
+    const disputed = signoff.status === 'disputed'
+    const disputeCount = signoff.response?.disputes?.length ?? 0
+    const base = appBaseUrl()
+    await sendEmail({
+      to: branding.company_email,
+      subject: `${disputed ? 'Disputed' : 'Signed'}: daily sign-off ${signoff.work_number} ${fmtDate(signoff.date)}`,
+      template: 'office_signoff_response',
+      entityKind: 'daily_signoff',
+      entityId: signoff.id,
+      html: renderEmail({
+        companyName: branding.company_name,
+        heading: disputed ? 'Client disputed a daily sign-off' : 'Client signed a daily sign-off',
+        intro: disputed
+          ? `${signoff.response?.signer_name ?? 'The client'} disputed ${disputeCount} line${disputeCount === 1 ? '' : 's'} and signed the rest.`
+          : `${signoff.response?.signer_name ?? 'The client'} signed the sheet with no disputes.`,
+        rows: [
+          { label: 'Client', value: branding.client_name },
+          { label: 'Work', value: `${signoff.work_number} — ${signoff.work_title}` },
+          { label: 'Day', value: fmtDate(signoff.date) },
+        ],
+        cta: base ? { label: 'Open the sign-off', url: `${base}/signoffs/${signoff.id}` } : null,
+        footnote: disputed ? 'Open it and use Revise to send a corrected version.' : null,
+      }),
+    })
+  } catch (err) {
+    console.error('[notify] office signoff-response alert failed:', err)
+  }
+}
+
+/**
  * Client update: the office replied on a property's message thread.
  * Office action context.
  */
