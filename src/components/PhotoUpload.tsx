@@ -11,7 +11,15 @@ import {
   validateUploadFile,
 } from '@/lib/storage-keys'
 import { Button } from '@/components/ui/button'
-import { UploadIcon, CheckIcon, XIcon, RefreshCwIcon, Loader2Icon } from 'lucide-react'
+import {
+  UploadIcon,
+  CheckIcon,
+  XIcon,
+  RefreshCwIcon,
+  Loader2Icon,
+  CameraIcon,
+  ImageIcon,
+} from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -105,10 +113,15 @@ export function PhotoUpload({
   extraMeta,
 }: PhotoUploadProps) {
   const inputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const [fileStates, setFileStates] = useState<FileState[]>([])
 
   const isPhoto = kind === 'photo'
   const accept = isPhoto ? 'image/*' : undefined
+  // iOS opens the camera directly for a `capture` input and offers no way to
+  // pick existing photos, so camera capture gets its own input and the main
+  // input never carries `capture`.
+  const showCamera = capture && isPhoto
 
   function setStatus(id: string, update: Partial<FileState>) {
     setFileStates((prev) =>
@@ -226,26 +239,67 @@ export function PhotoUpload({
         type="file"
         accept={accept}
         multiple={multiple}
-        capture={capture ? 'environment' : undefined}
         onChange={handleChange}
         className="sr-only"
         aria-hidden
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={pending}
-        onClick={() => inputRef.current?.click()}
-        className="self-start"
-      >
-        {pending ? (
-          <Loader2Icon className="size-4 animate-spin" />
-        ) : (
-          <UploadIcon className="size-4" />
+      {showCamera && (
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleChange}
+          className="sr-only"
+          aria-hidden
+        />
+      )}
+      <div className="flex flex-wrap gap-2">
+        {/* Touch devices only — a desktop has no camera picker, so it gets the
+            single file-picker button below. */}
+        {showCamera && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={pending}
+            onClick={() => cameraInputRef.current?.click()}
+            className="hidden pointer-coarse:inline-flex"
+          >
+            {pending ? (
+              <Loader2Icon className="size-4 animate-spin" />
+            ) : (
+              <CameraIcon className="size-4" />
+            )}
+            Take photo
+          </Button>
         )}
-        {kind === 'photo' ? 'Add photo' : 'Attach file'}
-      </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={pending}
+          onClick={() => inputRef.current?.click()}
+        >
+          {pending ? (
+            <Loader2Icon className="size-4 animate-spin" />
+          ) : showCamera ? (
+            <ImageIcon className="size-4" />
+          ) : (
+            <UploadIcon className="size-4" />
+          )}
+          {showCamera ? (
+            <>
+              <span className="pointer-coarse:hidden">Add photo</span>
+              <span className="hidden pointer-coarse:inline">Choose from library</span>
+            </>
+          ) : kind === 'photo' ? (
+            'Add photo'
+          ) : (
+            'Attach file'
+          )}
+        </Button>
+      </div>
 
       {fileStates.length > 0 && (
         <ul className="flex flex-col gap-1.5">

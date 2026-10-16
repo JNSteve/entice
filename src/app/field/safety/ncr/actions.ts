@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { nextNumber } from '@/lib/numbering'
+import { nextCarNumber } from '@/lib/numbering'
 import { ncrFieldRaiseSchema } from '@/lib/zod'
 
 type Result = { error?: string; id?: string }
@@ -12,7 +12,7 @@ type Result = { error?: string; id?: string }
 /**
  * Field-side NCR raise (report-only). A field worker reports a problem; it is
  * recorded straight into the NCR register at status 'open' with the next
- * NCR-xxxx number. raised_by = the reporter. Field users do NOT manage CAPA or
+ * CAR-YYYY-NN number. raised_by = the reporter. Field users do NOT manage CAPA or
  * close NCRs — that is office/supervisor work. Photos attach on the success
  * screen via parent_type 'ncr'. RLS already permits a field insert.
  */
@@ -29,7 +29,7 @@ export async function raiseFieldNcr(input: unknown): Promise<Result> {
 
   let number: string
   try {
-    number = await nextNumber(supabase, 'ncr')
+    number = await nextCarNumber(supabase)
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'Numbering failed' }
   }

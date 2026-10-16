@@ -47,6 +47,7 @@ import { todayAUClient } from '@/lib/tz-client'
 import { cn } from '@/lib/utils'
 import type { AuditRow } from '@/lib/audit-queries'
 import {
+  NCR_CLASSIFICATIONS,
   NCR_SOURCES,
   NCR_SOURCE_LABELS,
   CAPA_KINDS,
@@ -71,14 +72,21 @@ export interface NcrDetailData {
   id: string
   number: string
   source: NcrSource
+  source_detail: string | null
+  classification: string | null
   category: string | null
   severity: number
   title: string
   description: string
   immediate_action: string | null
   root_cause: string | null
+  assigned_to_text: string | null
+  due_date: string | null
+  implemented: string | null
   status: NcrStatus
   occurred_on: string | null
+  /** 'YYYY-MM-DD': occurred_on, else the Brisbane day the record was entered. */
+  raised_on: string
   raised_by_name: string | null
   verification_notes: string | null
   verified_by_name: string | null
@@ -133,6 +141,8 @@ export interface NcrDetailClientProps {
   actions: CapaActionRow[]
   attachments: AttachmentItem[]
   role: string
+  /** Viewer is the Director (Compliance and Technical) — the only closer (SMS-05). */
+  canClose: boolean
   profiles: ProfileOption[]
   projects: ProjectOption[]
   jobs: JobOption[]
@@ -193,6 +203,8 @@ function EditNcrDialog({
   const [pending, startTransition] = useTransition()
   const [form, setForm] = useState({
     source: ncr.source,
+    source_detail: ncr.source_detail ?? '',
+    classification: ncr.classification ?? '',
     severity: String(ncr.severity),
     title: ncr.title,
     category: ncr.category ?? '',
@@ -200,6 +212,9 @@ function EditNcrDialog({
     immediate_action: ncr.immediate_action ?? '',
     root_cause: ncr.root_cause ?? '',
     occurred_on: ncr.occurred_on ?? '',
+    assigned_to_text: ncr.assigned_to_text ?? '',
+    due_date: ncr.due_date ?? '',
+    implemented: ncr.implemented ?? '',
     project_id: ncr.project_id ?? '',
     job_id: ncr.job_id ?? '',
     vendor_id: ncr.vendor_id ?? '',
@@ -214,10 +229,15 @@ function EditNcrDialog({
     startTransition(async () => {
       const result = await updateNcr(ncr.id, {
         ...form,
+        source_detail: form.source_detail || null,
+        classification: form.classification || null,
         category: form.category || null,
         immediate_action: form.immediate_action || null,
         root_cause: form.root_cause || null,
         occurred_on: form.occurred_on || null,
+        assigned_to_text: form.assigned_to_text || null,
+        due_date: form.due_date || null,
+        implemented: form.implemented || null,
         project_id: form.project_id || null,
         job_id: form.job_id || null,
         vendor_id: form.vendor_id || null,
@@ -226,32 +246,35 @@ function EditNcrDialog({
         toast.error(result.error)
         return
       }
-      toast.success('NCR updated')
+      toast.success('CAR updated')
       onOpenChange(false)
     })
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Edit NCR</DialogTitle>
+          <DialogTitle>Edit CAR</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
-              <Label>Source</Label>
+              <Label>Classification</Label>
               <Select
-                value={form.source}
-                onValueChange={(v) => v && field('source', v)}
+                value={form.classification || null}
+                onValueChange={(v) =>
+                  field('classification', !v || v === '__none' ? '' : v)
+                }
               >
                 <SelectTrigger>
-                  <SelectValue />
+                  <SelectValue placeholder="Not classified" />
                 </SelectTrigger>
                 <SelectContent>
-                  {NCR_SOURCES.map((s) => (
-                    <SelectItem key={s} value={s}>
-                      {NCR_SOURCE_LABELS[s]}
+                  <SelectItem value="__none">Not classified</SelectItem>
+                  {NCR_CLASSIFICATIONS.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -277,6 +300,35 @@ function EditNcrDialog({
             </div>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Source</Label>
+              <Select
+                value={form.source}
+                onValueChange={(v) => v && field('source', v)}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {NCR_SOURCES.map((s) => (
+                    <SelectItem key={s} value={s}>
+                      {NCR_SOURCE_LABELS[s]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Source detail</Label>
+              <Input
+                value={form.source_detail}
+                onChange={(e) => field('source_detail', e.target.value)}
+                placeholder="As written, e.g. internal audit"
+              />
+            </div>
+          </div>
+
           <div className="flex flex-col gap-1.5">
             <Label>Title</Label>
             <Input
@@ -295,7 +347,7 @@ function EditNcrDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Occurred on</Label>
+              <Label>Date raised</Label>
               <Input
                 type="date"
                 value={form.occurred_on}
@@ -329,6 +381,35 @@ function EditNcrDialog({
               value={form.root_cause}
               onChange={(e) => field('root_cause', e.target.value)}
               placeholder="Identified during investigation"
+              rows={2}
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Assigned to</Label>
+              <Input
+                value={form.assigned_to_text}
+                onChange={(e) => field('assigned_to_text', e.target.value)}
+                placeholder="Name and position"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Due date</Label>
+              <Input
+                type="date"
+                value={form.due_date}
+                onChange={(e) => field('due_date', e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <Label>Implemented</Label>
+            <Textarea
+              value={form.implemented}
+              onChange={(e) => field('implemented', e.target.value)}
+              placeholder="Date and what was done"
               rows={2}
             />
           </div>
@@ -638,6 +719,7 @@ export function NcrDetailClient({
   actions,
   attachments,
   role,
+  canClose,
   profiles,
   projects,
   jobs,
@@ -663,7 +745,7 @@ export function NcrDetailClient({
     startTransition(async () => {
       const result = await setNcrStatus(ncr.id, { status: newStatus })
       if (result.error) toast.error(result.error)
-      else toast.success(`NCR moved to ${newStatus}`)
+      else toast.success(`CAR moved to ${newStatus}`)
     })
   }
 
@@ -686,15 +768,43 @@ export function NcrDetailClient({
     })
   }
 
+  const dueOverdue =
+    ncr.status !== 'closed' && ncr.due_date != null && ncr.due_date < today
+  const dueDaysOverdue = dueOverdue
+    ? Math.round(
+        (Date.parse(`${today}T00:00:00Z`) -
+          Date.parse(`${ncr.due_date}T00:00:00Z`)) /
+          86_400_000
+      )
+    : 0
+
   const meta = [
     { label: 'Source', value: NCR_SOURCE_LABELS[ncr.source] },
+    { label: 'Source detail', value: ncr.source_detail ?? '—' },
     { label: 'Category', value: ncr.category ?? '—' },
+    { label: 'Classification', value: ncr.classification ?? '—' },
     { label: 'Severity', value: <SeverityDots severity={ncr.severity} /> },
     { label: 'Status', value: <StatusBadge status={ncr.status} /> },
+    { label: 'Date raised', value: fmtDate(ncr.raised_on) },
     {
-      label: 'Occurred',
-      value: ncr.occurred_on ? fmtDate(ncr.occurred_on) : '—',
+      label: 'Due',
+      value: ncr.due_date ? (
+        <span
+          className={cn(
+            'tabular-nums',
+            dueOverdue && 'font-medium text-red-600 dark:text-red-400'
+          )}
+        >
+          {fmtDate(ncr.due_date)}
+          {dueOverdue
+            ? ` (${dueDaysOverdue} day${dueDaysOverdue === 1 ? '' : 's'} overdue)`
+            : ''}
+        </span>
+      ) : (
+        '—'
+      ),
     },
+    { label: 'Assigned to', value: ncr.assigned_to_text ?? '—' },
     {
       label: 'Project / Job / Supplier',
       value: ncr.project_id ? (
@@ -771,14 +881,19 @@ export function NcrDetailClient({
               Verify effectiveness
             </Button>
           )}
-          {canManage && ncr.status === 'verified' && (
+          {canManage && canClose && ncr.status === 'verified' && (
             <Button
               size="sm"
               disabled={pending}
               onClick={() => doStatusTransition('closed')}
             >
-              Close NCR
+              Close CAR
             </Button>
+          )}
+          {!canClose && ncr.status === 'verified' && (
+            <span className="self-center text-sm text-muted-foreground">
+              Awaiting close-out by the Director (Compliance and Technical)
+            </span>
           )}
           {ncr.status === 'closed' && isAdmin && (
             <Button
@@ -850,6 +965,18 @@ export function NcrDetailClient({
               {ncr.root_cause ?? (
                 <span className="text-muted-foreground">
                   Not yet identified — capture during investigation.
+                </span>
+              )}
+            </p>
+          </div>
+          <div className="flex flex-col gap-1 border-t pt-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              Implemented
+            </p>
+            <p className="whitespace-pre-wrap text-sm">
+              {ncr.implemented ?? (
+                <span className="text-muted-foreground">
+                  Not yet recorded — the date and what was done.
                 </span>
               )}
             </p>
@@ -1022,7 +1149,7 @@ export function NcrDetailClient({
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
-              Not yet verified. An NCR cannot be closed until effectiveness is
+              Not yet verified. A CAR cannot be closed until effectiveness is
               verified and all CAPA actions are done.
             </p>
           )}

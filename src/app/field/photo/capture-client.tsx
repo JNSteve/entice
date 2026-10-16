@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useRef, useTransition } from 'react'
+import React, { useEffect, useState, useRef, useTransition } from 'react'
 import { toast } from 'sonner'
 import { createClient } from '@/lib/supabase/client'
 import { recordAttachment } from '@/lib/attachments'
@@ -305,18 +305,16 @@ export function CaptureClient({
   const [recentItems, setRecentItems] = useState<RecentAttachment[]>([])
   const [loadingRecent, startLoadRecent] = useTransition()
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const cameraInputRef = useRef<HTMLInputElement>(null)
+  // Guards against a slow load for a previous target overwriting the list.
+  const selectedIdRef = useRef<string | null>(selectedTarget?.id ?? null)
 
-  function handleTargetSelect(t: CaptureTarget) {
-    if (selectedTarget?.id === t.id) {
-      setSelectedTarget(null)
-      setRecentItems([])
-      return
-    }
-    setSelectedTarget(t)
-    // Load today's uploads for this target
+  function loadRecent(t: CaptureTarget) {
     startLoadRecent(async () => {
       try {
         const supabase = createClient()
+        // Brisbane is fixed +10 — the AU day starts at T00:00:00+10:00.
+        const dayStartIso = new Date(`${today}T00:00:00+10:00`).toISOString()
         const { data: rows } = await supabase
           .from('attachments')
           .select(
@@ -324,10 +322,11 @@ export function CaptureClient({
           )
           .eq('parent_type', t.type)
           .eq('parent_id', t.id)
-          .gte('created_at', `${today}T00:00:00`)
+          .gte('created_at', dayStartIso)
           .in('kind', ['photo', 'docket'])
           .order('created_at', { ascending: false })
 
+        if (selectedIdRef.current !== t.id) return
         if (!rows || rows.length === 0) { setRecentItems([]); return }
 
         const paths = rows.map((r) => r.path)
@@ -341,6 +340,7 @@ export function CaptureClient({
           }
         }
 
+        if (selectedIdRef.current !== t.id) return
         setRecentItems(
           rows.map((r) => ({
             id: r.id,
@@ -353,9 +353,29 @@ export function CaptureClient({
           }))
         )
       } catch {
-        setRecentItems([])
+        if (selectedIdRef.current === t.id) setRecentItems([])
       }
     })
+  }
+
+  // The page opens with a target pre-selected, so load its uploads up front
+  // rather than only when a chip is tapped.
+  useEffect(() => {
+    if (selectedTarget) loadRecent(selectedTarget)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+  }, [])
+
+  function handleTargetSelect(t: CaptureTarget) {
+    if (selectedTarget?.id === t.id) {
+      selectedIdRef.current = null
+      setSelectedTarget(null)
+      setRecentItems([])
+      return
+    }
+    selectedIdRef.current = t.id
+    setSelectedTarget(t)
+    setRecentItems([])
+    loadRecent(t)
   }
 
   function setUploadStatus(id: string, update: Partial<UploadState>) {
@@ -431,6 +451,8 @@ export function CaptureClient({
         .createSignedUrls([path], 3600)
       const signedUrl = urlData?.[0]?.signedUrl ?? null
 
+      // The list belongs to whichever target is selected now.
+      if (selectedIdRef.current !== selectedTarget.id) return
       setRecentItems((prev) => [
         {
           id: result.id ?? crypto.randomUUID(),
@@ -556,39 +578,78 @@ export function CaptureClient({
         </div>
       )}
 
-      {/* Hidden file input */}
+      {/* Hidden file inputs. iOS opens the camera directly for a `capture`
+          input and offers no way to pick existing photos, so camera capture
+          gets its own input and the main one never carries `capture`. */}
       <input
         ref={fileInputRef}
         type="file"
         accept={kind === 'photo' ? 'image/*' : undefined}
         multiple={kind === 'photo'}
-        capture={kind === 'photo' ? 'environment' : undefined}
         onChange={handleFileChange}
         className="sr-only"
         aria-hidden
       />
+      {kind === 'photo' && (
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          onChange={handleFileChange}
+          className="sr-only"
+          aria-hidden
+        />
+      )}
 
-      {/* Upload button */}
-      <Button
-        type="button"
-        size="lg"
-        className="w-full"
-        disabled={!canUpload || !docketReady}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        {isUploading ? (
-          <Loader2Icon className="size-5 animate-spin" />
-        ) : kind === 'photo' ? (
-          <CameraIcon className="size-5" />
-        ) : (
-          <UploadIcon className="size-5" />
-        )}
-        {isUploading
-          ? 'Uploading…'
-          : kind === 'photo'
-            ? 'Take / add photos'
-            : 'Attach docket'}
-      </Button>
+      {/* Upload buttons */}
+      {kind === 'photo' ? (
+        <div className="flex flex-col gap-2">
+          {/* Touch devices only — a desktop has no camera picker, so it gets
+              the single file-picker button below. */}
+          <Button
+            type="button"
+            size="lg"
+            className="hidden w-full pointer-coarse:inline-flex"
+            disabled={!canUpload}
+            onClick={() => cameraInputRef.current?.click()}
+          >
+            {isUploading ? (
+              <Loader2Icon className="size-5 animate-spin" />
+            ) : (
+              <CameraIcon className="size-5" />
+            )}
+            {isUploading ? 'Uploading…' : 'Take photo'}
+          </Button>
+          <Button
+            type="button"
+            size="lg"
+            variant="outline"
+            className="w-full"
+            disabled={!canUpload}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <ImageIcon className="size-5" />
+            <span className="pointer-coarse:hidden">Add photos</span>
+            <span className="hidden pointer-coarse:inline">Choose from library</span>
+          </Button>
+        </div>
+      ) : (
+        <Button
+          type="button"
+          size="lg"
+          className="w-full"
+          disabled={!canUpload || !docketReady}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {isUploading ? (
+            <Loader2Icon className="size-5 animate-spin" />
+          ) : (
+            <UploadIcon className="size-5" />
+          )}
+          {isUploading ? 'Uploading…' : 'Attach docket'}
+        </Button>
+      )}
 
       {/* Upload status list */}
       {uploads.length > 0 && (

@@ -33,6 +33,9 @@ import {
 } from '@/lib/swms-title-page'
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
+import { todayAU } from '@/lib/tz'
+import { lastShiftOnSite, type LicensedRemoval } from '@/lib/job-records'
+import { JobRecordsCard } from './job-records-card'
 
 
 // Supplier-invoice import reads PDFs with AI from this page (30–60s+).
@@ -237,6 +240,24 @@ export default async function JobDetailPage({
     ? `${fmtDate(job.scheduled_start)}${job.scheduled_end ? ` – ${fmtDate(job.scheduled_end)}` : ''}`
     : null
 
+  // The signed quote is the contract review record (IMS-03): a quote accepted in
+  // the quote module is filed.
+  const { data: acceptedQuote } = job.quote_id
+    ? await supabase
+        .from('quotes')
+        .select('id, number')
+        .eq('id', job.quote_id)
+        .eq('status', 'accepted')
+        .maybeSingle()
+    : { data: null }
+
+  // SMS-02 filing clock: records are due 7 days after the last shift on site.
+  const lastShift = lastShiftOnSite(
+    job.scheduled_start ?? null,
+    job.scheduled_end ?? null,
+    job.completed_at ? todayAU(new Date(job.completed_at)) : null
+  )
+
   return (
     <div className="flex flex-col gap-8">
       {/* Header */}
@@ -372,8 +393,8 @@ export default async function JobDetailPage({
         </>
       )}
 
-      {/* SWMS */}
-      <div className="border-t" />
+      {/* SWMS — anchor for portal SWMS links in Job records */}
+      <div id="swms" className="scroll-mt-20 border-t" />
       <SwmsInstancesSection
         parentType="job"
         parentId={job.id}
@@ -409,9 +430,9 @@ export default async function JobDetailPage({
         </>
       )}
 
-      {/* Photos */}
+      {/* Photos — anchor for "Add photos" in Job records */}
       <div className="border-t" />
-      <section className="flex flex-col gap-4">
+      <section id="photos" className="flex flex-col gap-4 scroll-mt-20">
         <h2 className="text-base font-semibold">Photos</h2>
         <PhotoUpload
           parentType="job"
@@ -451,6 +472,40 @@ export default async function JobDetailPage({
           canCreateCost={canSeeCosts}
         />
       </section>
+
+      {/* Job records — the SMS-02 job folder; edits admin/office only */}
+      <div className="border-t" />
+      <JobRecordsCard
+        jobId={job.id}
+        jobNumber={job.number}
+        scheduledStart={job.scheduled_start ?? null}
+        scheduledEnd={job.scheduled_end ?? null}
+        lastShift={lastShift}
+        licensedRemoval={(job.licensed_removal as LicensedRemoval | null) ?? 'none'}
+        regulatedWaste={Boolean(job.regulated_waste)}
+        files={[
+          ...attachments.map((a) => ({
+            filename: a.filename,
+            caption: a.caption,
+            kind: a.kind,
+            url: a.signedUrl,
+          })),
+          // A SWMS built in the portal and in force is the job's SWMS.
+          ...swmsInstances
+            .filter((s) => s.status === 'active')
+            .map((s) => ({ filename: s.title, caption: null, kind: 'swms', url: '#swms' })),
+          ...(acceptedQuote
+            ? [{
+                filename: `${acceptedQuote.number} accepted`,
+                caption: null,
+                kind: 'quote',
+                url: `/quotes/${acceptedQuote.id}`,
+              }]
+            : []),
+        ]}
+        today={todayAU()}
+        canManage={canDeleteAttachment}
+      />
 
       {/* Documents */}
       <div className="border-t" />

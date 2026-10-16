@@ -40,6 +40,7 @@ import {
 import { ArchiveSection, type ArchivedRecordRow } from './archive-section'
 import { QuoteTemplatesSection } from './quote-templates-section'
 import type { QuoteTemplateRow } from '@/lib/quote-doc'
+import { IMS_HIDDEN } from '@/lib/ims-scope'
 
 export type SettingsTab =
   | 'company'
@@ -61,7 +62,7 @@ export type SettingsTab =
   | 'xero'
   | 'archive'
 
-const TABS: { value: SettingsTab; label: string }[] = [
+const ALL_TABS: { value: SettingsTab; label: string }[] = [
   { value: 'company', label: 'Company' },
   { value: 'users', label: 'Users' },
   { value: 'rates', label: 'Rates' },
@@ -81,6 +82,9 @@ const TABS: { value: SettingsTab; label: string }[] = [
   { value: 'errors', label: 'Errors' },
   { value: 'security', label: 'Security' },
 ]
+
+// ITP templates sit outside the certified IMS (src/lib/ims-scope.ts).
+const TABS = ALL_TABS.filter((t) => !(t.value === 'itp' && IMS_HIDDEN.itpLots))
 
 interface SettingsTabsProps {
   initialTab: SettingsTab

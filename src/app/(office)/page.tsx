@@ -23,6 +23,17 @@ import {
 import { PageHeader } from '@/components/PageHeader'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import { permitUsage, type WasteUnit } from '@/lib/env'
+import { IMS_HIDDEN } from '@/lib/ims-scope'
+import { fetchAll } from '@/lib/pnl-queries'
+import {
+  filingDueDate,
+  isMultiDay,
+  jobRecordStatus,
+  lastShiftOnSite,
+  missingRecords,
+  type JobFile,
+  type LicensedRemoval,
+} from '@/lib/job-records'
 import {
   ActiveWorkCard,
   ClaimsDueCard,
@@ -30,6 +41,7 @@ import {
   DiariesMissingCard,
   EnvironmentCard,
   HoldPointsCard,
+  JobRecordsDueCard,
   NcrCard,
   PortalActivityCard,
   PortalEngagementCard,
@@ -54,6 +66,7 @@ import {
   type EnvPermitUsageRow,
   type EnvironmentData,
   type HoldPointDueRow,
+  type JobRecordsDueRow,
   type NcrData,
   type NcrOverdueCapaRow,
   type PortalActivityData,
@@ -871,6 +884,119 @@ async function loadDiariesMissing(
     }))
 }
 
+// ─── 11b. Job records to file (SMS-02, 7 days after the last shift) ───────────
+
+/** Jobs that went ahead — quote-stage and lost jobs never had a shift on site. */
+const WORKED_JOB_STATUSES = ['scheduled', 'in_progress', 'completed', 'invoiced', 'paid']
+
+async function loadJobRecordsDue(
+  supabase: Db,
+  today: Date
+): Promise<JobRecordsDueRow[]> {
+  const todayStr = dateStr(today)
+  // Folders whose last shift is more than 90 days back drop off the card.
+  const since = dateStr(subDays(today, 90))
+  // Brisbane is fixed +10 — the AU day starts at T00:00:00+10:00.
+  const sinceIso = new Date(`${since}T00:00:00+10:00`).toISOString()
+
+  const { data: jobs, error } = await supabase
+    .from('jobs')
+    .select(
+      'id, number, title, quote_id, scheduled_start, scheduled_end, completed_at, licensed_removal, regulated_waste'
+    )
+    .eq('archived', false)
+    .in('status', WORKED_JOB_STATUSES)
+    // Coarse window; the last-shift rule below is exact.
+    .or(`scheduled_end.gte.${since},scheduled_start.gte.${since},completed_at.gte.${sinceIso}`)
+  if (error) throw error
+
+  // Records are due 7 days after the last shift on site (filingDueDate).
+  const candidates = (jobs ?? []).flatMap((j) => {
+    const lastShift = lastShiftOnSite(
+      (j.scheduled_start as string | null) ?? null,
+      (j.scheduled_end as string | null) ?? null,
+      j.completed_at ? todayAU(new Date(j.completed_at as string)) : null
+    )
+    if (!lastShift || lastShift < since) return []
+    const due = filingDueDate(lastShift)
+    return due <= todayStr ? [{ job: j, due }] : []
+  })
+  if (candidates.length === 0) return []
+
+  // Every candidate's files in one read, paged past PostgREST's 1000-row cap.
+  const files = await fetchAll((from, to) =>
+    supabase
+      .from('attachments')
+      .select('parent_id, filename, caption, kind')
+      .eq('parent_type', 'job')
+      .in('parent_id', candidates.map((c) => c.job.id as string))
+      .order('id')
+      .range(from, to)
+  )
+  const filesByJob = new Map<string, JobFile[]>()
+  for (const f of files) {
+    const list = filesByJob.get(f.parent_id as string) ?? []
+    list.push({ filename: f.filename, caption: f.caption, kind: f.kind })
+    filesByJob.set(f.parent_id as string, list)
+  }
+  // A SWMS built in the portal and in force is the job's SWMS.
+  const { data: swms, error: swmsError } = await supabase
+    .from('swms_instances')
+    .select('job_id, title')
+    .eq('status', 'active')
+    .in('job_id', candidates.map((c) => c.job.id as string))
+  if (swmsError) throw swmsError
+  for (const s of swms ?? []) {
+    const list = filesByJob.get(s.job_id as string) ?? []
+    list.push({ filename: s.title as string, caption: null, kind: 'swms' })
+    filesByJob.set(s.job_id as string, list)
+  }
+  // The signed quote is the contract review record (IMS-03): accepted in the quote module.
+  const quoteIds = candidates.map((c) => c.job.quote_id as string | null).filter((q): q is string => !!q)
+  if (quoteIds.length > 0) {
+    const { data: accepted, error: quoteError } = await supabase
+      .from('quotes')
+      .select('id, number')
+      .eq('status', 'accepted')
+      .in('id', quoteIds)
+    if (quoteError) throw quoteError
+    for (const q of accepted ?? []) {
+      for (const c of candidates.filter((c) => c.job.quote_id === q.id)) {
+        const list = filesByJob.get(c.job.id as string) ?? []
+        list.push({ filename: `${q.number} accepted`, caption: null, kind: 'quote' })
+        filesByJob.set(c.job.id as string, list)
+      }
+    }
+  }
+
+  return candidates
+    .flatMap(({ job, due }) => {
+      const missing = missingRecords(
+        jobRecordStatus(
+          job.number as string,
+          {
+            licensed: (job.licensed_removal as LicensedRemoval | null) ?? 'none',
+            multiDay: isMultiDay(job.scheduled_start, job.scheduled_end),
+            regulatedWaste: Boolean(job.regulated_waste),
+          },
+          filesByJob.get(job.id as string) ?? []
+        )
+      )
+      if (missing.length === 0) return []
+      return [
+        {
+          jobId: job.id as string,
+          jobNumber: job.number as string,
+          title: job.title as string,
+          missing: missing.map((s) => s.label),
+          due,
+        },
+      ]
+    })
+    // Longest overdue first.
+    .sort((a, b) => a.due.localeCompare(b.due) || a.jobNumber.localeCompare(b.jobNumber))
+}
+
 // ─── 15. Client portal activity (unread messages / new requests / decisions) ─
 
 async function loadPortalActivity(
@@ -1330,6 +1456,7 @@ export default async function DashboardPage() {
     swmsOutstanding,
     holdPoints,
     diariesMissing,
+    jobRecordsDue,
     safety,
     ncr,
     environment,
@@ -1353,6 +1480,7 @@ export default async function DashboardPage() {
     settle(() => loadSwmsOutstanding(supabase, showMoney ? null : profile.id)),
     settle(() => loadHoldPoints(supabase, today)),
     settle(() => loadDiariesMissing(supabase, today)),
+    settle(() => loadJobRecordsDue(supabase, today)),
     settle(() => loadSafety(supabase, today)),
     settle(() => loadNcr(supabase, today)),
     settle(() => loadEnvironment(supabase, today)),
@@ -1363,7 +1491,8 @@ export default async function DashboardPage() {
       : none,
     showMoney ? settle(() => loadPortalActivity(supabase, today)) : none,
     showMoney ? settle(() => loadPortalEngagement(supabase, todayAU())) : none,
-    settle(() => loadQuality(supabase)),
+    // ITP lots sit outside the certified IMS (src/lib/ims-scope.ts) — not queried.
+    IMS_HIDDEN.itpLots ? none : settle(() => loadQuality(supabase)),
     showMoney ? settle(() => loadPortfolioPnl(supabase)) : none,
   ])
 
@@ -1400,10 +1529,11 @@ export default async function DashboardPage() {
         <SwmsOutstandingCard data={swmsOutstanding ?? null} />
         <HoldPointsCard data={holdPoints ?? null} />
         <DiariesMissingCard data={diariesMissing ?? null} />
+        <JobRecordsDueCard data={jobRecordsDue ?? null} />
         <SafetyCard data={safety ?? null} />
         <NcrCard data={ncr ?? null} />
         <EnvironmentCard data={environment ?? null} />
-        <QualityCard data={quality ?? null} />
+        {!IMS_HIDDEN.itpLots && <QualityCard data={quality ?? null} />}
       </div>
     </div>
   )

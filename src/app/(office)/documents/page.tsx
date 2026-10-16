@@ -1,9 +1,11 @@
 import { getProfile, requireRole } from '@/lib/auth'
+import { todayAU } from '@/lib/tz'
 import { createClient } from '@/lib/supabase/server'
 import { PageHeader } from '@/components/PageHeader'
 import { versionOrdinal, fetchAckRegisters } from '@/lib/document-queries'
 import type { DocCategory, DocSystem, DocStatus } from '@/lib/zod'
 import { DocumentsTable, type DocumentRow } from './documents-table'
+import { RecordsSection, type RecordRow } from './records-section'
 
 export default async function DocumentsPage() {
   const profile = await requireRole('admin', 'office', 'supervisor')
@@ -16,14 +18,18 @@ export default async function DocumentsPage() {
     .select(
       `id, title, category, system, doc_number, version, status, supersedes_id,
        file_path, filename, content_type, size, review_due, notes,
+       first_issued, restricted, record_folder,
        reviewed_by, reviewed_at, approved_by, approved_at, issued_at, created_at,
        uploader:profiles!documents_uploaded_by_fkey(full_name),
        approver:profiles!documents_approved_by_fkey(full_name)`
     )
     .order('created_at', { ascending: false })
 
-  // Batch-sign the files (private bucket). Drafts may have no file.
+  // Batch-sign the files (private bucket). Drafts may have no file. Superseded
+  // and archived revisions are kept but never signed: they cannot be opened for
+  // use (SMS-02 document control rule 1).
   const paths = (docs ?? [])
+    .filter((d) => d.status !== 'superseded' && d.status !== 'archived')
     .map((d) => d.file_path as string | null)
     .filter((p): p is string => Boolean(p))
   const urlByPath = new Map<string, string>()
@@ -45,12 +51,28 @@ export default async function DocumentsPage() {
   // Match acks by the document ROW id (robust to predecessor deletion) —
   // one staff query + one batched acks query across all issued docs.
   const issuedIds = (docs ?? [])
-    .filter((d) => d.status === 'issued')
+    .filter((d) => d.status === 'issued' && d.category !== 'record')
     .map((d) => d.id as string)
   const ackRegisters = await fetchAckRegisters(supabase, issuedIds)
 
   const myId = me?.id ?? null
-  const rows: DocumentRow[] = (docs ?? []).map((d) => {
+  // Records (completed forms, minutes, reports, certificates) are filed, not
+  // revised — they sit apart from the controlled set.
+  const controlled = (docs ?? []).filter((d) => d.category !== 'record')
+  const records: RecordRow[] = (docs ?? [])
+    .filter((d) => d.category === 'record')
+    .map((d) => ({
+      id: d.id as string,
+      title: d.title as string,
+      reference: (d.doc_number as string | null) ?? null,
+      folder: (d.record_folder as string | null) ?? null,
+      dated: d.issued_at ? todayAU(new Date(d.issued_at as string)) : null,
+      filename: (d.filename as string | null) ?? null,
+      file_url: d.file_path ? urlByPath.get(d.file_path as string) ?? null : null,
+      restricted: Boolean(d.restricted),
+    }))
+
+  const rows: DocumentRow[] = controlled.map((d) => {
     const uploaderRel = d.uploader as unknown as { full_name: string } | null
     const approverRel = d.approver as unknown as { full_name: string } | null
     const ord = versionOrdinal(d.id as string, supersedesById)
@@ -72,6 +94,9 @@ export default async function DocumentsPage() {
       notes: (d.notes as string | null) ?? null,
       approved_at: (d.approved_at as string | null) ?? null,
       issued_at: (d.issued_at as string | null) ?? null,
+      issued_on: d.issued_at ? todayAU(new Date(d.issued_at as string)) : null,
+      first_issued: (d.first_issued as string | null) ?? null,
+      restricted: Boolean(d.restricted),
       created_at: d.created_at as string,
       uploaded_by_name: uploaderRel?.full_name ?? null,
       approved_by_name: approverRel?.full_name ?? null,
@@ -85,10 +110,15 @@ export default async function DocumentsPage() {
     <div className="flex flex-col gap-4">
       <PageHeader
         title="Document register"
-        description="Company-wide controlled documents — QMS, EMS and OHS policies, procedures, work instructions, forms and registers — with a formal approval workflow and read acknowledgement (ISO 9001 §7.5)."
+        description="The controlled set of the ECR IMS Rev 1 — manual, policy, procedures, forms and registers — as listed in IMS-R-05. Approved by a director; superseded revisions are kept but cannot be opened for use (SMS-02)."
       />
       <DocumentsTable
         rows={rows}
+        canManage={profile.role === 'admin' || profile.role === 'office'}
+        isAdmin={profile.role === 'admin'}
+      />
+      <RecordsSection
+        records={records}
         canManage={profile.role === 'admin' || profile.role === 'office'}
         isAdmin={profile.role === 'admin'}
       />

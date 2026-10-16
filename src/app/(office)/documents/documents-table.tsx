@@ -2,7 +2,6 @@
 
 import React, { useMemo, useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { format, parseISO, differenceInCalendarDays } from 'date-fns'
 import {
   ArchiveIcon,
   CheckCircle2Icon,
@@ -11,6 +10,7 @@ import {
   FileTextIcon,
   FolderOpenIcon,
   HistoryIcon,
+  LockIcon,
   PencilIcon,
   SendIcon,
   Trash2Icon,
@@ -99,6 +99,12 @@ export interface DocumentRow {
   notes: string | null
   approved_at: string | null
   issued_at: string | null
+  /** Issue date of this revision, as a Brisbane calendar date. */
+  issued_on: string | null
+  /** The date the document first entered use, per IMS-R-05. */
+  first_issued: string | null
+  /** Directors only (SMS-R-16 health monitoring). */
+  restricted: boolean
   created_at: string
   uploaded_by_name: string | null
   approved_by_name: string | null
@@ -155,23 +161,19 @@ export function suggestNextVersion(version: string): string {
   return v
 }
 
-/** Review due rendering: red overdue / amber ≤30 days, issued docs only. */
-function ReviewDueCell({ row }: { row: DocumentRow }) {
-  if (!row.review_due) return <span className="text-sm text-muted-foreground">—</span>
-  const days = differenceInCalendarDays(parseISO(row.review_due), new Date())
-  const highlight =
-    row.status === 'issued'
-      ? days < 0
-        ? 'font-medium text-red-600 dark:text-red-400'
-        : days <= 30
-          ? 'font-medium text-amber-600 dark:text-amber-400'
-          : ''
-      : ''
+/**
+ * The two IMS-R-05 dates: the issue date of this revision (the day a director
+ * approved it) and, under it, the date the document first entered use.
+ */
+function IssueDatesCell({ row }: { row: DocumentRow }) {
+  if (!row.issued_on) return <span className="text-sm text-muted-foreground">—</span>
   return (
-    <span className={cn('whitespace-nowrap text-sm tabular-nums', highlight)}>
-      {fmtDate(row.review_due)}
-      {row.status === 'issued' && days < 0 && (
-        <span className="block text-xs">{Math.abs(days)}d overdue</span>
+    <span className="whitespace-nowrap text-sm tabular-nums">
+      {fmtDate(row.issued_on)}
+      {row.first_issued && row.first_issued !== row.issued_on && (
+        <span className="block text-xs text-muted-foreground">
+          {`first ${fmtDate(row.first_issued)}`}
+        </span>
       )}
     </span>
   )
@@ -235,7 +237,7 @@ function DocumentDialog({
   const [category, setCategory] = useState<DocCategory>('other')
   const [system, setSystem] = useState<DocSystem>('integrated')
   const [docNumber, setDocNumber] = useState('')
-  const [version, setVersion] = useState('Rev A')
+  const [version, setVersion] = useState('Rev 0')
   const [reviewDue, setReviewDue] = useState('')
   const [notes, setNotes] = useState('')
 
@@ -249,7 +251,7 @@ function DocumentDialog({
       setCategory(supersedes?.category ?? 'other')
       setSystem(supersedes?.system ?? 'integrated')
       setDocNumber(supersedes?.doc_number ?? '')
-      setVersion(supersedes ? suggestNextVersion(supersedes.version) : 'Rev A')
+      setVersion(supersedes ? suggestNextVersion(supersedes.version) : 'Rev 0')
       setReviewDue('')
       setNotes('')
     }
@@ -336,8 +338,9 @@ function DocumentDialog({
         <form onSubmit={handleSubmit} className="flex flex-col gap-3">
           {supersedes ? (
             <p className="text-sm text-muted-foreground">
-              {supersedes.version} will be marked superseded. The new version
-              starts as a draft and goes through the approval workflow.
+              {supersedes.version} stays in force until the new version is
+              issued, then it is marked superseded. The new version starts as a
+              draft and goes through the approval workflow.
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -711,6 +714,18 @@ function DocumentDetailDialog({
 
             <LifecycleStepper status={row.status} />
 
+            {row.issued_on && (
+              <p className="text-sm text-muted-foreground">
+                {`Issued ${fmtDate(row.issued_on)}`}
+                {row.first_issued && ` · first issued ${fmtDate(row.first_issued)}`}
+              </p>
+            )}
+            {(row.status === 'superseded' || row.status === 'archived') && row.file_path && (
+              <p className="text-sm text-muted-foreground">
+                The file is kept for the record and cannot be opened for use.
+              </p>
+            )}
+
             {row.status === 'issued' && (
               <div className="flex flex-col gap-3 rounded-lg border p-3">
                 <div className="flex items-center justify-between gap-3">
@@ -823,6 +838,16 @@ export function DocumentsTable({ rows, canManage, isAdmin }: DocumentsTableProps
     return ids
   }, [rows, byId])
 
+  // Issued rows that already have a new revision in progress.
+  const pendingSuccessor = useMemo(() => {
+    const ids = new Set<string>()
+    for (const r of rows) {
+      if (r.supersedes_id && (r.status === 'draft' || r.status === 'in_review' || r.status === 'approved'))
+        ids.add(r.supersedes_id)
+    }
+    return ids
+  }, [rows])
+
   function matches(row: DocumentRow): boolean {
     if (systemFilter !== 'all' && row.system !== systemFilter) return false
     if (categoryFilter !== 'all' && row.category !== categoryFilter) return false
@@ -859,7 +884,9 @@ export function DocumentsTable({ rows, canManage, isAdmin }: DocumentsTableProps
       const seen = new Set<string>([top.id])
       while (prevId && !seen.has(prevId)) {
         const prev = byId.get(prevId)
-        if (!prev) break
+        // An issued predecessor of a draft is still in force: it is listed on
+        // its own, not nested.
+        if (!prev || !isInactive(prev.status)) break
         seen.add(prev.id)
         out.push({ row: prev, depth })
         prevId = prev.supersedes_id
@@ -934,9 +961,9 @@ export function DocumentsTable({ rows, canManage, isAdmin }: DocumentsTableProps
         system: DOC_SYSTEM_LABELS[row.system],
         version: row.version,
         status: row.status,
-        review_due: row.review_due ? fmtDate(row.review_due) : '',
+        first_issued: row.first_issued ? fmtDate(row.first_issued) : '',
+        issue_date: row.issued_on ? fmtDate(row.issued_on) : '',
         approver: row.approved_by_name ?? '',
-        issued: row.issued_at ? format(parseISO(row.issued_at), 'dd/MM/yyyy') : '',
       }))
     )
   }
@@ -1057,7 +1084,7 @@ export function DocumentsTable({ rows, canManage, isAdmin }: DocumentsTableProps
                 <TableHead>System</TableHead>
                 <TableHead>Version</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead>Review due</TableHead>
+                <TableHead>Issued</TableHead>
                 <TableHead>Approver</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -1090,7 +1117,14 @@ export function DocumentsTable({ rows, canManage, isAdmin }: DocumentsTableProps
                           <span className="flex items-center gap-1 truncate text-xs text-muted-foreground">
                             <FileTextIcon className="size-3 shrink-0" />
                             <span className="truncate">{row.filename ?? 'No file'}</span>
+                            {muted && row.filename && <span className="shrink-0">· not for use</span>}
                           </span>
+                          {row.restricted && (
+                            <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                              <LockIcon className="size-3 shrink-0" />
+                              Directors only
+                            </span>
+                          )}
                         </div>
                       </div>
                     </TableCell>
@@ -1105,7 +1139,7 @@ export function DocumentsTable({ rows, canManage, isAdmin }: DocumentsTableProps
                       <StatusBadge status={row.status} />
                     </TableCell>
                     <TableCell>
-                      <ReviewDueCell row={row} />
+                      <IssueDatesCell row={row} />
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-sm">
                       {row.approved_by_name ?? '—'}
@@ -1174,7 +1208,7 @@ export function DocumentsTable({ rows, canManage, isAdmin }: DocumentsTableProps
                             Issue
                           </Button>
                         )}
-                        {canManage && row.status === 'issued' && (
+                        {canManage && row.status === 'issued' && !pendingSuccessor.has(row.id) && (
                           <Button
                             type="button"
                             variant="outline"

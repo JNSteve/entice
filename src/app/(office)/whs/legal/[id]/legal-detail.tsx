@@ -498,7 +498,7 @@ function RecordEvaluationDialog({
           {form.verdict === 'gap' && (
             <div className="flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50/50 p-3 dark:border-red-900 dark:bg-red-950/30">
               <p className="text-sm font-medium text-red-700 dark:text-red-300">
-                A gap must be escalated to the NCR / CAPA register
+                A gap must be escalated to the corrective action register (SMS-R-08)
               </p>
               <div className="flex gap-1">
                 {(

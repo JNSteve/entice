@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { nextNumber } from '@/lib/numbering'
+import { nextCarNumber, nextNumber } from '@/lib/numbering'
 import {
   legalObligationCreateSchema,
   legalObligationUpdateSchema,
@@ -231,7 +231,7 @@ export async function recordEvaluation(
       ncrNumber = ncr.number as string
     } else {
       // Raise a new NCR from the gap.
-      const number = await nextNumber(supabase, 'ncr').catch((err) => {
+      const number = await nextCarNumber(supabase).catch((err) => {
         throw new Error(`Failed to get next NCR number: ${err.message}`)
       })
 

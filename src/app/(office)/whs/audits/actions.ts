@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireRole, type Profile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { nextNumber } from '@/lib/numbering'
+import { nextCarNumber, nextNumber } from '@/lib/numbering'
 import { todayAU } from '@/lib/tz'
 import { validateSubmissionData } from '@/lib/form-validate'
 import {
@@ -626,7 +626,7 @@ export async function raiseNcrFromFinding(
     return { error: 'Cannot raise an NCR from a finding on a closed audit' }
   }
 
-  const number = await nextNumber(supabase, 'ncr').catch((err) => {
+  const number = await nextCarNumber(supabase).catch((err) => {
     throw new Error(`Failed to get next NCR number: ${err.message}`)
   })
 

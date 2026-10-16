@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { requireRole, getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { versionOrdinal } from '@/lib/document-queries'
-import { documentSchema, documentUpdateSchema } from '@/lib/zod'
+import { todayAU } from '@/lib/tz'
+import { RECORD_CATEGORY, documentSchema, documentUpdateSchema, recordSchema } from '@/lib/zod'
 
 type Result = { error?: string }
 
@@ -19,11 +20,11 @@ function revalidateDocuments() {
  * file (if any) to attachments/documents/. A document always starts life as a
  * 'draft' — the approval lifecycle (submit → approve → issue) takes it live.
  *
- * When `supersedes_id` is set this is a "new version": the old (issued) row is
- * flipped to 'superseded' first, then the new draft is inserted (revert the
- * flip if the insert fails — office users cannot delete rows, so supersede-first
- * keeps the rollback within their RLS rights). Audit rows come free via the
- * documents audit trigger.
+ * When `supersedes_id` is set this is a "new version". The issued revision
+ * stays in force while the new one is drafted and approved (SMS-02: a document
+ * is current until its replacement is issued) — issueDocument supersedes it.
+ * Only one new revision of a document may be in progress at a time. Audit rows
+ * come free via the documents audit trigger.
  */
 export async function createDocument(data: unknown): Promise<Result> {
   const profile = await requireRole('admin', 'office')
@@ -36,15 +37,22 @@ export async function createDocument(data: unknown): Promise<Result> {
   const supabase = await createClient()
 
   if (parsed.data.supersedes_id) {
-    const { data: superseded, error: supersedeError } = await supabase
+    const { data: current } = await supabase
       .from('documents')
-      .update({ status: 'superseded' })
+      .select('status')
       .eq('id', parsed.data.supersedes_id)
-      .eq('status', 'issued') // only the live (issued) version can be superseded
-      .select('id')
-    if (supersedeError) return { error: supersedeError.message }
-    if (!superseded || superseded.length === 0) {
+      .single()
+    if (current?.status !== 'issued') {
       return { error: 'Document is no longer issued — refresh and try again' }
+    }
+    const { data: inProgress } = await supabase
+      .from('documents')
+      .select('id')
+      .eq('supersedes_id', parsed.data.supersedes_id)
+      .in('status', ['draft', 'in_review', 'approved'])
+      .limit(1)
+    if (inProgress && inProgress.length > 0) {
+      return { error: 'A new revision of this document is already in progress' }
     }
   }
 
@@ -65,17 +73,44 @@ export async function createDocument(data: unknown): Promise<Result> {
     uploaded_by: profile.id,
   })
 
-  if (error) {
-    // Roll back the supersede flip so versioning stays all-or-nothing.
-    if (parsed.data.supersedes_id) {
-      await supabase
-        .from('documents')
-        .update({ status: 'issued' })
-        .eq('id', parsed.data.supersedes_id)
-        .eq('status', 'superseded')
-    }
-    return { error: error.message }
+  if (error) return { error: error.message }
+
+  revalidateDocuments()
+  return {}
+}
+
+/**
+ * Files a record — a completed form, minutes, an audit report, a certificate —
+ * after the browser client has uploaded it to attachments/documents/. Records
+ * are filed, not controlled: they go straight to 'issued' with no revision or
+ * approval, and nothing edits them afterwards (SMS-02 rule 4). `dated` is the
+ * record's own date (the meeting, the audit, the certificate).
+ */
+export async function createRecord(data: unknown): Promise<Result> {
+  const profile = await requireRole('admin', 'office')
+
+  const parsed = recordSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
   }
+
+  const supabase = await createClient()
+  const { error } = await supabase.from('documents').insert({
+    title: parsed.data.title,
+    category: RECORD_CATEGORY,
+    system: 'integrated',
+    doc_number: parsed.data.reference,
+    version: 'Record',
+    status: 'issued',
+    file_path: parsed.data.file_path,
+    filename: parsed.data.filename,
+    content_type: parsed.data.content_type,
+    size: parsed.data.size,
+    record_folder: parsed.data.folder,
+    issued_at: `${parsed.data.dated}T00:00:00+10:00`,
+    uploaded_by: profile.id,
+  })
+  if (error) return { error: error.message }
 
   revalidateDocuments()
   return {}
@@ -204,6 +239,10 @@ export async function approveDocument(id: string): Promise<Result> {
 /**
  * approved → issued (records issued time). GUARD: a document with no file
  * cannot be issued — the controlled register must hold the actual document.
+ *
+ * Issuing a new revision supersedes the revision it replaces at that moment
+ * (not when it was drafted) and carries its first-issued date forward; a new
+ * document first enters use today (the two IMS-R-05 dates, SMS-02).
  */
 export async function issueDocument(id: string): Promise<Result> {
   await requireRole('admin', 'office')
@@ -211,21 +250,51 @@ export async function issueDocument(id: string): Promise<Result> {
 
   const { data: doc } = await supabase
     .from('documents')
-    .select('id, status, file_path')
+    .select('id, status, file_path, supersedes_id')
     .eq('id', id)
     .single()
   if (!doc) return { error: 'Document not found' }
   if (doc.status !== 'approved') return { error: 'Document is not approved — refresh the page' }
   if (!doc.file_path) return { error: 'Upload the document file before issuing' }
 
+  const previousId = (doc.supersedes_id as string | null) ?? null
+  let firstIssued = todayAU()
+  let supersededPrevious = false
+  if (previousId) {
+    const { data: previous } = await supabase
+      .from('documents')
+      .select('first_issued')
+      .eq('id', previousId)
+      .single()
+    if (previous?.first_issued) firstIssued = previous.first_issued as string
+
+    const { data: flipped, error: supersedeError } = await supabase
+      .from('documents')
+      .update({ status: 'superseded' })
+      .eq('id', previousId)
+      .eq('status', 'issued')
+      .select('id')
+    if (supersedeError) return { error: supersedeError.message }
+    supersededPrevious = Boolean(flipped && flipped.length > 0)
+  }
+
   const { data, error } = await supabase
     .from('documents')
-    .update({ status: 'issued', issued_at: new Date().toISOString() })
+    .update({ status: 'issued', issued_at: new Date().toISOString(), first_issued: firstIssued })
     .eq('id', id)
     .eq('status', 'approved')
     .select('id')
-  if (error) return { error: error.message }
-  if (!data || data.length === 0) return { error: 'Document is not approved — refresh the page' }
+  if (error || !data || data.length === 0) {
+    // Put the previous revision back in force so issuing stays all-or-nothing.
+    if (supersededPrevious && previousId) {
+      await supabase
+        .from('documents')
+        .update({ status: 'issued' })
+        .eq('id', previousId)
+        .eq('status', 'superseded')
+    }
+    return { error: error?.message ?? 'Document is not approved — refresh the page' }
+  }
   revalidateDocuments()
   return {}
 }

@@ -586,6 +586,14 @@ export const jobUpdateSchema = z.object({
 
 export type JobUpdateInput = z.infer<typeof jobUpdateSchema>
 
+/** The two facts that decide which records a job must hold (src/lib/job-records.ts). */
+export const jobRecordProfileSchema = z.object({
+  licensed_removal: z.enum(['none', 'class_a', 'class_b']),
+  regulated_waste: z.boolean(),
+})
+
+export type JobRecordProfileInput = z.infer<typeof jobRecordProfileSchema>
+
 export const jobStatusSchema = z.object({
   status: z.enum(['scheduled', 'in_progress', 'completed', 'lost']),
   scheduled_start: z.string().nullish().optional(),
@@ -1634,35 +1642,74 @@ export const NCR_STATUSES = [
 ] as const
 export type NcrStatus = (typeof NCR_STATUSES)[number]
 
-/** Office-side raise: a fuller form than the field report. */
-export const ncrCreateSchema = z.object({
-  source: z.enum(NCR_SOURCES),
-  category: optionalText,
-  severity: z.coerce.number().int().min(1).max(5),
-  title: z.string().min(1, 'Title is required'),
-  description: z.string().min(1, 'Describe the nonconformance'),
-  immediate_action: optionalText,
-  project_id: z
-    .uuid()
-    .nullish()
-    .transform((v) => v ?? null),
-  job_id: z
-    .uuid()
-    .nullish()
-    .transform((v) => v ?? null),
-  vendor_id: z
-    .uuid()
-    .nullish()
-    .transform((v) => v ?? null),
-  incident_id: z
-    .uuid()
-    .nullish()
-    .transform((v) => v ?? null),
-  occurred_on: z
-    .string()
-    .nullish()
-    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
-})
+// SMS-R-08 classification, stored as written.
+export const NCR_CLASSIFICATIONS = ['Major', 'Minor', 'OFI'] as const
+export type NcrClassification = (typeof NCR_CLASSIFICATIONS)[number]
+
+/** The 1–5 severity a classification stands for when none is picked at raise. */
+export const NCR_CLASSIFICATION_SEVERITY: Record<NcrClassification, number> = {
+  Major: 4,
+  Minor: 2,
+  OFI: 1,
+}
+
+/**
+ * Office-side raise: a fuller form than the field report. Severity is required
+ * by the table but may be left blank when a classification is chosen — it then
+ * follows NCR_CLASSIFICATION_SEVERITY.
+ */
+export const ncrCreateSchema = z
+  .object({
+    source: z.enum(NCR_SOURCES),
+    source_detail: optionalText,
+    classification: z
+      .enum(NCR_CLASSIFICATIONS, { error: 'Classification must be Major, Minor or OFI' })
+      .nullish()
+      .transform((v) => v ?? null),
+    category: optionalText,
+    severity: z.coerce.number().int().min(1).max(5).nullish(),
+    title: z.string().min(1, 'Title is required'),
+    description: z.string().min(1, 'Describe the nonconformance'),
+    immediate_action: optionalText,
+    assigned_to_text: optionalText,
+    due_date: z
+      .string()
+      .nullish()
+      .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+    project_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    job_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    vendor_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    incident_id: z
+      .uuid()
+      .nullish()
+      .transform((v) => v ?? null),
+    occurred_on: z
+      .string()
+      .nullish()
+      .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null)),
+  })
+  .transform((d, ctx) => {
+    const severity =
+      d.severity ?? (d.classification ? NCR_CLASSIFICATION_SEVERITY[d.classification] : null)
+    if (severity == null) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'Choose a classification or a severity',
+        path: ['severity'],
+      })
+      return z.NEVER
+    }
+    return { ...d, severity }
+  })
 
 export type NcrCreateInput = z.infer<typeof ncrCreateSchema>
 
@@ -1679,15 +1726,31 @@ export const ncrFieldRaiseSchema = z.object({
 
 export type NcrFieldRaiseInput = z.infer<typeof ncrFieldRaiseSchema>
 
-/** Edit while not closed. Includes root_cause (captured during investigation). */
+/**
+ * Edit while not closed. Includes root_cause (captured during investigation)
+ * and implemented (SMS-R-08: date and what was done).
+ */
 export const ncrUpdateSchema = z.object({
   source: z.enum(NCR_SOURCES).optional(),
+  source_detail: optionalText.optional(),
+  classification: z
+    .enum(NCR_CLASSIFICATIONS, { error: 'Classification must be Major, Minor or OFI' })
+    .nullish()
+    .transform((v) => v ?? null)
+    .optional(),
   category: optionalText.optional(),
   severity: z.coerce.number().int().min(1).max(5).optional(),
   title: z.string().min(1, 'Title is required').optional(),
   description: z.string().min(1, 'Describe the nonconformance').optional(),
   immediate_action: optionalText.optional(),
   root_cause: optionalText.optional(),
+  assigned_to_text: optionalText.optional(),
+  due_date: z
+    .string()
+    .nullish()
+    .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
+    .optional(),
+  implemented: optionalText.optional(),
   project_id: z
     .uuid()
     .nullish()
@@ -1856,6 +1919,12 @@ export const DOC_CATEGORY_LABELS: Record<DocCategory, string> = {
   other: 'Other',
 }
 
+/** IMS revisions are whole numbers from 0, written 'Rev 2' (SMS-02); no lettered revisions. */
+const docRevision = z
+  .string()
+  .transform((v) => v.trim().replace(/\s+/g, ' '))
+  .pipe(z.string().regex(/^Rev (0|[1-9]\d*)$/, 'Write the revision as Rev 0, Rev 1, Rev 2 … (SMS-02)'))
+
 export const DOC_SYSTEMS = ['qms', 'ems', 'ohs', 'integrated'] as const
 export type DocSystem = (typeof DOC_SYSTEMS)[number]
 
@@ -1886,15 +1955,15 @@ export const DOC_LIFECYCLE: DocStatus[] = ['draft', 'in_review', 'approved', 'is
  * created with no file yet (file_path/filename null); the issue action guards
  * against issuing without a file. The file, when present, is uploaded by the
  * browser client to attachments/documents/ first; this validates the row the
- * server action records afterwards. When supersedes_id is set the action also
- * flips the old row to 'superseded' and starts the new row in 'draft'.
+ * server action records afterwards. When supersedes_id is set the new row starts
+ * in 'draft' and the old row stays in force until the new one is issued.
  */
 export const documentSchema = z.object({
   title: z.string().min(1, 'Title is required'),
   category: z.enum(DOC_CATEGORIES),
   system: z.enum(DOC_SYSTEMS),
   doc_number: optionalText,
-  version: z.string().min(1, 'Version is required').transform((v) => v.trim()),
+  version: docRevision,
   file_path: z
     .string()
     .regex(/^documents\//, 'Invalid file path')
@@ -1928,17 +1997,55 @@ export const documentUpdateSchema = z.object({
   category: z.enum(DOC_CATEGORIES).optional(),
   system: z.enum(DOC_SYSTEMS).optional(),
   doc_number: optionalText.optional(),
-  version: z
-    .string()
-    .min(1, 'Version is required')
-    .transform((v) => v.trim())
-    .optional(),
+  version: docRevision.optional(),
   review_due: z
     .string()
     .nullish()
     .transform((v) => (v?.trim() === '' ? null : v?.trim() ?? null))
     .optional(),
   notes: optionalText.optional(),
+})
+
+/**
+ * Records — completed forms, minutes, audit reports, certificates, insurance —
+ * share the documents table as category 'record' but are filed, not controlled:
+ * no revision, no approval workflow, never edited after filing (SMS-02 rule 4).
+ * They stay out of DOC_CATEGORIES so the controlled register never offers them.
+ */
+export const RECORD_CATEGORY = 'record'
+
+/** The sub-folders of 6. Records in the ECR IMS Rev 1 folder. */
+export const RECORD_FOLDERS = [
+  'Management review',
+  'Internal audit',
+  'Corrective actions',
+  'Certification body',
+  'Inductions',
+  'Position descriptions',
+  'Competency',
+  'Insurance',
+  'Compliance',
+  'Other',
+] as const
+export type RecordFolder = (typeof RECORD_FOLDERS)[number]
+
+export const recordSchema = z.object({
+  title: z.string().trim().min(1, 'Title is required'),
+  reference: optionalText,
+  folder: z.enum(RECORD_FOLDERS),
+  dated: isoDate,
+  file_path: z
+    .string()
+    .regex(/^documents\//, 'Invalid file path')
+    .refine((v) => !v.includes('..'), 'Invalid file path'),
+  filename: z.string().min(1, 'File is required'),
+  content_type: optionalText,
+  size: z.coerce
+    .number()
+    .int()
+    .positive()
+    .nullish()
+    .transform((v) => v ?? null),
 })
 
 // ─── Internal audit programme (ISO 9001/14001/45001 §9.2) ────────────────────

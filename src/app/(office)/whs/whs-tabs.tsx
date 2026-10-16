@@ -16,7 +16,7 @@ const TABS: Tab[] = [
   { label: 'Overview', href: '/whs' },
   { label: 'Forms', href: '/whs/forms' },
   { label: 'Incidents', href: '/whs/incidents' },
-  { label: 'NCR / CAPA', href: '/whs/ncr' },
+  { label: 'Corrective actions', href: '/whs/ncr' },
   { label: 'Audits', href: '/whs/audits' },
   { label: 'Training', href: '/whs/training' },
   { label: 'Risks', href: '/whs/risks' },

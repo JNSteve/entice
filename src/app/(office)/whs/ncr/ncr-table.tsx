@@ -35,32 +35,40 @@ import { StatusBadge } from '@/components/StatusBadge'
 import { EmptyState } from '@/components/EmptyState'
 import { fmtDate } from '@/lib/format'
 import { downloadCsv } from '@/lib/csv'
+import { todayAUClient } from '@/lib/tz-client'
 import { cn } from '@/lib/utils'
 import {
+  NCR_CLASSIFICATIONS,
+  NCR_CLASSIFICATION_SEVERITY,
   NCR_SOURCES,
   NCR_SOURCE_LABELS,
   NCR_STATUSES,
+  type NcrClassification,
   type NcrSource,
 } from '@/lib/zod'
 import { createNcr } from './actions'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
+/** One line of the SMS-R-08 corrective action register. */
 export interface NcrRow {
   id: string
   number: string
+  classification: string | null
+  /** 'YYYY-MM-DD': occurred_on, else the Brisbane day the record was entered. */
+  raised_on: string
   source: NcrSource
-  severity: number
+  source_detail: string | null
   title: string
+  description: string
+  assigned_to_text: string | null
+  due_date: string | null
+  implemented: string | null
+  verification_notes: string | null
   status: string
-  raised_by_name: string | null
-  occurred_on: string | null
-  created_at: string
+  /** Brisbane calendar day of closed_at. */
+  closed_on: string | null
   project_id: string | null
-  project_label: string | null
-  job_id: string | null
-  job_label: string | null
-  vendor_label: string | null
   open_capa_count: number
   overdue_capa_count: number
 }
@@ -118,34 +126,24 @@ function SourceBadge({ source }: { source: NcrSource }) {
   )
 }
 
-// ─── Severity dots ────────────────────────────────────────────────────────────
+// ─── Register text ────────────────────────────────────────────────────────────
 
-function SeverityBadge({ severity }: { severity: number }) {
-  const high = severity >= 4
+/** Long register text, clamped to two lines; the full text is on hover. */
+function ClampedText({
+  text,
+  className,
+}: {
+  text: string | null
+  className?: string
+}) {
+  if (!text) return <span className="text-muted-foreground">—</span>
   return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <span
-          key={i}
-          className={cn(
-            'inline-block size-2 rounded-full',
-            i <= severity
-              ? high
-                ? 'bg-red-500'
-                : 'bg-amber-500'
-              : 'bg-gray-200 dark:bg-gray-700'
-          )}
-        />
-      ))}
-      <span
-        className={cn(
-          'ml-1 text-xs font-medium',
-          high ? 'text-red-600 dark:text-red-400' : 'text-muted-foreground'
-        )}
-      >
-        {severity}
-      </span>
-    </div>
+    <span
+      className={cn('line-clamp-2 whitespace-normal', className)}
+      title={text}
+    >
+      {text}
+    </span>
   )
 }
 
@@ -169,17 +167,26 @@ function RaiseNcrDialog({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [form, setForm] = useState({
+    classification: '',
+    // Blank until picked — the server then takes it from the classification.
+    severity: '',
     source: 'quality' as NcrSource,
-    severity: '3',
+    source_detail: '',
     title: '',
     description: '',
     immediate_action: '',
     category: '',
-    occurred_on: '',
+    occurred_on: todayAUClient(),
+    assigned_to_text: '',
+    due_date: '',
     project_id: '',
     job_id: '',
     vendor_id: '',
   })
+
+  const classificationSeverity = form.classification
+    ? NCR_CLASSIFICATION_SEVERITY[form.classification as NcrClassification]
+    : null
 
   function field(key: keyof typeof form, value: string) {
     setForm((f) => ({ ...f, [key]: value }))
@@ -190,9 +197,14 @@ function RaiseNcrDialog({
     startTransition(async () => {
       const result = await createNcr({
         ...form,
+        classification: form.classification || null,
+        severity: form.severity || null,
+        source_detail: form.source_detail || null,
         category: form.category || null,
         immediate_action: form.immediate_action || null,
         occurred_on: form.occurred_on || null,
+        assigned_to_text: form.assigned_to_text || null,
+        due_date: form.due_date || null,
         project_id: form.project_id || null,
         job_id: form.job_id || null,
         vendor_id: form.vendor_id || null,
@@ -201,7 +213,7 @@ function RaiseNcrDialog({
         toast.error(result.error)
         return
       }
-      toast.success('NCR raised')
+      toast.success('CAR raised')
       onOpenChange(false)
       if (result.id) router.push(`/whs/ncr/${result.id}`)
     })
@@ -209,11 +221,59 @@ function RaiseNcrDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Raise NCR</DialogTitle>
+          <DialogTitle>Raise CAR</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Classification</Label>
+              <Select
+                value={form.classification || null}
+                onValueChange={(v) =>
+                  field('classification', !v || v === '__none' ? '' : v)
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Not classified" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none">Not classified</SelectItem>
+                  {NCR_CLASSIFICATIONS.map((c) => (
+                    <SelectItem key={c} value={c}>
+                      {c}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Severity (1–5)</Label>
+              <Select
+                value={form.severity || null}
+                onValueChange={(v) => v && field('severity', v)}
+              >
+                <SelectTrigger>
+                  <SelectValue
+                    placeholder={
+                      classificationSeverity
+                        ? `${classificationSeverity} — from classification`
+                        : 'Select'
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((n) => (
+                    <SelectItem key={n} value={String(n)}>
+                      {n} {n >= 4 ? '— High' : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div className="grid grid-cols-2 gap-4">
             <div className="flex flex-col gap-1.5">
               <Label>Source</Label>
@@ -234,22 +294,12 @@ function RaiseNcrDialog({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Severity (1–5)</Label>
-              <Select
-                value={form.severity}
-                onValueChange={(v) => v && field('severity', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <SelectItem key={n} value={String(n)}>
-                      {n} {n >= 4 ? '— High' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <Label>Source detail (optional)</Label>
+              <Input
+                value={form.source_detail}
+                onChange={(e) => field('source_detail', e.target.value)}
+                placeholder="As written, e.g. internal audit"
+              />
             </div>
           </div>
 
@@ -273,7 +323,7 @@ function RaiseNcrDialog({
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label>Occurred on (optional)</Label>
+              <Label>Date raised</Label>
               <Input
                 type="date"
                 value={form.occurred_on}
@@ -301,6 +351,25 @@ function RaiseNcrDialog({
               placeholder="What was done immediately to contain it?"
               rows={2}
             />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label>Assigned to (optional)</Label>
+              <Input
+                value={form.assigned_to_text}
+                onChange={(e) => field('assigned_to_text', e.target.value)}
+                placeholder="Name and position"
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Due date (optional)</Label>
+              <Input
+                type="date"
+                value={form.due_date}
+                onChange={(e) => field('due_date', e.target.value)}
+              />
+            </div>
           </div>
 
           <div className="grid grid-cols-3 gap-3">
@@ -380,7 +449,7 @@ function RaiseNcrDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={pending}>
-              {pending ? 'Raising…' : 'Raise NCR'}
+              {pending ? 'Raising…' : 'Raise CAR'}
             </Button>
           </DialogFooter>
         </form>
@@ -393,12 +462,20 @@ function RaiseNcrDialog({
 
 interface NcrTableProps {
   ncrs: NcrRow[]
+  /** AU (Brisbane) calendar day from the server, for the overdue flag. */
+  today: string
   projects: ProjectOption[]
   jobs: JobOption[]
   vendors: VendorOption[]
 }
 
-export function NcrTable({ ncrs, projects, jobs, vendors }: NcrTableProps) {
+export function NcrTable({
+  ncrs,
+  today,
+  projects,
+  jobs,
+  vendors,
+}: NcrTableProps) {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [sourceFilter, setSourceFilter] = useState<string>('all')
   const [projectFilter, setProjectFilter] = useState<string>('all')
@@ -420,19 +497,20 @@ export function NcrTable({ ncrs, projects, jobs, vendors }: NcrTableProps) {
 
   function exportCsv() {
     downloadCsv(
-      'ncr-register.csv',
+      'corrective-actions-register.csv',
       filtered.map((r) => ({
-        number: r.number,
-        source: NCR_SOURCE_LABELS[r.source],
-        severity: r.severity,
+        car_no: r.number,
+        classification: r.classification ?? '',
+        date_raised: r.raised_on,
+        source: r.source_detail ?? NCR_SOURCE_LABELS[r.source],
         title: r.title,
+        description: r.description,
+        assigned_to: r.assigned_to_text ?? '',
+        due: r.due_date ?? '',
+        implemented: r.implemented ?? '',
+        verified: r.verification_notes ?? '',
         status: r.status,
-        project_or_job: r.project_label ?? r.job_label ?? r.vendor_label ?? '',
-        open_capa: r.open_capa_count,
-        overdue_capa: r.overdue_capa_count,
-        raised_by: r.raised_by_name ?? '',
-        occurred_on: r.occurred_on ?? '',
-        raised_on: r.created_at.slice(0, 10),
+        closed: r.closed_on ?? '',
       }))
     )
   }
@@ -508,7 +586,7 @@ export function NcrTable({ ncrs, projects, jobs, vendors }: NcrTableProps) {
 
           <Button size="sm" onClick={() => setDialogOpen(true)}>
             <PlusIcon className="size-4" />
-            Raise NCR
+            Raise CAR
           </Button>
         </div>
       </div>
@@ -516,82 +594,150 @@ export function NcrTable({ ncrs, projects, jobs, vendors }: NcrTableProps) {
       {filtered.length === 0 ? (
         <EmptyState
           icon={<ClipboardCheckIcon className="size-8" />}
-          title="No NCRs"
-          description="No nonconformances match the current filters."
+          title="No corrective actions"
+          description="No corrective actions match the current filters."
         />
       ) : (
         <div className="overflow-hidden rounded-lg border">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Number</TableHead>
-                <TableHead>Title</TableHead>
+                <TableHead>CAR no.</TableHead>
+                <TableHead>Date raised</TableHead>
                 <TableHead>Source</TableHead>
-                <TableHead>Severity</TableHead>
+                <TableHead>Description</TableHead>
+                <TableHead>Assigned to</TableHead>
+                <TableHead>Due</TableHead>
+                <TableHead>Implemented</TableHead>
+                <TableHead>Verified</TableHead>
                 <TableHead>Status</TableHead>
-                <TableHead className="text-right">CAPA</TableHead>
-                <TableHead>Raised by</TableHead>
-                <TableHead>Date</TableHead>
+                <TableHead>Closed</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((row) => (
-                <TableRow key={row.id}>
-                  <TableCell>
-                    <Link
-                      href={`/whs/ncr/${row.id}`}
-                      className="font-mono font-medium hover:underline"
-                    >
-                      {row.number}
-                    </Link>
-                  </TableCell>
-                  <TableCell className="max-w-[260px]">
-                    <Link
-                      href={`/whs/ncr/${row.id}`}
-                      className="truncate text-sm hover:underline"
-                    >
-                      {row.title}
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <SourceBadge source={row.source} />
-                  </TableCell>
-                  <TableCell>
-                    <SeverityBadge severity={row.severity} />
-                  </TableCell>
-                  <TableCell>
-                    <StatusBadge status={row.status} />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    {row.open_capa_count > 0 ? (
-                      <span
-                        className={cn(
-                          'text-xs font-medium tabular-nums',
-                          row.overdue_capa_count > 0
-                            ? 'text-red-600 dark:text-red-400'
-                            : 'text-muted-foreground'
-                        )}
-                        title={
-                          row.overdue_capa_count > 0
-                            ? `${row.overdue_capa_count} overdue`
-                            : undefined
-                        }
+              {filtered.map((row) => {
+                const overdue =
+                  row.status !== 'closed' &&
+                  row.due_date != null &&
+                  row.due_date < today
+                // Pure calendar-date maths against the AU 'today' string.
+                const daysOverdue = overdue
+                  ? Math.round(
+                      (Date.parse(`${today}T00:00:00Z`) -
+                        Date.parse(`${row.due_date}T00:00:00Z`)) /
+                        86_400_000
+                    )
+                  : 0
+                return (
+                  <TableRow key={row.id} className="text-xs">
+                    <TableCell className="align-top">
+                      <Link
+                        href={`/whs/ncr/${row.id}`}
+                        className="font-mono font-medium hover:underline"
                       >
-                        {row.open_capa_count} open
-                        {row.overdue_capa_count > 0 ? ' ⚠' : ''}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {row.raised_by_name ?? '—'}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {fmtDate(row.occurred_on ?? row.created_at)}
-                  </TableCell>
-                </TableRow>
-              ))}
+                        {row.number}
+                      </Link>
+                      {row.classification && (
+                        <div className="text-muted-foreground">
+                          {row.classification}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell className="align-top tabular-nums text-muted-foreground">
+                      {fmtDate(row.raised_on)}
+                    </TableCell>
+                    <TableCell className="align-top">
+                      {row.source_detail ? (
+                        <ClampedText
+                          text={row.source_detail}
+                          className="min-w-[120px] max-w-[180px]"
+                        />
+                      ) : (
+                        <SourceBadge source={row.source} />
+                      )}
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="flex min-w-[220px] max-w-[320px] flex-col whitespace-normal">
+                        <Link
+                          href={`/whs/ncr/${row.id}`}
+                          className="line-clamp-2 font-medium hover:underline"
+                        >
+                          {row.title}
+                        </Link>
+                        <ClampedText
+                          text={row.description}
+                          className="text-muted-foreground"
+                        />
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <ClampedText
+                        text={row.assigned_to_text}
+                        className="min-w-[120px] max-w-[180px]"
+                      />
+                    </TableCell>
+                    <TableCell className="align-top tabular-nums">
+                      {row.due_date ? (
+                        <div
+                          className={cn(
+                            'flex flex-col',
+                            overdue
+                              ? 'font-medium text-red-600 dark:text-red-400'
+                              : 'text-muted-foreground'
+                          )}
+                        >
+                          <span>{fmtDate(row.due_date)}</span>
+                          {overdue && (
+                            <span>
+                              {`${daysOverdue} day${daysOverdue === 1 ? '' : 's'} overdue`}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <ClampedText
+                        text={row.implemented}
+                        className="min-w-[160px] max-w-[240px]"
+                      />
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <ClampedText
+                        text={row.verification_notes}
+                        className="min-w-[160px] max-w-[240px]"
+                      />
+                    </TableCell>
+                    <TableCell className="align-top">
+                      <div className="flex flex-col items-start gap-1">
+                        <StatusBadge status={row.status} />
+                        {row.open_capa_count > 0 && (
+                          <span
+                            className={cn(
+                              'font-medium tabular-nums',
+                              row.overdue_capa_count > 0
+                                ? 'text-red-600 dark:text-red-400'
+                                : 'text-muted-foreground'
+                            )}
+                            title={
+                              row.overdue_capa_count > 0
+                                ? `${row.overdue_capa_count} overdue`
+                                : undefined
+                            }
+                          >
+                            {`${row.open_capa_count} CAPA open`}
+                            {row.overdue_capa_count > 0 ? ' ⚠' : ''}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell className="align-top tabular-nums text-muted-foreground">
+                      {row.closed_on ? fmtDate(row.closed_on) : '—'}
+                    </TableCell>
+                  </TableRow>
+                )
+              })}
             </TableBody>
           </Table>
         </div>

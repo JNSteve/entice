@@ -1,7 +1,8 @@
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { requireRole } from '@/lib/auth'
+import { isComplianceDirector, requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { todayAU } from '@/lib/tz'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
 import { fetchAuditFor } from '@/lib/audit-queries'
 import { ChevronLeftIcon } from 'lucide-react'
@@ -40,8 +41,10 @@ export default async function NcrDetailPage({
     supabase
       .from('ncrs')
       .select(
-        `id, number, source, category, severity, title, description,
-         immediate_action, root_cause, status, occurred_on, raised_by,
+        `id, number, source, source_detail, classification, category,
+         severity, title, description, immediate_action, root_cause,
+         assigned_to_text, due_date, implemented, status, occurred_on,
+         created_at, raised_by,
          verification_notes, verified_by, verified_at, closed_at,
          project_id, job_id, vendor_id, incident_id,
          projects(number, name),
@@ -93,14 +96,24 @@ export default async function NcrDetailPage({
     id: ncr.id as string,
     number: ncr.number as string,
     source: ncr.source as NcrSource,
+    source_detail: (ncr.source_detail as string | null) ?? null,
+    classification: (ncr.classification as string | null) ?? null,
     category: (ncr.category as string | null) ?? null,
     severity: Number(ncr.severity),
     title: ncr.title as string,
     description: ncr.description as string,
     immediate_action: (ncr.immediate_action as string | null) ?? null,
     root_cause: (ncr.root_cause as string | null) ?? null,
+    assigned_to_text: (ncr.assigned_to_text as string | null) ?? null,
+    due_date: (ncr.due_date as string | null) ?? null,
+    implemented: (ncr.implemented as string | null) ?? null,
     status: ncr.status as NcrStatus,
     occurred_on: (ncr.occurred_on as string | null) ?? null,
+    // Date raised = occurred_on; field reports leave it blank, so fall back to
+    // the Brisbane day the record was entered.
+    raised_on:
+      (ncr.occurred_on as string | null) ??
+      todayAU(new Date(ncr.created_at as string)),
     raised_by_name: raiser?.full_name ?? null,
     verification_notes: (ncr.verification_notes as string | null) ?? null,
     verified_by_name: verifier?.full_name ?? null,
@@ -176,13 +189,14 @@ export default async function NcrDetailPage({
         className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
       >
         <ChevronLeftIcon className="size-4" />
-        NCR / CAPA
+        Corrective actions
       </Link>
       <NcrDetailClient
         ncr={ncrData}
         actions={actionRows}
         attachments={attachmentItems}
         role={profile.role}
+        canClose={isComplianceDirector(profile)}
         projects={projectOptions}
         jobs={jobOptions}
         vendors={vendorOptions}
