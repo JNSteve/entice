@@ -21,6 +21,8 @@ export type SwmsRegisterPdfProps = {
   changes: SwmsPdfChange[]
   /** Set when the original PDF could not be attached, e.g. "the PDF is password-protected". */
   originalProblem: string | null
+  /** Fixed watermark + footer line (portal issue stamp). */
+  watermark?: string | null
 }
 
 const styles = StyleSheet.create({
@@ -47,6 +49,7 @@ export function SwmsRegisterPdf({
   earlierSignatureCount,
   changes,
   originalProblem,
+  watermark = null,
 }: SwmsRegisterPdfProps) {
   return (
     <DocShell
@@ -55,6 +58,7 @@ export function SwmsRegisterPdf({
       docDate={swms.date}
       company={company}
       footerText={`SWMS — ${swms.title} (v${swms.version}) — ${swms.parentLabel}`}
+      watermark={watermark}
     >
       {originalProblem && (
         <View>
