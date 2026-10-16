@@ -124,7 +124,11 @@ No migration: the column, its check constraint and the labels all exist.
   with subtotals, skips empty groups, shows the Category select when
   editable and plain text when not, per-group Add line calls `addLine` with
   the group's kind.
-- Extend `tests/quote-pdf.test.tsx`: itemised output lists a section's lines
-  in grouped order.
+- `tests/quote-line-row.test.tsx` (jsdom): the Category select offers the six
+  options, a change saves with `kind`, other field saves carry the current
+  kind, read-only rows show the label or "—".
+- `buildQuotePdfResponse` and the conversion actions fetch from Supabase and
+  have no unit harness; their grouped order is the helper's `sortLinesGrouped`
+  (unit tested) plus the browser PDF check.
 - `npm test`, `npx tsc --noEmit`, `npm run lint` green; browser check on the
   worktree dev server against a real quote.
