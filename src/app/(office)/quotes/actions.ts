@@ -8,6 +8,7 @@ import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { lineSell } from '@/lib/money'
 import { nextNumber } from '@/lib/numbering'
+import { sortLinesGrouped } from '@/lib/quote-lines'
 import { notifyClientQuoteSent, syncRequestsForQuote } from '@/lib/notify'
 import { canPublishQuote } from '@/lib/portal-interactions'
 import { issueProblem } from '@/lib/issue-guards'
@@ -215,7 +216,7 @@ export async function duplicateQuote(
   const { data: lines } = await supabase
     .from('quote_lines')
     .select(
-      'section_id, description, qty, unit, unit_cost, markup_pct, unit_sell, position'
+      'section_id, description, qty, unit, unit_cost, markup_pct, unit_sell, position, kind'
     )
     .eq('quote_id', quoteId)
     .order('position')
@@ -233,6 +234,7 @@ export async function duplicateQuote(
         markup_pct: l.markup_pct,
         unit_sell: l.unit_sell,
         position: l.position,
+        kind: l.kind,
       }))
     )
     if (linesErr) return { error: linesErr.message }
@@ -616,7 +618,8 @@ export async function addLine(data: unknown): Promise<Result> {
     .single()
   if (!section) return { error: 'Section not found on this quote' }
 
-  // Defaults for a blank manual line.
+  // Defaults for a blank manual line. The per-group "Add line" button passes
+  // the group's category; a rate item below overrides it with its own.
   let line = {
     description: '',
     unit: 'ea',
@@ -624,7 +627,7 @@ export async function addLine(data: unknown): Promise<Result> {
     markup_pct: 0,
     unit_sell: 0,
     rate_item_id: null as string | null,
-    kind: null as string | null,
+    kind: (parsed.data.kind ?? null) as string | null,
   }
 
   if (parsed.data.rate_item_id) {
@@ -678,7 +681,7 @@ export async function updateLine(id: string, data: unknown): Promise<Result> {
   const supabase = await createClient()
   const { data: line } = await supabase
     .from('quote_lines')
-    .select('id, quote_id')
+    .select('id, quote_id, section_id, kind')
     .eq('id', id)
     .single()
   if (!line) return { error: 'Line not found' }
@@ -692,9 +695,28 @@ export async function updateLine(id: string, data: unknown): Promise<Result> {
     ? fields.unit_sell
     : lineSell(fields.unit_cost, fields.markup_pct)
 
+  // A category change drops the line at the end of its new group. Lines are
+  // listed by category first and position second (sortLinesGrouped), so the
+  // highest position in the section is also the last slot in any group.
+  let position: number | undefined
+  if (fields.kind !== ((line.kind as string | null) ?? null)) {
+    let lastQuery = supabase
+      .from('quote_lines')
+      .select('position')
+      .eq('quote_id', line.quote_id)
+    lastQuery = line.section_id
+      ? lastQuery.eq('section_id', line.section_id)
+      : lastQuery.is('section_id', null)
+    const { data: last } = await lastQuery
+      .order('position', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    position = ((last?.position as number | undefined) ?? -1) + 1
+  }
+
   const { error } = await supabase
     .from('quote_lines')
-    .update({ ...fields, unit_sell })
+    .update({ ...fields, unit_sell, ...(position === undefined ? {} : { position }) })
     .eq('id', id)
   if (error) return { error: error.message }
 
@@ -752,7 +774,7 @@ export async function moveLine(id: string, dir: 'up' | 'down'): Promise<Result> 
   const supabase = await createClient()
   const { data: line } = await supabase
     .from('quote_lines')
-    .select('id, quote_id, section_id')
+    .select('id, quote_id, section_id, kind')
     .eq('id', id)
     .single()
   if (!line) return { error: 'Line not found' }
@@ -760,6 +782,8 @@ export async function moveLine(id: string, dir: 'up' | 'down'): Promise<Result> 
   const editable = await assertEditable(supabase, line.quote_id)
   if (editable.error) return editable
 
+  // Siblings are the lines shown in the same category group of the same
+  // section — that is what the up/down arrows reorder on screen.
   let query = supabase
     .from('quote_lines')
     .select('id, position')
@@ -767,6 +791,7 @@ export async function moveLine(id: string, dir: 'up' | 'down'): Promise<Result> 
   query = line.section_id
     ? query.eq('section_id', line.section_id)
     : query.is('section_id', null)
+  query = line.kind ? query.eq('kind', line.kind) : query.is('kind', null)
   const { data: siblings, error: sibError } = await query
     .order('position')
     .order('id')
@@ -791,6 +816,26 @@ export async function moveLine(id: string, dir: 'up' | 'down'): Promise<Result> 
 }
 
 // ─── Conversion ──────────────────────────────────────────────────────────────
+
+/**
+ * Quote lines for conversion, in the order the builder and PDF list them
+ * (category group, then position). Budget lines and the scope summary follow
+ * the same order the owner sees on screen.
+ */
+function convertLinesFromRows(rows: Record<string, unknown>[] | null) {
+  return sortLinesGrouped(
+    (rows ?? []).map((l) => ({
+      id: l.id as string,
+      position: Number(l.position),
+      kind: (l.kind as string | null) ?? null,
+      section_id: l.section_id as string | null,
+      description: l.description as string,
+      qty: Number(l.qty),
+      unit_cost: Number(l.unit_cost),
+      unit_sell: Number(l.unit_sell),
+    }))
+  )
+}
 
 export async function convertQuoteToJob(quoteId: string): Promise<Result> {
   const profile = await requireRole('admin', 'office')
@@ -818,7 +863,7 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
       .order('id'),
     supabase
       .from('quote_lines')
-      .select('section_id, description, qty, unit_cost, unit_sell')
+      .select('id, position, kind, section_id, description, qty, unit_cost, unit_sell')
       .eq('quote_id', quoteId)
       .order('position')
       .order('id'),
@@ -843,13 +888,7 @@ export async function convertQuoteToJob(quoteId: string): Promise<Result> {
     },
     number,
     sections ?? [],
-    (lines ?? []).map((l) => ({
-      section_id: l.section_id,
-      description: l.description,
-      qty: Number(l.qty),
-      unit_cost: Number(l.unit_cost),
-      unit_sell: Number(l.unit_sell),
-    }))
+    convertLinesFromRows(lines)
   )
 
   const { data: job, error: jobErr } = await supabase
@@ -906,7 +945,7 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
       .order('id'),
     supabase
       .from('quote_lines')
-      .select('section_id, description, qty, unit_cost, unit_sell')
+      .select('id, position, kind, section_id, description, qty, unit_cost, unit_sell')
       .eq('quote_id', quoteId)
       .order('position')
       .order('id'),
@@ -939,13 +978,7 @@ export async function convertQuoteToProject(quoteId: string): Promise<Result> {
       pm_id: quote.pm_id ?? null,
     },
     sections ?? [],
-    (lines ?? []).map((l) => ({
-      section_id: l.section_id,
-      description: l.description,
-      qty: Number(l.qty),
-      unit_cost: Number(l.unit_cost),
-      unit_sell: Number(l.unit_sell),
-    })),
+    convertLinesFromRows(lines),
     otherCode.id
   )
 

@@ -319,6 +319,8 @@ export const quoteLineCreateSchema = z.object({
   section_id: z.uuid(),
   /** When set, the line is prefilled from this rate item. */
   rate_item_id: z.uuid().optional(),
+  /** Cost category for a blank manual line; ignored when rate_item_id is set. */
+  kind: z.enum(RATE_KINDS).optional(),
 })
 
 export type QuoteLineCreateInput = z.infer<typeof quoteLineCreateSchema>
@@ -332,6 +334,8 @@ export const quoteLineUpdateSchema = z.object({
   unit_sell: z.coerce.number().min(0),
   /** When false, unit_sell is recomputed server-side from cost + markup. */
   sell_overridden: z.boolean(),
+  /** Cost category; null = uncategorised. */
+  kind: z.enum(RATE_KINDS).nullable(),
 })
 
 export type QuoteLineUpdateInput = z.infer<typeof quoteLineUpdateSchema>
