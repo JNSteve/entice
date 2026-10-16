@@ -1,0 +1,128 @@
+// @vitest-environment jsdom
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+
+const addLine = vi.fn()
+const refresh = vi.fn()
+
+vi.mock('../src/app/(office)/quotes/actions', () => ({
+  addLine: (...args: unknown[]) => addLine(...args),
+  updateLine: vi.fn(),
+  moveLine: vi.fn(),
+  deleteLine: vi.fn(),
+}))
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+
+import { LinesGrid } from '../src/app/(office)/quotes/[id]/lines-grid'
+import type { LineData } from '../src/app/(office)/quotes/[id]/line-row'
+
+const QUOTE_ID = '11111111-1111-4111-8111-111111111111'
+const SECTION_ID = '22222222-2222-4222-8222-222222222222'
+
+function line(
+  id: string,
+  kind: string | null,
+  position: number,
+  overrides: Partial<LineData> = {}
+): LineData {
+  return {
+    id,
+    section_id: SECTION_ID,
+    position,
+    description: id,
+    qty: 1,
+    unit: 'ea',
+    unit_cost: 10,
+    markup_pct: 0,
+    unit_sell: 10,
+    kind,
+    ...overrides,
+  }
+}
+
+// Deliberately out of category order, as stored positions would be on a
+// quote built before grouping existed.
+const LINES: LineData[] = [
+  line('plastic', 'material', 0, { qty: 26, unit_sell: 119.18 }),
+  line('vehicle', 'plant', 0, { qty: 25, unit_sell: 130 }),
+  line('scaffold', 'plant', 1, { qty: 25, unit_sell: 100 }),
+  line('tip fees', null, 0, { qty: 1, unit_sell: 400 }),
+]
+
+beforeEach(() => {
+  addLine.mockReset()
+  addLine.mockResolvedValue({})
+  refresh.mockReset()
+})
+afterEach(cleanup)
+
+describe('LinesGrid', () => {
+  test('groups lines by category in fixed order with sell subtotals, skipping empty groups', () => {
+    render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={LINES} editable />)
+
+    const groups = screen.getAllByRole('group')
+    expect(groups.map((g) => g.getAttribute('aria-label'))).toEqual([
+      'Plant & equipment',
+      'Materials',
+      'Uncategorised',
+    ])
+    expect(
+      within(groups[0])
+        .getAllByLabelText('Description')
+        .map((i) => (i as HTMLInputElement).value)
+    ).toEqual(['vehicle', 'scaffold'])
+    // Two-line group: the subtotal is the only element showing this amount.
+    expect(within(groups[0]).getByText('$5,750.00')).toBeTruthy()
+    // Single-line groups: the amount appears twice — the line's own total and
+    // the group subtotal.
+    expect(within(groups[1]).getAllByText('$3,098.68')).toHaveLength(2)
+    expect(within(groups[2]).getAllByText('$400.00')).toHaveLength(2)
+  })
+
+  test('column headings include Category', () => {
+    render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={LINES} editable />)
+    expect(screen.getByText('Category')).toBeTruthy()
+  })
+
+  test('per-group Add line creates a line in that category', async () => {
+    render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={LINES} editable />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add line to Plant & equipment' }))
+    await waitFor(() =>
+      expect(addLine).toHaveBeenCalledWith({ quote_id: QUOTE_ID, section_id: SECTION_ID, kind: 'plant' })
+    )
+    await waitFor(() => expect(refresh).toHaveBeenCalled())
+  })
+
+  test('uncategorised Add line sends no kind', async () => {
+    render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={LINES} editable />)
+    fireEvent.click(screen.getByRole('button', { name: 'Add line to Uncategorised' }))
+    await waitFor(() =>
+      expect(addLine).toHaveBeenCalledWith({ quote_id: QUOTE_ID, section_id: SECTION_ID })
+    )
+  })
+
+  test('read-only grid keeps the groups but has no buttons', () => {
+    render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={LINES} editable={false} />)
+    expect(screen.getAllByRole('group')).toHaveLength(3)
+    expect(screen.queryAllByRole('button')).toHaveLength(0)
+  })
+
+  test('orphaned lines (no section) get no per-group Add line', () => {
+    render(
+      <LinesGrid
+        quoteId={QUOTE_ID}
+        sectionId={null}
+        lines={LINES.map((l) => ({ ...l, section_id: null }))}
+        editable
+      />
+    )
+    expect(screen.getAllByRole('group')).toHaveLength(3)
+    expect(screen.queryByRole('button', { name: /^Add line/ })).toBeNull()
+  })
+
+  test('empty list shows the placeholder', () => {
+    render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={[]} editable />)
+    expect(screen.getByText('No lines yet.')).toBeTruthy()
+  })
+})

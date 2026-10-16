@@ -22,7 +22,6 @@ import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
 import type { PricingDisplay, QuoteDoc, TemplateState } from '@/lib/quote-doc'
-import { cn } from '@/lib/utils'
 import { canPublishQuote } from '@/lib/portal-interactions'
 import {
   addLine,
@@ -36,12 +35,9 @@ import {
   updateQuoteHeader,
   updateSection,
 } from '../actions'
-import {
-  LineRow,
-  LINE_GRID_COLS_EDITABLE,
-  LINE_GRID_COLS_READONLY,
-  type LineData,
-} from './line-row'
+import { LINE_KIND_LABELS, LINE_KIND_ORDER } from '@/lib/quote-lines'
+import type { LineData } from './line-row'
+import { LinesGrid } from './lines-grid'
 import {
   ChangeClientDialog,
   type ClientOption,
@@ -213,6 +209,8 @@ export function QuoteBuilder({
               Ungrouped lines
             </h3>
             <LinesGrid
+              quoteId={quote.id}
+              sectionId={null}
               lines={orphanLines}
               editable={editable}
             />
@@ -761,7 +759,12 @@ function SectionCard({
           )}
         </div>
 
-        <LinesGrid lines={lines} editable={editable} />
+        <LinesGrid
+          quoteId={quoteId}
+          sectionId={section.id}
+          lines={lines}
+          editable={editable}
+        />
 
         {editable && (
           <div className="flex items-center gap-2">
@@ -778,41 +781,6 @@ function SectionCard({
         )}
       </CardContent>
     </Card>
-  )
-}
-
-function LinesGrid({ lines, editable }: { lines: LineData[]; editable: boolean }) {
-  if (lines.length === 0) {
-    return <p className="py-1 text-sm text-muted-foreground">No lines yet.</p>
-  }
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <div
-        className={cn(
-          'hidden gap-2 px-1 text-xs font-medium text-muted-foreground md:grid',
-          editable ? LINE_GRID_COLS_EDITABLE : LINE_GRID_COLS_READONLY
-        )}
-      >
-        <span>Description</span>
-        <span className="text-right">Qty</span>
-        <span>Unit</span>
-        <span className="text-right">Unit cost</span>
-        <span className="text-right">Markup %</span>
-        <span className="text-right">Unit sell</span>
-        <span className="text-right">Total</span>
-        {editable && <span className="sr-only">Actions</span>}
-      </div>
-      {lines.map((line, i) => (
-        <LineRow
-          key={line.id}
-          line={line}
-          editable={editable}
-          isFirst={i === 0}
-          isLast={i === lines.length - 1}
-        />
-      ))}
-    </div>
   )
 }
 
@@ -846,14 +814,8 @@ function AddSectionButton({ quoteId, count }: { quoteId: string; count: number }
 
 // ─── Totals ──────────────────────────────────────────────────────────────────
 
-const KIND_LABELS: Record<string, string> = {
-  labour: 'Labour',
-  plant: 'Plant',
-  material: 'Materials',
-  subbie: 'Subcontract',
-  other: 'Other',
-}
-const KIND_ORDER = ['labour', 'plant', 'material', 'subbie', 'other', 'untagged']
+/** Breakdown rows: the category order, then the untagged remainder. */
+const BREAKDOWN_ORDER = [...LINE_KIND_ORDER, 'uncategorised'] as const
 
 function TotalsCard({ lines, gstRate }: { lines: LineData[]; gstRate: number }) {
   const { subtotal, gst, total } = docTotals(
@@ -868,25 +830,25 @@ function TotalsCard({ lines, gstRate }: { lines: LineData[]; gstRate: number }) 
 
   // Internal margin lens: where the money sits by cost category. Lines from
   // the rate library / takeoff carry their kind; hand-typed lines show as
-  // Untagged. Only shown once at least one line is categorised.
+  // Uncategorised. Only shown once at least one line is categorised.
   const byKind = new Map<string, { cost: number; sell: number }>()
   for (const l of lines) {
-    const key = l.kind ?? 'untagged'
+    const key = l.kind ?? 'uncategorised'
     const entry = byKind.get(key) ?? { cost: 0, sell: 0 }
     entry.cost += lineTotal(l.qty, l.unit_cost)
     entry.sell += lineTotal(l.qty, l.unit_sell)
     byKind.set(key, entry)
   }
-  const breakdown = KIND_ORDER.filter(
-    (k) => byKind.has(k) && k !== 'untagged'
+  const breakdown = BREAKDOWN_ORDER.filter(
+    (k) => byKind.has(k) && k !== 'uncategorised'
   ).length
-    ? KIND_ORDER.filter((k) => byKind.has(k)).map((k) => {
+    ? BREAKDOWN_ORDER.filter((k) => byKind.has(k)).map((k) => {
         const entry = byKind.get(k)!
         const cost = round2(entry.cost)
         const sell = round2(entry.sell)
         return {
           kind: k,
-          label: KIND_LABELS[k] ?? 'Untagged',
+          label: LINE_KIND_LABELS[k],
           cost,
           sell,
           marginPct: sell > 0 ? round2(((sell - cost) / sell) * 100) : null,
