@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud } from '@/lib/format'
-import { lineSell, lineTotal } from '@/lib/money'
+import { lineMarkup, lineSell, lineTotal } from '@/lib/money'
 import { LINE_KIND_LABELS, LINE_KIND_ORDER, lineKindLabel } from '@/lib/quote-lines'
 import { cn } from '@/lib/utils'
 import type { RateKind } from '@/lib/zod'
@@ -67,8 +67,11 @@ export function LineRow({
   const [markup, setMarkup] = useState(String(line.markup_pct))
   const [sell, setSell] = useState<number>(line.unit_sell)
   const [kind, setKind] = useState<RateKind | null>((line.kind as RateKind | null) ?? null)
-  // A sell that doesn't match cost+markup was manually overridden. The override
-  // sticks until cost or markup change again (which recompute the sell).
+  // Cost and markup are the inputs; sell is computed from them. Typing a sell
+  // derives the markup instead, so the three stay consistent whichever way
+  // round they're entered. A sell is only an "override" when no 2dp markup can
+  // reproduce it (or when the cost is 0) — then the typed sell is kept as-is
+  // until cost or markup change again and recompute it.
   const [overridden, setOverridden] = useState(
     () => line.unit_sell !== lineSell(line.unit_cost, line.markup_pct)
   )
@@ -130,11 +133,13 @@ export function LineRow({
   function handleSellChange(v: number | null) {
     const newSell = v ?? 0
     if (newSell === sell) return
-    // Typing the computed value back in isn't an override.
-    const isOverride = newSell !== lineSell(cost, parseFloat(markup) || 0)
+    // Derive the markup from cost → sell; with no cost there's nothing to derive.
+    const newMarkup = lineMarkup(cost, newSell) ?? (parseFloat(markup) || 0)
+    const isOverride = newSell !== lineSell(cost, newMarkup)
     setSell(newSell)
+    setMarkup(String(newMarkup))
     setOverridden(isOverride)
-    save({ unit_sell: newSell, sell_overridden: isOverride })
+    save({ unit_sell: newSell, markup_pct: newMarkup, sell_overridden: isOverride })
   }
 
   function handleKindChange(value: string) {
@@ -238,7 +243,7 @@ export function LineRow({
           else if (!unit.trim()) setUnit(line.unit)
         }}
       />
-      <MoneyInput value={cost} onChange={handleCostChange} />
+      <MoneyInput aria-label="Unit cost" value={cost} onChange={handleCostChange} />
       <Input
         aria-label="Markup %"
         type="number"
@@ -248,7 +253,7 @@ export function LineRow({
         onBlur={handleMarkupBlur}
         className="text-right tabular-nums"
       />
-      <MoneyInput value={sell} onChange={handleSellChange} />
+      <MoneyInput aria-label="Unit sell" value={sell} onChange={handleSellChange} />
       <span className="px-1 text-right text-sm font-medium tabular-nums">
         {aud(total)}
       </span>

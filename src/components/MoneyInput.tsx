@@ -10,6 +10,7 @@ interface MoneyInputProps {
   allowNegative?: boolean
   placeholder?: string
   className?: string
+  'aria-label'?: string
 }
 
 function formatDisplay(value: number | null): string {
@@ -36,6 +37,7 @@ export function MoneyInput({
   allowNegative = false,
   placeholder,
   className,
+  'aria-label': ariaLabel,
 }: MoneyInputProps) {
   const [focused, setFocused] = useState(false)
   // rawText is only meaningful while focused; when blurred we derive from value.
@@ -61,6 +63,7 @@ export function MoneyInput({
     <Input
       type="text"
       inputMode="decimal"
+      aria-label={ariaLabel}
       value={focused ? rawText : formatDisplay(value)}
       placeholder={placeholder ?? '0.00'}
       className={cn('text-right tabular-nums', className)}

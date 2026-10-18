@@ -15,6 +15,14 @@ export function round6(n: number): number {
 export function lineSell(unitCost: number, markupPct: number): number {
   return round2(unitCost * (1 + markupPct / 100))
 }
+/**
+ * Inverse of lineSell: the markup % (2dp) that takes unitCost to unitSell.
+ * Null when there is no cost to mark up — no percentage turns $0 into a sell.
+ */
+export function lineMarkup(unitCost: number, unitSell: number): number | null {
+  if (unitCost <= 0) return null
+  return round2((unitSell / unitCost - 1) * 100)
+}
 export function lineTotal(qty: number, unitSell: number): number {
   return round2(qty * unitSell)
 }
