@@ -108,21 +108,90 @@ test('with no cost the markup is left alone and the sell is an override', async 
   )
 })
 
-test('editing the cost still recomputes the sell from the markup', async () => {
-  const user = userEvent.setup()
-  renderRow(line({ unit_cost: 100, markup_pct: 20, unit_sell: 120 }))
-
+async function typeCost(user: ReturnType<typeof userEvent.setup>, value: string) {
   const cost = screen.getByLabelText('Unit cost')
   await user.click(cost)
   await user.clear(cost)
-  await user.type(cost, '200')
+  await user.type(cost, value)
   await user.tab()
+}
 
-  expect((screen.getByLabelText('Unit sell') as HTMLInputElement).value).toBe('240.00')
+test('editing the cost keeps the sell and re-derives the markup', async () => {
+  const user = userEvent.setup()
+  renderRow(line({ unit_cost: 100, markup_pct: 80, unit_sell: 180 }))
+
+  await typeCost(user, '120')
+
+  expect((screen.getByLabelText('Unit sell') as HTMLInputElement).value).toBe('180.00')
+  expect((screen.getByLabelText('Markup %') as HTMLInputElement).value).toBe('50')
+  await waitFor(() => expect(updateLine).toHaveBeenCalledTimes(1))
+  expect(updateLine).toHaveBeenCalledWith(
+    'line-1',
+    expect.objectContaining({ unit_cost: 120, markup_pct: 50, unit_sell: 180, sell_overridden: false })
+  )
+})
+
+test('a cost above the sell gives a negative markup, sell untouched', async () => {
+  const user = userEvent.setup()
+  renderRow(line({ unit_cost: 100, markup_pct: 20, unit_sell: 120 }))
+
+  await typeCost(user, '150')
+
+  expect((screen.getByLabelText('Unit sell') as HTMLInputElement).value).toBe('120.00')
+  expect((screen.getByLabelText('Markup %') as HTMLInputElement).value).toBe('-20')
+  await waitFor(() => expect(updateLine).toHaveBeenCalledTimes(1))
+  expect(updateLine).toHaveBeenCalledWith(
+    'line-1',
+    expect.objectContaining({ unit_cost: 150, markup_pct: -20, unit_sell: 120, sell_overridden: false })
+  )
+})
+
+test('entering a cost on a line with no sell yet seeds the sell from the markup', async () => {
+  const user = userEvent.setup()
+  renderRow(line({ unit_cost: 0, markup_pct: 20, unit_sell: 0 }))
+
+  await typeCost(user, '100')
+
+  expect((screen.getByLabelText('Unit sell') as HTMLInputElement).value).toBe('120.00')
   expect((screen.getByLabelText('Markup %') as HTMLInputElement).value).toBe('20')
   await waitFor(() => expect(updateLine).toHaveBeenCalledTimes(1))
   expect(updateLine).toHaveBeenCalledWith(
     'line-1',
-    expect.objectContaining({ unit_cost: 200, markup_pct: 20, unit_sell: 240, sell_overridden: false })
+    expect.objectContaining({ unit_cost: 100, markup_pct: 20, unit_sell: 120, sell_overridden: false })
+  )
+})
+
+test('clearing the cost to 0 keeps the sell as an override and leaves the markup', async () => {
+  const user = userEvent.setup()
+  renderRow(line({ unit_cost: 100, markup_pct: 80, unit_sell: 180 }))
+
+  await typeCost(user, '0')
+
+  expect((screen.getByLabelText('Unit sell') as HTMLInputElement).value).toBe('180.00')
+  expect((screen.getByLabelText('Markup %') as HTMLInputElement).value).toBe('80')
+  await waitFor(() => expect(updateLine).toHaveBeenCalledTimes(1))
+  expect(updateLine).toHaveBeenCalledWith(
+    'line-1',
+    expect.objectContaining({ unit_cost: 0, markup_pct: 80, unit_sell: 180, sell_overridden: true })
+  )
+})
+
+test('typing a markup still sets the sell from the cost', async () => {
+  const user = userEvent.setup()
+  renderRow(line({ unit_cost: 100, markup_pct: 80, unit_sell: 180 }))
+
+  const markup = screen.getByLabelText('Markup %')
+  await user.click(markup)
+  await user.clear(markup)
+  await user.type(markup, '25')
+  // Blur onto a plain field: tabbing would land in the Unit sell input, which
+  // snapshots its text on focus before jsdom lets React re-render.
+  await user.click(screen.getByLabelText('Description'))
+
+  expect((screen.getByLabelText('Unit sell') as HTMLInputElement).value).toBe('125.00')
+  await waitFor(() => expect(updateLine).toHaveBeenCalledTimes(1))
+  expect(updateLine).toHaveBeenCalledWith(
+    'line-1',
+    expect.objectContaining({ unit_cost: 100, markup_pct: 25, unit_sell: 125, sell_overridden: false })
   )
 })

@@ -67,11 +67,11 @@ export function LineRow({
   const [markup, setMarkup] = useState(String(line.markup_pct))
   const [sell, setSell] = useState<number>(line.unit_sell)
   const [kind, setKind] = useState<RateKind | null>((line.kind as RateKind | null) ?? null)
-  // Cost and markup are the inputs; sell is computed from them. Typing a sell
-  // derives the markup instead, so the three stay consistent whichever way
-  // round they're entered. A sell is only an "override" when no 2dp markup can
-  // reproduce it (or when the cost is 0) — then the typed sell is kept as-is
-  // until cost or markup change again and recompute it.
+  // Cost and sell are what gets typed; markup is derived from them, so editing
+  // either one re-derives the markup and leaves the other alone. Typing a
+  // markup directly is the exception: that sets the sell from the cost. A sell
+  // is only an "override" when no 2dp markup can reproduce it (or when the
+  // cost is 0) — then the typed sell is kept as-is until the markup is edited.
   const [overridden, setOverridden] = useState(
     () => line.unit_sell !== lineSell(line.unit_cost, line.markup_pct)
   )
@@ -110,14 +110,30 @@ export function LineRow({
     })
   }
 
+  /** Markup that takes `c` to `s`, falling back to the current markup when there's no cost. */
+  function deriveMarkup(c: number, s: number) {
+    const pct = lineMarkup(c, s) ?? (parseFloat(markup) || 0)
+    return { markup: pct, overridden: s !== lineSell(c, pct) }
+  }
+
   function handleCostChange(v: number | null) {
     const newCost = v ?? 0
     if (newCost === cost) return
-    const newSell = lineSell(newCost, parseFloat(markup) || 0)
+    if (sell === 0) {
+      // Nothing quoted yet: seed the sell from the markup, as a fresh line would.
+      const newSell = lineSell(newCost, parseFloat(markup) || 0)
+      setCost(newCost)
+      setSell(newSell)
+      setOverridden(false)
+      save({ unit_cost: newCost, unit_sell: newSell, sell_overridden: false })
+      return
+    }
+    // The sell is the quoted price: hold it and let the markup absorb the change.
+    const next = deriveMarkup(newCost, sell)
     setCost(newCost)
-    setSell(newSell)
-    setOverridden(false)
-    save({ unit_cost: newCost, unit_sell: newSell, sell_overridden: false })
+    setMarkup(String(next.markup))
+    setOverridden(next.overridden)
+    save({ unit_cost: newCost, markup_pct: next.markup, sell_overridden: next.overridden })
   }
 
   function handleMarkupBlur() {
@@ -133,13 +149,11 @@ export function LineRow({
   function handleSellChange(v: number | null) {
     const newSell = v ?? 0
     if (newSell === sell) return
-    // Derive the markup from cost → sell; with no cost there's nothing to derive.
-    const newMarkup = lineMarkup(cost, newSell) ?? (parseFloat(markup) || 0)
-    const isOverride = newSell !== lineSell(cost, newMarkup)
+    const next = deriveMarkup(cost, newSell)
     setSell(newSell)
-    setMarkup(String(newMarkup))
-    setOverridden(isOverride)
-    save({ unit_sell: newSell, markup_pct: newMarkup, sell_overridden: isOverride })
+    setMarkup(String(next.markup))
+    setOverridden(next.overridden)
+    save({ unit_sell: newSell, markup_pct: next.markup, sell_overridden: next.overridden })
   }
 
   function handleKindChange(value: string) {
