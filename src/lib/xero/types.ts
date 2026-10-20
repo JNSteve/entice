@@ -95,7 +95,8 @@ export type XeroTrackingCategory = {
 
 /** settings.xero_* as read by the push/pull code. */
 export type XeroMapping = {
-  emailMode: 'xero' | 'ecr'
+  /** draft: Xero holds a DRAFT the owner approves/emails there; xero/ecr: AUTHORISED on push. */
+  emailMode: 'draft' | 'xero' | 'ecr'
   defaultAccount: string | null
   accountByKind: Record<string, string>
   claimsAccount: string | null
@@ -132,7 +133,7 @@ export type XeroInvoicePayload = {
   DueDate: string
   InvoiceNumber: string
   Reference: string
-  Status: 'AUTHORISED'
+  Status: 'DRAFT' | 'AUTHORISED'
   LineAmountTypes: 'Exclusive' | 'Inclusive'
   LineItems: {
     Description: string

@@ -37,7 +37,7 @@ export interface XeroEventRow {
   id: string; created_at: string; direction: string; entity: string; action: string; detail: string | null; xero_id: string | null
 }
 export interface XeroMappingRow {
-  xero_email_mode: 'xero' | 'ecr'
+  xero_email_mode: 'draft' | 'xero' | 'ecr'
   xero_default_account: string | null
   xero_account_by_kind: Record<string, string>
   xero_claims_account: string | null
@@ -251,12 +251,13 @@ function MappingForm({ mapping, accounts, taxRates, categories, disabled, onSave
           <p className="text-xs text-muted-foreground">Xero allows two active categories with 100 options each. ECR archives options for jobs paid more than 90 days ago.</p>
         </div>
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="x-email">Who emails the client</Label>
-          <Select value={m.xero_email_mode} onValueChange={(v) => set('xero_email_mode', (v as 'xero' | 'ecr') ?? 'xero')}>
+          <Label htmlFor="x-email">When an invoice is sent to Xero</Label>
+          <Select value={m.xero_email_mode} onValueChange={(v) => set('xero_email_mode', (v as 'draft' | 'xero' | 'ecr') ?? 'xero')}>
             <SelectTrigger id="x-email" className="w-full"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="xero">Xero emails the invoice (Xero template, pay-now link)</SelectItem>
-              <SelectItem value="ecr">I send ECR&apos;s PDF myself (Xero still records the invoice)</SelectItem>
+              <SelectItem value="draft">Save it as a draft in Xero — I approve and email it from Xero</SelectItem>
+              <SelectItem value="xero">Approve it in Xero and Xero emails it (Xero template, pay-now link)</SelectItem>
+              <SelectItem value="ecr">Approve it in Xero and I send ECR&apos;s PDF myself</SelectItem>
             </SelectContent>
           </Select>
         </div>

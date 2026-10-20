@@ -369,7 +369,7 @@ export default async function SettingsPage({
           status: xeroStatus,
           flag: xeroFlag ?? null,
           mapping: {
-            xero_email_mode: (settings?.xero_email_mode as 'xero' | 'ecr') ?? 'xero',
+            xero_email_mode: (settings?.xero_email_mode as 'draft' | 'xero' | 'ecr') ?? 'xero',
             xero_default_account: settings?.xero_default_account ?? null,
             xero_account_by_kind: (settings?.xero_account_by_kind as Record<string, string>) ?? {},
             xero_claims_account: settings?.xero_claims_account ?? null,

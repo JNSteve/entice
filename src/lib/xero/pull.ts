@@ -208,6 +208,18 @@ export async function runXeroSync(
 
 type InvoiceOutcome = 'updated' | 'created' | 'created_warning' | 'skipped' | 'warning'
 
+type OnlineInvoiceResponse = { OnlineInvoices?: { OnlineInvoiceUrl?: string }[] }
+
+/** Pay-now link, fetched once a parked draft is approved (Xero has none for a DRAFT). */
+async function onlineInvoiceUrl(api: XeroApi, invoiceId: string): Promise<string | null> {
+  try {
+    const res = await api.get<OnlineInvoiceResponse>(`/Invoices/${invoiceId}/OnlineInvoice`)
+    return res.OnlineInvoices?.[0]?.OnlineInvoiceUrl ?? null
+  } catch {
+    return null
+  }
+}
+
 async function applyInvoice(
   admin: Admin,
   runId: string,
@@ -244,9 +256,14 @@ async function applyInvoice(
 
   if (known) {
     const derived = deriveInvoiceStatusFromXero(x)
-    const statusChanged = known.status !== 'draft' && known.status !== derived.status
+    // An ECR draft is only ever known here by its stored id — one parked in
+    // Xero by draft send mode. Seeing it AUTHORISED/PAID/VOIDED means the owner
+    // acted on it in Xero, so it flips now and gets its sent date.
+    const wasDraft = known.status === 'draft'
+    const statusChanged = known.status !== derived.status
     const revertedToSent = known.status === 'paid' && derived.status === 'sent'
     const isXeroMirror = known.origin === 'xero'
+    const approvedUrl = wasDraft && derived.status !== 'void' ? await onlineInvoiceUrl(api, x.InvoiceID) : null
     // A paged list can omit LineItems; re-mirroring off that would blank the
     // invoice, so fetch the full record and leave the lines alone if Xero
     // still gives us none.
@@ -259,7 +276,9 @@ async function applyInvoice(
         ...xeroCols,
         xero_invoice_id: x.InvoiceID,
         xero_number: x.InvoiceNumber ?? null,
-        ...(known.status !== 'draft' ? { status: derived.status, paid_at: derived.paid_at } : {}),
+        status: derived.status,
+        paid_at: derived.paid_at,
+        ...(wasDraft ? { sent_at: now, xero_online_url: approvedUrl } : {}),
         ...(m ? { gst_rate: m.gst_rate, ...(m.reconciles ? {} : { needs_review: true }) } : {}),
       })
       .eq('id', known.id)

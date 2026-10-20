@@ -28,7 +28,7 @@ export interface SettingsRow {
   quote_footer: string | null
   invoice_footer: string | null
   claim_footer: string | null
-  xero_email_mode?: 'xero' | 'ecr'
+  xero_email_mode?: 'draft' | 'xero' | 'ecr'
   xero_default_account?: string | null
   xero_account_by_kind?: Record<string, string>
   xero_claims_account?: string | null

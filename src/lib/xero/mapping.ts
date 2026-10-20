@@ -12,7 +12,7 @@ export async function loadMapping(admin: Admin): Promise<XeroMapping> {
     .single()
   if (error || !data) throw new Error(`Could not read Xero settings: ${error?.message}`)
   return {
-    emailMode: (data.xero_email_mode as 'xero' | 'ecr') ?? 'xero',
+    emailMode: (data.xero_email_mode as 'draft' | 'xero' | 'ecr') ?? 'xero',
     defaultAccount: (data.xero_default_account as string | null) ?? null,
     accountByKind: ((data.xero_account_by_kind as Record<string, string> | null) ?? {}),
     claimsAccount: (data.xero_claims_account as string | null) ?? null,

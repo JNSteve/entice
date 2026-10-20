@@ -452,7 +452,7 @@ export function ClaimEditor({ projectId, claim: initialClaim, lines: initialLine
               <span>
                 Xero:{' '}
                 <span className="font-medium text-foreground">
-                  {`${claim.xero_status ?? 'AUTHORISED'}${claim.xero_amount_due != null ? ` · ${aud(claim.xero_amount_due)} due` : ''}`}
+                  {`${claim.xero_status ?? 'AUTHORISED'}${claim.xero_amount_due != null ? ` · ${aud(claim.xero_amount_due)} due` : ''}${claim.xero_status === 'DRAFT' ? ' — approve and email it from Xero' : ''}`}
                 </span>
               </span>
             )}

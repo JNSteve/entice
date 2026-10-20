@@ -128,15 +128,18 @@ export function InvoiceEditor({
   payments,
   isAdmin,
   xeroConnected,
+  xeroSendMode,
 }: {
   invoice: InvoiceData
   lines: InvoiceLineData[]
   payments: PaymentData[]
   isAdmin: boolean
   xeroConnected: boolean
+  xeroSendMode: 'draft' | 'xero' | 'ecr'
 }) {
   const managedInXero = invoice.xero !== null
-  const editable = invoice.status === 'draft' && invoice.origin === 'ecr'
+  // A draft parked in Xero (draft send mode) is Xero's to edit from then on.
+  const editable = invoice.status === 'draft' && invoice.origin === 'ecr' && !managedInXero
   const { total } = docTotals(
     lines.map((l) => ({ qty: l.qty, unitSell: l.unit_sell })),
     invoice.gst_rate
@@ -151,6 +154,7 @@ export function InvoiceEditor({
         total={total}
         managedInXero={managedInXero}
         xeroConnected={xeroConnected}
+        xeroSendMode={xeroSendMode}
       />
       {(invoice.xero || invoice.origin === 'xero') && <XeroPanel invoice={invoice} />}
       <LinesCard invoiceId={invoice.id} lines={lines} editable={editable} />
@@ -178,7 +182,11 @@ function XeroPanel({ invoice }: { invoice: InvoiceData }) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h3 className="text-sm font-semibold">Xero</h3>
           <span className="text-xs text-muted-foreground">
-            {invoice.origin === 'xero' ? 'Raised in Xero — read-only mirror' : 'Managed in Xero since sending'}
+            {invoice.origin === 'xero'
+              ? 'Raised in Xero — read-only mirror'
+              : invoice.status === 'draft'
+                ? 'Draft in Xero — approve and email it from Xero'
+                : 'Managed in Xero since sending'}
           </span>
         </div>
         {invoice.needs_review && (
@@ -200,8 +208,9 @@ function XeroPanel({ invoice }: { invoice: InvoiceData }) {
         )}
         {x && (
           <p className="text-xs text-muted-foreground">
-            {x.emailed_at ? `Emailed by Xero ${fmtDate(x.emailed_at)}. ` : ''}
-            Payments, credits and voids are recorded in Xero and picked up on the next sync.
+            {invoice.status === 'draft'
+              ? 'Nothing has gone to the client. Approve and email it from Xero; ECR marks it Sent on the next sync (nightly, or Sync now in Settings → Xero).'
+              : `${x.emailed_at ? `Emailed by Xero ${fmtDate(x.emailed_at)}. ` : ''}Payments, credits and voids are recorded in Xero and picked up on the next sync.`}
           </p>
         )}
       </CardContent>
@@ -217,12 +226,14 @@ function HeaderCard({
   total,
   managedInXero,
   xeroConnected,
+  xeroSendMode,
 }: {
   invoice: InvoiceData
   editable: boolean
   total: number
   managedInXero: boolean
   xeroConnected: boolean
+  xeroSendMode: 'draft' | 'xero' | 'ecr'
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -246,9 +257,11 @@ function HeaderCard({
 
   function handleMarkSent() {
     const ok = confirm(
-      xeroConnected
-        ? `Send ${invoice.number} via Xero?\n\nXero will record the invoice and email it to the client. Lines lock once sent.`
-        : `Mark ${invoice.number} as sent?\n\nLines will be locked once the invoice is sent.`
+      !xeroConnected
+        ? `Mark ${invoice.number} as sent?\n\nLines will be locked once the invoice is sent.`
+        : xeroSendMode === 'draft'
+          ? `Save ${invoice.number} to Xero as a draft?\n\nNothing is emailed yet — approve and send it from Xero. ECR locks the lines now and marks it Sent once Xero shows it approved.`
+          : `Send ${invoice.number} via Xero?\n\nXero will record the invoice and email it to the client. Lines lock once sent.`
     )
     if (!ok) return
     startTransition(async () => {
@@ -258,7 +271,13 @@ function HeaderCard({
         return
       }
       for (const w of result.warnings ?? []) toast.warning(w)
-      toast.success(result.viaXero ? 'Sent via Xero' : 'Invoice marked as sent')
+      toast.success(
+        result.xeroDraft
+          ? 'Saved to Xero as a draft — approve and email it from Xero'
+          : result.viaXero
+            ? 'Sent via Xero'
+            : 'Invoice marked as sent'
+      )
       router.refresh()
     })
   }
@@ -306,10 +325,10 @@ function HeaderCard({
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            {invoice.status === 'draft' && invoice.origin === 'ecr' && (
+            {invoice.status === 'draft' && invoice.origin === 'ecr' && !managedInXero && (
               <Button onClick={handleMarkSent} disabled={pending}>
                 <SendIcon />
-                {xeroConnected ? 'Send via Xero' : 'Mark sent'}
+                {!xeroConnected ? 'Mark sent' : xeroSendMode === 'draft' ? 'Save to Xero as draft' : 'Send via Xero'}
               </Button>
             )}
             {invoice.status === 'sent' && !managedInXero && (
@@ -338,6 +357,17 @@ function HeaderCard({
               >
                 <ExternalLinkIcon />
                 Pay-now link
+              </a>
+            )}
+            {invoice.xero && (
+              <a
+                href={`https://go.xero.com/AccountsReceivable/View.aspx?InvoiceID=${invoice.xero.invoice_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className={cn(buttonVariants({ variant: 'outline' }))}
+              >
+                <ExternalLinkIcon />
+                Open in Xero
               </a>
             )}
             <a

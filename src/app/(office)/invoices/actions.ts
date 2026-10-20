@@ -40,7 +40,8 @@ function revalidateInvoice(invoiceId: string, jobId?: string | null) {
 
 /**
  * Lines (and header dates) are only editable while the invoice is draft —
- * marking sent freezes the document.
+ * marking sent freezes the document. A draft already parked in Xero (draft
+ * send mode) is frozen too: Xero owns it from the moment it lands there.
  */
 async function assertDraft(
   supabase: SupabaseClient,
@@ -48,13 +49,16 @@ async function assertDraft(
 ): Promise<{ error?: string; job_id?: string | null }> {
   const { data: invoice, error } = await supabase
     .from('invoices')
-    .select('id, status, job_id')
+    .select('id, status, job_id, xero_invoice_id')
     .eq('id', invoiceId)
     .single()
 
   if (error || !invoice) return { error: 'Invoice not found' }
   if (invoice.status !== 'draft') {
     return { error: `Invoice is ${invoice.status} and can no longer be edited` }
+  }
+  if (invoice.xero_invoice_id) {
+    return { error: 'Saved to Xero as a draft — edit or delete it in Xero; ECR picks it up on the next sync' }
   }
   return { job_id: invoice.job_id }
 }
@@ -235,18 +239,21 @@ export async function updateInvoiceHeader(
 
 export async function markInvoiceSent(
   id: string
-): Promise<Result & { warnings?: string[]; viaXero?: boolean }> {
+): Promise<Result & { warnings?: string[]; viaXero?: boolean; xeroDraft?: boolean }> {
   const profile = await requireRole('admin', 'office')
 
   const supabase = await createClient()
   const { data: invoice } = await supabase
     .from('invoices')
-    .select('id, status, job_id')
+    .select('id, status, job_id, xero_invoice_id')
     .eq('id', id)
     .single()
   if (!invoice) return { error: 'Invoice not found' }
   if (invoice.status !== 'draft') {
     return { error: `Can't mark a ${invoice.status} invoice as sent` }
+  }
+  if (invoice.xero_invoice_id) {
+    return { error: 'Already saved to Xero as a draft — approve and email it from Xero' }
   }
 
   // Never issue an empty or $0 invoice (lines freeze once sent).
@@ -270,6 +277,13 @@ export async function markInvoiceSent(
     if (!pushed.ok) return { error: `Xero: ${pushed.error}` }
     warnings = pushed.warnings
     emailedByXero = pushed.emailed
+    if (pushed.draft) {
+      // Parked in Xero as a draft (draft send mode): ECR stays Draft, locked
+      // by the Xero link, until the sync sees it approved. Nothing reaches
+      // the client or the portal yet.
+      revalidateInvoice(id, invoice.job_id)
+      return { warnings, viaXero: false, xeroDraft: true }
+    }
   }
 
   const { error } = await supabase

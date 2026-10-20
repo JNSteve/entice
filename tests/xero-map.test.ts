@@ -385,3 +385,59 @@ describe('pickAdoptableInvoice', () => {
     expect(pickAdoptableInvoice([], 'c-1')).toEqual({ adopt: null, conflict: null })
   })
 })
+
+describe('draft send mode', () => {
+  const draftMapping: XeroMapping = { ...mapping, emailMode: 'draft' }
+  const inv = {
+    number: 'INV-0004',
+    issue_date: '2026-10-20',
+    due_date: null,
+    gst_rate: 10,
+    payment_terms_days: 30,
+    job_number: 'RJ26018',
+    job_title: '24-30 Wharf St',
+    lines: [{ description: 'Sheeting', qty: 1, unit_sell: 7218.4, kind: null }],
+  }
+  const claim = {
+    project_number: 'P-0014',
+    project_name: 'Thirroul',
+    claim_number: 3,
+    certified_amount: 11000,
+    reference_date: '2026-08-31',
+    payment_terms_days: 30,
+  }
+  const tracking = { categoryId: 'cat-1', optionId: 'opt-1' }
+
+  test('invoice lands in Xero as DRAFT when the send mode is draft', () => {
+    expect(buildInvoicePayload(inv, draftMapping, 'contact-1', tracking).Status).toBe('DRAFT')
+  })
+
+  test('invoice stays AUTHORISED in the two emailing modes', () => {
+    expect(buildInvoicePayload(inv, mapping, 'contact-1', tracking).Status).toBe('AUTHORISED')
+    expect(buildInvoicePayload(inv, { ...mapping, emailMode: 'ecr' }, 'contact-1', tracking).Status).toBe('AUTHORISED')
+  })
+
+  test('claim lands in Xero as DRAFT when the send mode is draft', () => {
+    expect(buildClaimPayload(claim, draftMapping, 'contact-9', tracking).Status).toBe('DRAFT')
+    expect(buildClaimPayload(claim, mapping, 'contact-9', tracking).Status).toBe('AUTHORISED')
+  })
+
+  const xi = (over: Partial<XeroInvoice> = {}): XeroInvoice => ({
+    InvoiceID: 'x-1',
+    InvoiceNumber: 'INV-0004',
+    Type: 'ACCREC',
+    Status: 'DRAFT',
+    Contact: { ContactID: 'c-1' },
+    ...over,
+  })
+
+  test('a retry adopts our own same-contact DRAFT when drafts are allowed', () => {
+    const ours = xi()
+    expect(pickAdoptableInvoice([ours], 'c-1', { allowDraft: true })).toEqual({ adopt: ours, conflict: null })
+  })
+
+  test("another contact's DRAFT is still a conflict even when drafts are allowed", () => {
+    const theirs = xi({ Contact: { ContactID: 'c-2' } })
+    expect(pickAdoptableInvoice([theirs], 'c-1', { allowDraft: true })).toEqual({ adopt: null, conflict: theirs })
+  })
+})

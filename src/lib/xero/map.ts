@@ -123,10 +123,15 @@ export function buildInvoicePayload(
     DueDate: dueDate(inv.issue_date, inv.due_date, inv.payment_terms_days),
     InvoiceNumber: inv.number,
     Reference: reference,
-    Status: 'AUTHORISED',
+    Status: pushStatus(mapping),
     LineAmountTypes: 'Exclusive',
     LineItems,
   }
+}
+
+/** Draft mode parks the invoice in Xero for the owner to approve and email there. */
+function pushStatus(mapping: XeroMapping): 'DRAFT' | 'AUTHORISED' {
+  return mapping.emailMode === 'draft' ? 'DRAFT' : 'AUTHORISED'
 }
 
 export function claimInvoiceNumber(projectNumber: string, claimNumber: number): string {
@@ -151,7 +156,7 @@ export function buildClaimPayload(
     DueDate: dueDate(claim.reference_date, null, claim.payment_terms_days),
     InvoiceNumber: claimInvoiceNumber(claim.project_number, claim.claim_number),
     Reference: claim.project_number.slice(0, REFERENCE_MAX),
-    Status: 'AUTHORISED',
+    Status: pushStatus(mapping),
     LineAmountTypes: 'Inclusive',
     LineItems: [
       {
@@ -171,18 +176,21 @@ export function buildClaimPayload(
  * §5.2 step 4): only an ACCREC invoice for the SAME contact in AUTHORISED or
  * PAID. Voided/deleted ones are ignored. Anything else live with that number
  * (a supplier bill, another contact's invoice, a bookkeeper's DRAFT) is a
- * conflict — the push must fail rather than adopt or duplicate.
+ * conflict — the push must fail rather than adopt or duplicate. In draft send
+ * mode a same-contact DRAFT is most likely our own earlier push that timed out
+ * before ECR stored the id, so `allowDraft` lets the retry adopt it.
  */
 export function pickAdoptableInvoice(
   candidates: XeroInvoice[],
-  contactId: string
+  contactId: string,
+  opts: { allowDraft?: boolean } = {}
 ): { adopt: XeroInvoice | null; conflict: XeroInvoice | null } {
   const live = candidates.filter((i) => i.Status !== 'VOIDED' && i.Status !== 'DELETED')
   const adopt =
     live.find(
       (i) =>
         i.Type === 'ACCREC' &&
-        (i.Status === 'AUTHORISED' || i.Status === 'PAID') &&
+        (i.Status === 'AUTHORISED' || i.Status === 'PAID' || (opts.allowDraft && i.Status === 'DRAFT')) &&
         i.Contact?.ContactID === contactId
     ) ?? null
   return { adopt, conflict: adopt ? null : (live[0] ?? null) }

@@ -14,6 +14,8 @@ export type XeroStatus = {
   lastSyncStatus: string | null
   /** Tokens exist for a different org than before — awaiting typed confirmation. */
   pendingOrgSwitch: { tenantName: string } | null
+  /** settings.xero_email_mode — what a push does once the invoice is in Xero. */
+  sendMode: 'draft' | 'xero' | 'ecr'
 }
 
 const UNAVAILABLE: XeroStatus = {
@@ -26,6 +28,7 @@ const UNAVAILABLE: XeroStatus = {
   lastSyncAt: null,
   lastSyncStatus: null,
   pendingOrgSwitch: null,
+  sendMode: 'xero',
 }
 
 /**
@@ -49,8 +52,11 @@ export async function getXeroStatus(): Promise<XeroStatus> {
     const row = await loadConnection(admin)
     if (!row) return { ...UNAVAILABLE, available: true, status: 'disconnected' }
     const hasTokens = Boolean(row.refresh_token_enc)
+    const { data: settings } = await admin.from('settings').select('xero_email_mode').eq('id', 1).maybeSingle()
+    const mode = settings?.xero_email_mode as string | null | undefined
     return {
       available: true,
+      sendMode: mode === 'draft' || mode === 'ecr' ? mode : 'xero',
       reason: null,
       connected: row.status === 'connected' && hasTokens,
       status: row.status,

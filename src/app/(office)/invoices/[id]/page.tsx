@@ -113,6 +113,7 @@ export default async function InvoicePage({
       payments={paymentData}
       isAdmin={profile.role === 'admin'}
       xeroConnected={xero.connected}
+      xeroSendMode={xero.sendMode}
     />
   )
 }

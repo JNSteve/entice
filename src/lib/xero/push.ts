@@ -8,7 +8,7 @@ import { ensureTrackingOption } from './tracking'
 import type { XeroInvoice, XeroInvoicePayload } from './types'
 
 export type PushResult =
-  | { ok: true; warnings: string[]; emailed: boolean }
+  | { ok: true; warnings: string[]; emailed: boolean; draft: boolean }
   | { ok: false; error: string }
 
 type OnlineInvoiceResponse = { OnlineInvoices?: { OnlineInvoiceUrl?: string }[] }
@@ -16,7 +16,9 @@ type OnlineInvoiceResponse = { OnlineInvoices?: { OnlineInvoiceUrl?: string }[] 
 /**
  * Shared push core (spec §5.2 steps 4–7). Idempotent: looks the invoice up by
  * number before creating, so a retry after a timeout adopts the existing one.
- * Email is attempted once (callers pass `alreadyEmailed`).
+ * Email is attempted once (callers pass `alreadyEmailed`). In draft send mode
+ * the invoice is parked in Xero as a DRAFT: no pay-now link, no email — the
+ * owner approves and emails it from Xero (`draft: true` tells the caller).
  */
 async function pushPayload(
   admin: Admin,
@@ -25,9 +27,10 @@ async function pushPayload(
   entity: 'invoice' | 'claim',
   entityId: string,
   payload: XeroInvoicePayload,
-  opts: { knownXeroId: string | null; alreadyEmailed: boolean; emailMode: 'xero' | 'ecr'; ecrTotal: number }
-): Promise<{ xero: XeroInvoice; onlineUrl: string | null; emailed: boolean; warnings: string[] }> {
+  opts: { knownXeroId: string | null; alreadyEmailed: boolean; emailMode: 'draft' | 'xero' | 'ecr'; ecrTotal: number }
+): Promise<{ xero: XeroInvoice; onlineUrl: string | null; emailed: boolean; draft: boolean; warnings: string[] }> {
   const warnings: string[] = []
+  const allowDraft = opts.emailMode === 'draft'
 
   let xero: XeroInvoice | null = null
   if (opts.knownXeroId) {
@@ -36,7 +39,7 @@ async function pushPayload(
       const inv = Invoices[0]
       // Even the stored id must clear the adoption test — a stranger's invoice
       // (or one Xero has moved to a state ECR cannot send) is not ours to touch.
-      xero = inv ? pickAdoptableInvoice([inv], payload.Contact.ContactID).adopt : null
+      xero = inv ? pickAdoptableInvoice([inv], payload.Contact.ContactID, { allowDraft }).adopt : null
     } catch {
       xero = null
     }
@@ -45,7 +48,7 @@ async function pushPayload(
     const { Invoices = [] } = await api.get<{ Invoices?: XeroInvoice[] }>(
       `/Invoices?InvoiceNumbers=${encodeURIComponent(payload.InvoiceNumber)}`
     )
-    const { adopt, conflict } = pickAdoptableInvoice(Invoices, payload.Contact.ContactID)
+    const { adopt, conflict } = pickAdoptableInvoice(Invoices, payload.Contact.ContactID, { allowDraft })
     if (adopt) {
       xero = adopt
       await logEvent(admin, runId, { direction: 'push', entity, entityId, xeroId: xero.InvoiceID, action: 'matched', detail: `Adopted existing Xero invoice ${payload.InvoiceNumber}` })
@@ -67,16 +70,20 @@ async function pushPayload(
     await logEvent(admin, runId, { direction: 'push', entity, entityId, xeroId: xero.InvoiceID, action: 'warning', detail: w })
   }
 
+  // Xero has no online-invoice link for a DRAFT and refuses to email one.
+  const draft = xero.Status === 'DRAFT'
   let onlineUrl: string | null = null
-  try {
-    const res = await api.get<OnlineInvoiceResponse>(`/Invoices/${xero.InvoiceID}/OnlineInvoice`)
-    onlineUrl = res.OnlineInvoices?.[0]?.OnlineInvoiceUrl ?? null
-  } catch (err) {
-    warnings.push(`Pay-now link unavailable: ${err instanceof Error ? err.message : String(err)}`)
+  if (!draft) {
+    try {
+      const res = await api.get<OnlineInvoiceResponse>(`/Invoices/${xero.InvoiceID}/OnlineInvoice`)
+      onlineUrl = res.OnlineInvoices?.[0]?.OnlineInvoiceUrl ?? null
+    } catch (err) {
+      warnings.push(`Pay-now link unavailable: ${err instanceof Error ? err.message : String(err)}`)
+    }
   }
 
   let emailed = opts.alreadyEmailed
-  if (!emailed && opts.emailMode === 'xero') {
+  if (!emailed && !draft && opts.emailMode === 'xero') {
     try {
       await api.postNoContent(`/Invoices/${xero.InvoiceID}/Email`)
       emailed = true
@@ -87,7 +94,7 @@ async function pushPayload(
     }
   }
 
-  return { xero, onlineUrl, emailed, warnings }
+  return { xero, onlineUrl, emailed, draft, warnings }
 }
 
 export async function pushInvoiceToXero(admin: Admin, invoiceId: string, actorId: string | null): Promise<PushResult> {
@@ -168,7 +175,7 @@ export async function pushInvoiceToXero(admin: Admin, invoiceId: string, actorId
     if (error) throw new Error(`Xero invoice created but ECR could not record it: ${error.message}`)
 
     await finishRun(admin, runId, { status: r.warnings.length ? 'partial' : 'success', pushed: 1, warnings: r.warnings.length })
-    return { ok: true, warnings: r.warnings, emailed: r.emailed }
+    return { ok: true, warnings: r.warnings, emailed: r.emailed, draft: r.draft }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     await logEvent(admin, runId, { direction: 'push', entity: 'invoice', entityId: invoiceId, action: 'failed', detail: message })
@@ -241,7 +248,7 @@ export async function pushClaimToXero(admin: Admin, claimId: string, actorId: st
     if (error) throw new Error(`Xero invoice created but ECR could not record it: ${error.message}`)
 
     await finishRun(admin, runId, { status: r.warnings.length ? 'partial' : 'success', pushed: 1, warnings: r.warnings.length })
-    return { ok: true, warnings: r.warnings, emailed: r.emailed }
+    return { ok: true, warnings: r.warnings, emailed: r.emailed, draft: r.draft }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     await logEvent(admin, runId, { direction: 'push', entity: 'claim', entityId: claimId, action: 'failed', detail: message })
