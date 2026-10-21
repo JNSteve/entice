@@ -312,6 +312,9 @@ insert into budget_lines (id, project_id, cost_code_id, description, budget_amou
   ('b2000000-0000-4000-a000-000000000003', 'a1000000-0000-4000-a000-000000000002', (select id from cost_codes where code = '40'), 'Subcontractors', 98000.00, 3),
   ('b2000000-0000-4000-a000-000000000004', 'a1000000-0000-4000-a000-000000000002', (select id from cost_codes where code = '90'), 'Preliminaries', 30000.00, 4);
 
+-- Demo budgets are entered at the contract value, so claims bill the same figure.
+update budget_lines set sell_amount = budget_amount where sell_amount = 0;
+
 -- ─── 10. Variations (P-0001) ────────────────────────────────────────────────
 insert into variations (id, project_id, number, title, description, status, cost_estimate, sell_amount, client_ref, time_bar_date, submitted_at, decided_at) values
   ('da000000-0000-4000-a000-000000000001', 'a1000000-0000-4000-a000-000000000001', 1, 'Rock excavation latent condition',
