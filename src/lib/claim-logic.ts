@@ -45,9 +45,11 @@ export type SnapshotLine = {
 
 /**
  * Builds the claim-line snapshot for a project: one line per budget line plus
- * one per APPROVED variation. previous_claimed per source comes from the most
- * recent prior claim with status submitted/certified/paid; pct_complete is
- * initialised so claimed_to_date equals previous_claimed.
+ * one per APPROVED variation. Budget lines enter at their SELL value
+ * (budget_lines.sell_amount — the contract value billed to the client), never
+ * the cost budget. previous_claimed per source comes from the most recent prior
+ * claim with status submitted/certified/paid; pct_complete is initialised so
+ * claimed_to_date equals previous_claimed.
  */
 export async function buildSnapshotLines(
   supabase: Db,
@@ -57,7 +59,7 @@ export async function buildSnapshotLines(
   const [{ data: budgetLines }, { data: variations }] = await Promise.all([
     supabase
       .from('budget_lines')
-      .select('id, description, budget_amount, position')
+      .select('id, description, sell_amount, position')
       .eq('project_id', projectId)
       .order('position')
       .order('id'),
@@ -101,7 +103,7 @@ export async function buildSnapshotLines(
       source_type: 'budget_line' as const,
       source_id: b.id as string,
       description: b.description as string,
-      line_value: Number(b.budget_amount),
+      line_value: Number(b.sell_amount),
     })),
     ...(variations ?? []).map((v) => ({
       source_type: 'variation' as const,

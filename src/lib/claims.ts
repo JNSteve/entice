@@ -1,4 +1,23 @@
-import { round2 } from './money'
+import { round2, round6 } from './money'
+
+/**
+ * Previously-claimed floor for a line as a percentage (6dp), capped at 100.
+ * A draft line cannot drop below this without an explicit reduction (credit).
+ * 6dp so a dollar figure entered on a large line round-trips exactly.
+ */
+export function floorPct(lineValue: number, previousClaimed: number): number {
+  if (lineValue <= 0) return 0
+  return Math.min(round6((previousClaimed / lineValue) * 100), 100)
+}
+
+/**
+ * Percentage to store when one figure is pushed to every line at once (a 20%
+ * deposit, 100% at completion): the requested pct clamped to [floor, 100].
+ */
+export function bulkPct(lineValue: number, previousClaimed: number, pct: number): number {
+  if (lineValue <= 0) return 0
+  return Math.min(Math.max(round6(pct), floorPct(lineValue, previousClaimed)), 100)
+}
 
 export type ClaimLineInput = {
   sourceType: 'budget_line' | 'variation'

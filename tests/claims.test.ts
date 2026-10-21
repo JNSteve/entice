@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { computeClaim } from '../src/lib/claims'
+import { bulkPct, computeClaim, floorPct } from '../src/lib/claims'
 
 const lines = [
   { sourceType: 'budget_line' as const, sourceId: 'a', description: 'Earthworks', lineValue: 100000, pctComplete: 50, previousClaimed: 30000 },
@@ -42,4 +42,27 @@ test('fractional percentages round per line', () => {
   // round2(33333.33 * 33.33 / 100) = round2(11109.998...) = 11110
   expect(r.lines[0].claimedToDate).toBe(11110)
   expect(r.grossThisClaim).toBe(11110)
+})
+
+test('floorPct is the previously claimed share, capped at 100, 0 on a zero line', () => {
+  expect(floorPct(100000, 30000)).toBe(30)
+  expect(floorPct(100000, 0)).toBe(0)
+  expect(floorPct(0, 500)).toBe(0)
+  expect(floorPct(1000, 1500)).toBe(100)
+  // 6dp so a dollar figure round-trips on large lines
+  expect(floorPct(2000000, 1499900)).toBe(74.995)
+})
+
+test('bulkPct applies one percentage to a line but never below its floor', () => {
+  // Deposit: 20% across a fresh line
+  expect(bulkPct(28887.5, 0, 20)).toBe(20)
+  // A line already claimed to 30% is held there when 20% is pushed to all lines
+  expect(bulkPct(100000, 30000, 20)).toBe(30)
+  // Above the floor it moves
+  expect(bulkPct(100000, 30000, 50)).toBe(50)
+  // Clamped to [floor, 100]
+  expect(bulkPct(100000, 30000, 150)).toBe(100)
+  expect(bulkPct(100000, 30000, -5)).toBe(30)
+  // Zero-value line stays at 0
+  expect(bulkPct(0, 0, 20)).toBe(0)
 })

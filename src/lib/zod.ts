@@ -772,7 +772,11 @@ export const budgetLineSchema = z.object({
   project_id: z.uuid(),
   cost_code_id: z.uuid('Pick a cost code'),
   description: z.string().min(1, 'Description is required'),
+  /** Cost budget — what committed/actual spend is tracked against. */
   budget_amount: z.coerce.number().min(0),
+  /** Contract (sell) value — what progress claims bill. Defaults to the budget
+   *  amount when omitted so a manually built budget is still claimable. */
+  sell_amount: z.coerce.number().min(0).optional(),
 })
 
 export type BudgetLineInput = z.infer<typeof budgetLineSchema>
@@ -781,6 +785,7 @@ export const budgetLineUpdateSchema = z.object({
   description: z.string().min(1, 'Description is required').optional(),
   cost_code_id: z.uuid('Pick a cost code').optional(),
   budget_amount: z.coerce.number().min(0).optional(),
+  sell_amount: z.coerce.number().min(0).optional(),
 })
 
 export type BudgetLineUpdateInput = z.infer<typeof budgetLineUpdateSchema>

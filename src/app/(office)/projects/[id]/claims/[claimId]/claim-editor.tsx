@@ -23,7 +23,7 @@ import {
 } from '@/components/ui/table'
 import { StatusBadge } from '@/components/StatusBadge'
 import { MoneyInput } from '@/components/MoneyInput'
-import { computeClaim, type ClaimLineInput, type RetentionRules } from '@/lib/claims'
+import { bulkPct, computeClaim, type ClaimLineInput, type RetentionRules } from '@/lib/claims'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { round2, round6 } from '@/lib/money'
 import { cn } from '@/lib/utils'
@@ -32,6 +32,7 @@ import {
   CheckCircleIcon,
   FileTextIcon,
   LockIcon,
+  PercentIcon,
   RefreshCwIcon,
   SendIcon,
   UnlockIcon,
@@ -40,6 +41,7 @@ import {
   certifyClaim,
   markClaimPaid,
   refreshClaimLines,
+  setAllClaimLinesPct,
   submitClaim,
   updateClaimLine,
 } from '../actions'
@@ -143,6 +145,8 @@ export function ClaimEditor({ projectId, claim: initialClaim, lines: initialLine
   const [allowReduction, setAllowReduction] = useState<Set<string>>(new Set())
 
   const [refreshConfirmOpen, setRefreshConfirmOpen] = useState(false)
+  const [setAllOpen, setSetAllOpen] = useState(false)
+  const [setAllPct, setSetAllPct] = useState('')
   const [submitConfirmOpen, setSubmitConfirmOpen] = useState(false)
   const [certifyOpen, setCertifyOpen] = useState(false)
   const [paidConfirmOpen, setPaidConfirmOpen] = useState(false)
@@ -232,6 +236,37 @@ export function ClaimEditor({ projectId, claim: initialClaim, lines: initialLine
       if (next.has(lineId)) next.delete(lineId)
       else next.add(lineId)
       return next
+    })
+  }
+
+  function handleSetAll(e: React.FormEvent) {
+    e.preventDefault()
+    const target = parseFloat(setAllPct)
+    if (isNaN(target) || target < 0 || target > 100) {
+      toast.error('Enter a percentage between 0 and 100')
+      return
+    }
+    startTransition(async () => {
+      const result = await setAllClaimLinesPct(claim.id, projectId, target)
+      if (result.error) {
+        toast.error(result.error)
+        return
+      }
+      // Mirror the server rule locally so the totals update without a reload.
+      setLines((prev) =>
+        prev.map((l) => ({
+          ...l,
+          pct_complete: bulkPct(l.line_value, l.previous_claimed, target),
+        }))
+      )
+      setSetAllOpen(false)
+      setSetAllPct('')
+      toast.success(
+        result.held
+          ? `All lines set to ${target}% — ${result.held} already claimed past that stayed where they were`
+          : `All lines set to ${target}%`
+      )
+      router.refresh()
     })
   }
 
@@ -498,6 +533,16 @@ export function ClaimEditor({ projectId, claim: initialClaim, lines: initialLine
                 Refresh lines
               </Button>
               <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setSetAllOpen(true)}
+                disabled={pending || lines.length === 0}
+                title="Set every line's % complete to one figure — e.g. 20 for a 20% deposit claim"
+              >
+                <PercentIcon className="size-4" />
+                Set all lines
+              </Button>
+              <Button
                 size="sm"
                 onClick={() => setSubmitConfirmOpen(true)}
                 disabled={pending || lines.length === 0}
@@ -607,6 +652,46 @@ export function ClaimEditor({ projectId, claim: initialClaim, lines: initialLine
               {pending ? 'Refreshing…' : 'Refresh lines'}
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Set all lines to one % */}
+      <Dialog open={setAllOpen} onOpenChange={setSetAllOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Set all lines to one % complete</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSetAll} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="set-all-pct">% complete for every line</Label>
+              <Input
+                id="set-all-pct"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={100}
+                step={0.5}
+                value={setAllPct}
+                onChange={(e) => setSetAllPct(e.target.value)}
+                placeholder="20"
+                className="w-32 tabular-nums"
+                autoFocus
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Use 20 for a 20% deposit claim or 100 at completion. A line already claimed
+                past this figure keeps its previous % — nothing is credited back.
+              </p>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setSetAllOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={pending}>
+                {pending ? 'Applying…' : 'Apply to all lines'}
+              </Button>
+            </DialogFooter>
+          </form>
         </DialogContent>
       </Dialog>
 

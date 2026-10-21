@@ -200,6 +200,7 @@ export async function addBudgetLine(data: unknown): Promise<Result> {
     cost_code_id: parsed.data.cost_code_id,
     description: parsed.data.description,
     budget_amount: parsed.data.budget_amount,
+    sell_amount: parsed.data.sell_amount ?? parsed.data.budget_amount,
     position: (last?.position ?? -1) + 1,
   })
   if (error) return { error: error.message }

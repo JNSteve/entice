@@ -147,7 +147,10 @@ export interface ProjectPayload {
 
 export interface BudgetLinePayload {
   description: string
+  /** Cost budget (qty × unit_cost) — what the Budget tab tracks spend against. */
   budget_amount: number
+  /** Contract value (qty × unit_sell) — what progress claims bill against. */
+  sell_amount: number
   cost_code_id: string
   position: number
 }
@@ -179,14 +182,17 @@ export function projectPayloadFromQuote(
     quote.gst_rate
   ).subtotal
 
-  // One budget line per quote line, valued at COST (qty × unit_cost) — the
-  // budget tracks committed/actual COSTS, so seeding it with sell prices would
-  // make every line look over budget from day one.  Exception: quotes priced
-  // via sell rates only (unit_cost left at its 0 default on every line) would
-  // seed a useless all-zero budget, so fall back to sell for the whole quote.
+  // One budget line per quote line. budget_amount is COST (qty × unit_cost) —
+  // the budget tracks committed/actual COSTS, so seeding it with sell prices
+  // would make every line look over budget from day one.  Exception: quotes
+  // priced via sell rates only (unit_cost left at its 0 default on every line)
+  // would seed a useless all-zero budget, so fall back to sell for the whole
+  // quote. sell_amount is always SELL (qty × unit_sell) — the progress claims
+  // register bills the client against it, so Σ sell_amount = contract_sum.
   const hasCostData = lines.some((l) => lineTotal(l.qty, l.unit_cost) !== 0)
   const amountOf = (l: ConvertLine) =>
     round2(lineTotal(l.qty, hasCostData ? l.unit_cost : l.unit_sell))
+  const sellOf = (l: ConvertLine) => round2(lineTotal(l.qty, l.unit_sell))
 
   // Lines are grouped by their section's position (unsectioned lines last),
   // preserving the incoming line order within each group (sort is stable),
@@ -201,6 +207,7 @@ export function projectPayloadFromQuote(
     .map((line, position) => ({
       description: line.description,
       budget_amount: amountOf(line),
+      sell_amount: sellOf(line),
       cost_code_id: otherCostCodeId,
       position,
     }))

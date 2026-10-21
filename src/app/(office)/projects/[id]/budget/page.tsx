@@ -25,7 +25,7 @@ export default async function ProjectBudgetPage({
     supabase.from('projects').select('id').eq('id', id).single(),
     supabase
       .from('budget_lines')
-      .select('id, description, budget_amount, position, cost_code_id')
+      .select('id, description, budget_amount, sell_amount, position, cost_code_id')
       .eq('project_id', id)
       .order('position'),
     supabase
@@ -88,6 +88,7 @@ export default async function ProjectBudgetPage({
     id: l.id,
     description: l.description,
     budget_amount: Number(l.budget_amount),
+    sell_amount: Number(l.sell_amount),
     cost_code_id: l.cost_code_id,
   }))
 

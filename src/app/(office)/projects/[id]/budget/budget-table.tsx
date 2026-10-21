@@ -41,7 +41,10 @@ const UNCODED = 'uncoded'
 export interface BudgetLineRow {
   id: string
   description: string
+  /** Cost budget — committed/actual spend is tracked against this. */
   budget_amount: number
+  /** Contract (sell) value — progress claims bill against this. */
+  sell_amount: number
   cost_code_id: string
 }
 
@@ -71,6 +74,7 @@ interface Group {
   label: string
   lines: BudgetLineRow[]
   budget: number
+  sell: number
   committed: number
   actual: number
   variance: number
@@ -107,6 +111,7 @@ export function BudgetTable({
   const [lineDescription, setLineDescription] = useState('')
   const [lineCostCodeId, setLineCostCodeId] = useState('')
   const [lineAmount, setLineAmount] = useState<number | null>(null)
+  const [lineSell, setLineSell] = useState<number | null>(null)
 
   // Add cost dialog state
   const [addCostOpen, setAddCostOpen] = useState(false)
@@ -140,6 +145,7 @@ export function BudgetTable({
       .map((key) => {
         const groupLines = lines.filter((l) => l.cost_code_id === key)
         const budget = round2(groupLines.reduce((s, l) => s + l.budget_amount, 0))
+        const sell = round2(groupLines.reduce((s, l) => s + l.sell_amount, 0))
         // Header = spend attributed to this group's individual lines + unlinked
         // spend sitting at this cost code. Each source row is in exactly one bucket.
         const linkedCommitted = groupLines.reduce((s, l) => s + (committedByLine[l.id] ?? 0), 0)
@@ -151,6 +157,7 @@ export function BudgetTable({
           label: codeLabel(key),
           lines: groupLines,
           budget,
+          sell,
           committed,
           actual,
           variance: round2(budget - Math.max(committed, actual)),
@@ -163,6 +170,7 @@ export function BudgetTable({
   }, [lines, committedByLine, committedByCode, actualByLine, actualByCode, costCodes])
 
   const totalBudget = round2(groups.reduce((s, g) => s + g.budget, 0))
+  const totalSell = round2(groups.reduce((s, g) => s + g.sell, 0))
   const totalCommitted = round2(groups.reduce((s, g) => s + g.committed, 0))
   const totalActual = round2(groups.reduce((s, g) => s + g.actual, 0))
   const totalVariance = round2(totalBudget - Math.max(totalCommitted, totalActual))
@@ -172,6 +180,7 @@ export function BudgetTable({
     setLineDescription('')
     setLineCostCodeId('')
     setLineAmount(null)
+    setLineSell(null)
   }
 
   function handleAddLine(e: React.FormEvent) {
@@ -186,6 +195,8 @@ export function BudgetTable({
         cost_code_id: lineCostCodeId,
         description: lineDescription,
         budget_amount: lineAmount ?? 0,
+        // Left blank → the server defaults sell to the budget amount.
+        sell_amount: lineSell ?? undefined,
       })
       if (result.error) {
         toast.error(result.error)
@@ -203,6 +214,17 @@ export function BudgetTable({
     startTransition(async () => {
       const result = await updateBudgetLine(line.id, projectId, {
         budget_amount: next,
+      })
+      if (result.error) toast.error(result.error)
+    })
+  }
+
+  function handleSellChange(line: BudgetLineRow, value: number | null) {
+    const next = value ?? 0
+    if (next === line.sell_amount) return
+    startTransition(async () => {
+      const result = await updateBudgetLine(line.id, projectId, {
+        sell_amount: next,
       })
       if (result.error) toast.error(result.error)
     })
@@ -310,6 +332,12 @@ export function BudgetTable({
                 <TableHead className="text-right">Committed</TableHead>
                 <TableHead className="text-right">Actual</TableHead>
                 <TableHead className="text-right">Variance</TableHead>
+                <TableHead
+                  className="text-right"
+                  title="Contract value of the line — what progress claims bill the client. Budget is your cost."
+                >
+                  Sell
+                </TableHead>
                 <TableHead className="w-10" />
               </TableRow>
             </TableHeader>
@@ -332,6 +360,9 @@ export function BudgetTable({
                     </TableCell>
                     <TableCell className="text-right">
                       <Variance value={g.variance} />
+                    </TableCell>
+                    <TableCell className="text-right font-medium tabular-nums">
+                      {aud(g.sell)}
                     </TableCell>
                     <TableCell />
                   </TableRow>
@@ -382,6 +413,13 @@ export function BudgetTable({
                           </>
                         )
                       })()}
+                      <TableCell className="text-right">
+                        <MoneyInput
+                          value={line.sell_amount}
+                          onChange={(v) => handleSellChange(line, v)}
+                          className="ml-auto h-8 w-32"
+                        />
+                      </TableCell>
                       <TableCell>
                         <Button
                           variant="ghost"
@@ -412,6 +450,7 @@ export function BudgetTable({
                 <TableCell className="text-right">
                   <Variance value={totalVariance} />
                 </TableCell>
+                <TableCell className="text-right tabular-nums">{aud(totalSell)}</TableCell>
                 <TableCell />
               </TableRow>
             </TableBody>
@@ -455,8 +494,15 @@ export function BudgetTable({
               </Select>
             </div>
             <div className="flex flex-col gap-1.5">
-              <Label htmlFor="bl-amount">Budget amount</Label>
+              <Label htmlFor="bl-amount">Budget amount (cost)</Label>
               <MoneyInput value={lineAmount} onChange={setLineAmount} />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="bl-sell">Sell (contract value)</Label>
+              <MoneyInput value={lineSell} onChange={setLineSell} />
+              <p className="text-xs text-muted-foreground">
+                What progress claims bill for this line. Leave blank to use the budget amount.
+              </p>
             </div>
             <DialogFooter>
               <Button type="submit" disabled={pending || !lineCostCodeId}>

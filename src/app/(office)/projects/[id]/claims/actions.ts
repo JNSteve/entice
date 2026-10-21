@@ -5,6 +5,7 @@ import { format, lastDayOfMonth } from 'date-fns'
 import { requireRole } from '@/lib/auth'
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { buildSnapshotLines, computeClaimTotals, computeLine } from '@/lib/claim-logic'
+import { bulkPct } from '@/lib/claims'
 import { round6 } from '@/lib/money'
 import { claimCertifySchema, claimLineUpdateSchema } from '@/lib/zod'
 import { todayAU } from '@/lib/tz'
@@ -170,6 +171,62 @@ export async function updateClaimLine(
 
   revalidateClaim(projectId, claimId)
   return {}
+}
+
+// ─── Set every line to one % (draft only) ─────────────────────────────────────
+
+/**
+ * Pushes one percentage to every line of a draft claim — a 20% deposit, or
+ * 100% at completion — without touching lines one at a time. A line already
+ * claimed past that figure is held at its previously-claimed floor (no silent
+ * credits); the caller is told how many were held.
+ */
+export async function setAllClaimLinesPct(
+  claimId: string,
+  projectId: string,
+  pctInput: unknown
+): Promise<Result & { updated?: number; held?: number }> {
+  await requireRole('admin', 'office')
+
+  const pct = Number(pctInput)
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+    return { error: 'Enter a percentage between 0 and 100' }
+  }
+
+  const supabase = await createClient()
+
+  const { data: claim } = await supabase
+    .from('claims')
+    .select('id, status')
+    .eq('id', claimId)
+    .eq('project_id', projectId)
+    .single()
+  if (!claim) return { error: 'Claim not found' }
+  if (claim.status !== 'draft') return { error: 'Claim is not in draft status' }
+
+  const { data: lines } = await supabase
+    .from('claim_lines')
+    .select('id, line_value, previous_claimed')
+    .eq('claim_id', claimId)
+  if (!lines || lines.length === 0) return { error: 'Claim has no lines' }
+
+  let held = 0
+  for (const line of lines) {
+    const lineValue = Number(line.line_value)
+    const previous = Number(line.previous_claimed)
+    const next = bulkPct(lineValue, previous, pct)
+    if (lineValue > 0 && next > round6(pct)) held++
+    const { claimedToDate, thisClaim } = computeLine(lineValue, next, previous)
+    const { error } = await supabase
+      .from('claim_lines')
+      .update({ pct_complete: next, claimed_to_date: claimedToDate, this_claim: thisClaim })
+      .eq('id', line.id)
+      .eq('claim_id', claimId)
+    if (error) return { error: error.message }
+  }
+
+  revalidateClaim(projectId, claimId)
+  return { updated: lines.length, held }
 }
 
 // ─── Refresh lines (draft only) ───────────────────────────────────────────────

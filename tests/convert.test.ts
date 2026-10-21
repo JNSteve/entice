@@ -127,6 +127,8 @@ describe('projectPayloadFromQuote', () => {
     ])
     // budget_amount = qty × unit_cost (COST, not sell)
     expect(budgetLines.map((bl) => bl.budget_amount)).toEqual([180, 60, 150])
+    // sell_amount = qty × unit_sell — what the progress claims bill against
+    expect(budgetLines.map((bl) => bl.sell_amount)).toEqual([300, 100, 250.5])
     expect(budgetLines.map((bl) => bl.position)).toEqual([0, 1, 2])
     expect(budgetLines.every((bl) => bl.cost_code_id === OTHER_CODE_ID)).toBe(true)
   })
@@ -177,6 +179,25 @@ describe('projectPayloadFromQuote', () => {
     const { budgetLines } = projectPayloadFromQuote(QUOTE, SECTIONS, sellOnly, OTHER_CODE_ID, TODAY)
     // Without the fallback this would be an all-zero (useless) budget.
     expect(budgetLines.map((bl) => bl.budget_amount)).toEqual([300, 100, 250.50])
+    // Sell is sell regardless of the cost fallback.
+    expect(budgetLines.map((bl) => bl.sell_amount)).toEqual([300, 100, 250.50])
+  })
+
+  test('sell_amount rounds per line and never depends on cost data', () => {
+    // 3 × 50.123 = 150.369 → 150.37 sell; cost is 0 (sell-only quote) and
+    // must not leak into the sell figure.
+    const lines: ConvertLine[] = [
+      { section_id: 'sec-1', description: 'Odd', qty: 3, unit_cost: 0, unit_sell: 50.123 },
+    ]
+    const { budgetLines } = projectPayloadFromQuote(
+      QUOTE,
+      [{ id: 'sec-1', title: 'Works', position: 0 }],
+      lines,
+      OTHER_CODE_ID,
+      TODAY
+    )
+    expect(budgetLines[0].sell_amount).toBe(150.37)
+    expect(budgetLines[0].budget_amount).toBe(150.37) // sell-only fallback for cost
   })
 
   test('partial cost data still values every line at cost', () => {
