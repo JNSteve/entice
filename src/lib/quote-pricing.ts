@@ -9,19 +9,30 @@ import type { PricingDisplay } from '@/lib/quote-doc'
  */
 
 export type PricingLine = { description: string; qty: number; unit: string; unit_sell: number }
-export type PricingSection = { title: string; lines: PricingLine[] }
+/** `id` is the quote_sections id; absent for the orphan "Items" group and template samples. */
+export type PricingSection = { id?: string; title: string; lines: PricingLine[] }
 export type PricingTotals = { subtotal: number; gst: number; gstRate: number; total: number }
 
+/** A money row prints `value` as AUD; a text row prints `text` as given. */
+export type TotalsRow = { label: string; value: number } | { label: string; text: string }
 export type TotalsRows = {
-  rows: { label: string; value: number }[]
+  rows: TotalsRow[]
   grand: { label: string; value: number }
 }
+
+type ItemList = { title: string; items: string[] }
 
 export type PricingModel =
   | {
       mode: 'lump_sum'
       totals: TotalsRows
-      itemLists: { title: string; items: string[] }[]
+      itemLists: ItemList[]
+    }
+  | {
+      /** One section priced as rate × quantity; the rest as "Other line items". */
+      mode: 'unit_rate'
+      totals: TotalsRows
+      itemLists: ItemList[]
     }
   | {
       mode: 'section_totals'
@@ -61,6 +72,32 @@ function totalsRows(t: PricingTotals, showGst: boolean, subtotalLabel: string): 
   }
 }
 
+function itemLists(sections: PricingSection[], display: PricingDisplay): ItemList[] {
+  return display.list_items
+    ? sections.map((s) => ({ title: s.title, items: s.lines.map((l) => l.description) }))
+    : []
+}
+
+/**
+ * Rate rows for unit_rate: the rated section's total over the typed quantity,
+ * rounded to the cent. The quote totals are printed as they are; the few
+ * cents between rate × quantity and the section total are not reconciled.
+ */
+function unitRateRows(sections: PricingSection[], totals: PricingTotals, display: PricingDisplay): TotalsRows {
+  const rated = sections.find((s) => s.id === display.rate_section_id) ?? sections[0]
+  const ratedTotal = rated ? sectionSubtotal(rated) : 0
+  const unit = display.rate_unit
+  const rows: TotalsRow[] = [
+    { label: `Rate per ${unit}`, value: display.rate_qty > 0 ? round2(ratedTotal / display.rate_qty) : 0 },
+    { label: `Initial quantity (${unit})`, text: `${fmtQty(display.rate_qty)} ${unit}` },
+  ]
+  if (sections.some((s) => s !== rated && s.lines.length > 0)) {
+    rows.push({ label: 'Other line items', value: round2(totals.subtotal - ratedTotal) })
+  }
+  const gst = totalsRows(totals, display.show_gst, 'Subtotal (ex GST)')
+  return { rows: [...rows, ...gst.rows], grand: gst.grand }
+}
+
 export function buildPricingModel(
   sections: PricingSection[],
   totals: PricingTotals,
@@ -71,9 +108,13 @@ export function buildPricingModel(
       return {
         mode: 'lump_sum',
         totals: totalsRows(totals, display.show_gst, `${display.fee_label} (ex GST)`),
-        itemLists: display.list_items
-          ? sections.map((s) => ({ title: s.title, items: s.lines.map((l) => l.description) }))
-          : [],
+        itemLists: itemLists(sections, display),
+      }
+    case 'unit_rate':
+      return {
+        mode: 'unit_rate',
+        totals: unitRateRows(sections, totals, display),
+        itemLists: itemLists(sections, display),
       }
     case 'section_totals':
       return {

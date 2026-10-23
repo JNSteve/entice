@@ -12,20 +12,35 @@ export const MAX_TEMPLATE_PDF_BYTES = 20 * 1024 * 1024
 
 // ─── Pricing display ─────────────────────────────────────────────────────────
 
-export const PRICING_MODES = ['lump_sum', 'section_totals', 'itemised'] as const
+export const PRICING_MODES = ['lump_sum', 'unit_rate', 'section_totals', 'itemised'] as const
 export type PricingMode = (typeof PRICING_MODES)[number]
 
-export const pricingDisplaySchema = z.object({
-  mode: z.enum(PRICING_MODES),
-  /** itemised / section_totals: print the Qty and Unit columns. */
-  show_qty_unit: z.boolean(),
-  /** lump_sum: list line descriptions by section, without numbers. */
-  list_items: z.boolean(),
-  /** Print ex-GST / GST rows; false = a single inc-GST line. */
-  show_gst: z.boolean(),
-  /** lump_sum label, e.g. "Fixed fee". */
-  fee_label: z.string().trim().min(1, 'Fee label is required').max(60),
-})
+/** Modes a template may default to. Unit rate needs a per-quote quantity, so it is picked on the quote. */
+export const TEMPLATE_PRICING_MODES: readonly PricingMode[] = PRICING_MODES.filter((m) => m !== 'unit_rate')
+
+export const pricingDisplaySchema = z
+  .object({
+    mode: z.enum(PRICING_MODES),
+    /** itemised / section_totals: print the Qty and Unit columns. */
+    show_qty_unit: z.boolean(),
+    /** lump_sum / unit_rate: list line descriptions by section, without numbers. */
+    list_items: z.boolean(),
+    /** Print ex-GST / GST rows; false = a single inc-GST line. */
+    show_gst: z.boolean(),
+    /** lump_sum label, e.g. "Fixed fee". */
+    fee_label: z.string().trim().min(1, 'Fee label is required').max(60),
+    /** unit_rate: quote_sections id the rate is worked out from; null or unknown → the first section. */
+    rate_section_id: z.string().nullable().default(null),
+    /** unit_rate: the quantity the rated section's total is divided by. */
+    rate_qty: z.number().nonnegative().default(0),
+    /** unit_rate: unit printed with the rate, as typed (e.g. "m2"). */
+    rate_unit: z.string().trim().min(1, 'Unit is required').max(20).default('m2'),
+  })
+  .superRefine((d, ctx) => {
+    if (d.mode === 'unit_rate' && !(d.rate_qty > 0)) {
+      ctx.addIssue({ code: 'custom', message: 'Quantity is required', path: ['rate_qty'] })
+    }
+  })
 export type PricingDisplay = z.infer<typeof pricingDisplaySchema>
 
 export const DEFAULT_PRICING: PricingDisplay = {
@@ -34,10 +49,14 @@ export const DEFAULT_PRICING: PricingDisplay = {
   list_items: true,
   show_gst: true,
   fee_label: 'Fixed fee',
+  rate_section_id: null,
+  rate_qty: 0,
+  rate_unit: 'm2',
 }
 
 export const PRICING_MODE_LABELS: Record<PricingMode, string> = {
   lump_sum: 'Lump sum',
+  unit_rate: 'Unit rate',
   section_totals: 'Section totals',
   itemised: 'Itemised',
 }
