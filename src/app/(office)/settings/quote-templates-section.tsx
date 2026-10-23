@@ -38,8 +38,8 @@ import { buildStorageKey, removeUploadedObject } from '@/lib/storage-keys'
 import {
   DEFAULT_PRICING,
   MAX_TEMPLATE_PDF_BYTES,
-  PRICING_MODES,
   PRICING_MODE_LABELS,
+  TEMPLATE_PRICING_MODES,
   starterDoc,
   type PricingDisplay,
   type QuoteTemplateInput,
@@ -518,7 +518,7 @@ function TemplateEditorDialog({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {PRICING_MODES.map((m) => (
+                {TEMPLATE_PRICING_MODES.map((m) => (
                   <SelectItem key={m} value={m}>
                     {PRICING_MODE_LABELS[m]}
                   </SelectItem>

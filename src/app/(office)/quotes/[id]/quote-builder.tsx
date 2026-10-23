@@ -46,7 +46,7 @@ import {
 import { RatePickerDialog } from './rate-picker-dialog'
 import { DuplicateQuoteButton } from './duplicate-quote-button'
 import { QuoteDocCard } from './quote-doc-card'
-import { QuotePdfDialog } from './quote-pdf-dialog'
+import { QuotePdfDialog, type PdfDialogSection } from './quote-pdf-dialog'
 
 export type { LineData }
 import {
@@ -165,6 +165,17 @@ export function QuoteBuilder({
   // Lines whose section was deleted out from under them (FK sets null).
   const orphanLines = lines.filter((l) => l.section_id === null)
 
+  // Sell total per section (ex GST), for the PDF dialog's rated section picker.
+  const pdfSections: PdfDialogSection[] = sections.map((s) => ({
+    id: s.id,
+    title: s.title,
+    sell: round2(
+      lines
+        .filter((l) => l.section_id === s.id)
+        .reduce((sum, l) => sum + lineTotal(l.qty, l.unit_sell), 0)
+    ),
+  }))
+
   return (
     <div className="flex flex-col gap-6">
       {quote.archived && <ArchiveBanner kind="quote" id={quote.id} />}
@@ -174,6 +185,7 @@ export function QuoteBuilder({
         editable={editable}
         pmOptions={pmOptions}
         templates={templates}
+        pdfSections={pdfSections}
         clients={clients}
         sites={sites}
         contacts={contacts}
@@ -244,6 +256,7 @@ function HeaderCard({
   editable,
   pmOptions,
   templates,
+  pdfSections,
   clients,
   sites,
   contacts,
@@ -252,6 +265,7 @@ function HeaderCard({
   editable: boolean
   pmOptions: PmOption[]
   templates: TemplateOption[]
+  pdfSections: PdfDialogSection[]
   clients: ClientOption[]
   sites: ClientScopedOption[]
   contacts: ClientScopedOption[]
@@ -428,7 +442,7 @@ function HeaderCard({
                 </Button>
               </>
             )}
-            <QuotePdfDialog quote={quote} templates={templates} editable={editable} />
+            <QuotePdfDialog quote={quote} templates={templates} sections={pdfSections} editable={editable} />
             <DuplicateQuoteButton id={quote.id} />
             {!quote.archived && <ArchiveButton kind="quote" id={quote.id} />}
           </div>

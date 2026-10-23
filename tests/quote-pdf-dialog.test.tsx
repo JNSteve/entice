@@ -63,6 +63,11 @@ const templates = [
   { id: TEMPLATE_ID, name: 'Bonded Asbestos Removal', is_default: false, pricing_defaults: { ...DEFAULT_PRICING, mode: 'lump_sum' as const } },
 ]
 
+const sections = [
+  { id: 's-1', title: 'Section 1', sell: 49620.66 },
+  { id: 's-2', title: 'Hazmat Survey', sell: 1200 },
+]
+
 let tab: { location: { href: string }; close: ReturnType<typeof vi.fn> }
 
 beforeEach(() => {
@@ -88,7 +93,7 @@ async function clickWhenEnabled(name: RegExp) {
 }
 
 async function openDialog() {
-  render(<QuotePdfDialog quote={quote()} templates={templates} editable />)
+  render(<QuotePdfDialog quote={quote()} templates={templates} sections={sections} editable />)
   fireEvent.click(screen.getByRole('button', { name: /pdf/i }))
   await screen.findByText('Quote PDF')
 }
@@ -140,12 +145,51 @@ describe('QuotePdfDialog', () => {
   })
 
   test('a frozen quote never writes and just opens the saved layout', async () => {
-    render(<QuotePdfDialog quote={quote({ status: 'accepted' })} templates={templates} editable={false} />)
+    render(<QuotePdfDialog quote={quote({ status: 'accepted' })} templates={templates} sections={sections} editable={false} />)
     fireEvent.click(screen.getByRole('button', { name: /pdf/i }))
     await screen.findByText('Quote PDF')
     fireEvent.click(screen.getByRole('button', { name: /open pdf/i }))
     await waitFor(() => expect(tab.location.href).toBe('/api/pdf/quote/q-1'))
     expect(applyQuoteTemplate).not.toHaveBeenCalled()
     expect(updateQuotePdfOptions).not.toHaveBeenCalled()
+  })
+})
+
+describe('QuotePdfDialog unit rate', () => {
+  const unitRate = quote({
+    pdf_options: { ...DEFAULT_PRICING, mode: 'unit_rate', rate_section_id: 's-1', rate_qty: 1250, rate_unit: 'm2' },
+  })
+
+  test('shows the rated section, quantity and unit, and works the rate out live', async () => {
+    render(<QuotePdfDialog quote={unitRate} templates={templates} sections={sections} editable />)
+    fireEvent.click(screen.getByRole('button', { name: /pdf/i }))
+    await screen.findByText('Quote PDF')
+
+    expect(screen.getByText('Section 1')).toBeTruthy()
+    const qty = screen.getByLabelText('Quantity') as HTMLInputElement
+    expect(qty.value).toBe('1250')
+    expect((screen.getByLabelText('Unit') as HTMLInputElement).value).toBe('m2')
+    expect(screen.getByText('= $39.70 per m2')).toBeTruthy()
+
+    fireEvent.change(qty, { target: { value: '1000' } })
+    expect(screen.getByText('= $49.62 per m2')).toBeTruthy()
+
+    fireEvent.change(qty, { target: { value: '' } })
+    expect(screen.getByText('Enter a quantity')).toBeTruthy()
+  })
+
+  test('Open PDF saves the rate choices with the other options', async () => {
+    applyQuoteTemplate.mockResolvedValue({})
+    render(<QuotePdfDialog quote={unitRate} templates={templates} sections={sections} editable />)
+    fireEvent.click(screen.getByRole('button', { name: /pdf/i }))
+    await screen.findByText('Quote PDF')
+    fireEvent.change(screen.getByLabelText('Quantity'), { target: { value: '1000' } })
+    fireEvent.change(screen.getByLabelText('Unit'), { target: { value: 'lm' } })
+    fireEvent.click(screen.getByRole('button', { name: /open pdf/i }))
+    await waitFor(() => expect(tab.location.href).toBe('/api/pdf/quote/q-1'))
+    expect(updateQuotePdfOptions).toHaveBeenCalledWith(
+      'q-1',
+      expect.objectContaining({ mode: 'unit_rate', rate_section_id: 's-1', rate_qty: 1000, rate_unit: 'lm' })
+    )
   })
 })

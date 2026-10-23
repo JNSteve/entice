@@ -28,19 +28,26 @@ import {
   PRICING_MODE_LABELS,
   type PricingDisplay,
 } from '@/lib/quote-doc'
+import { aud } from '@/lib/format'
+import { round2 } from '@/lib/money'
 import { applyQuoteTemplate, updateQuotePdfOptions } from '../actions'
 import type { QuoteData, TemplateOption } from './quote-builder'
 import { FileDownIcon } from 'lucide-react'
 
 const STANDARD = 'standard'
 
+/** A quote section with its sell total (ex GST), for the rated section picker. */
+export type PdfDialogSection = { id: string; title: string; sell: number }
+
 export function QuotePdfDialog({
   quote,
   templates,
+  sections,
   editable,
 }: {
   quote: QuoteData
   templates: TemplateOption[]
+  sections: PdfDialogSection[]
   editable: boolean
 }) {
   const router = useRouter()
@@ -49,6 +56,10 @@ export function QuotePdfDialog({
   const [templateId, setTemplateId] = useState(quote.template_id ?? STANDARD)
   const [display, setDisplay] = useState<PricingDisplay>(quote.pdf_options ?? DEFAULT_PRICING)
   const [confirmSwitch, setConfirmSwitch] = useState(false)
+  // The quantity is typed as text so "0." and "12." survive the keystroke.
+  const [qtyText, setQtyText] = useState(
+    (quote.pdf_options?.rate_qty ?? 0) > 0 ? String(quote.pdf_options?.rate_qty) : ''
+  )
 
   function patch(p: Partial<PricingDisplay>) {
     setDisplay((d) => ({ ...d, ...p }))
@@ -108,6 +119,12 @@ export function QuotePdfDialog({
     })
   }
 
+  const rated = sections.find((s) => s.id === display.rate_section_id) ?? sections[0]
+  const ratePreview =
+    rated && display.rate_qty > 0
+      ? `= ${aud(round2(rated.sell / display.rate_qty))} per ${display.rate_unit || 'unit'}`
+      : 'Enter a quantity'
+
   const mode = display.mode
   return (
     <>
@@ -144,7 +161,10 @@ export function QuotePdfDialog({
                   // A template brings its own pricing defaults (applyQuoteTemplate
                   // saves them); show them so the dialog matches what will print.
                   const picked = templates.find((t) => t.id === v)
-                  if (picked) setDisplay(picked.pricing_defaults)
+                  if (picked) {
+                    setDisplay(picked.pricing_defaults)
+                    setQtyText('')
+                  }
                 }}
                 disabled={!editable}
               >
@@ -170,7 +190,16 @@ export function QuotePdfDialog({
               <Label htmlFor="qp-mode">Pricing display</Label>
               <Select
                 value={mode}
-                onValueChange={(v) => v && patch({ mode: v as PricingDisplay['mode'] })}
+                onValueChange={(v) => {
+                  if (!v) return
+                  const next = v as PricingDisplay['mode']
+                  const known = sections.some((s) => s.id === display.rate_section_id)
+                  patch(
+                    next === 'unit_rate' && !known
+                      ? { mode: next, rate_section_id: sections[0]?.id ?? null }
+                      : { mode: next }
+                  )
+                }}
                 disabled={!editable}
               >
                 <SelectTrigger id="qp-mode" className="w-full">
@@ -178,33 +207,83 @@ export function QuotePdfDialog({
                 </SelectTrigger>
                 <SelectContent>
                   {PRICING_MODES.map((m) => (
-                    <SelectItem key={m} value={m}>
+                    <SelectItem key={m} value={m} disabled={m === 'unit_rate' && sections.length === 0}>
                       {PRICING_MODE_LABELS[m]}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-            {mode === 'lump_sum' ? (
+            {mode === 'lump_sum' && (
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor="qp-fee">Fee label</Label>
+                <Input
+                  id="qp-fee"
+                  value={display.fee_label}
+                  onChange={(e) => patch({ fee_label: e.target.value })}
+                  disabled={!editable}
+                />
+              </div>
+            )}
+            {mode === 'unit_rate' && (
               <>
                 <div className="flex flex-col gap-1.5">
-                  <Label htmlFor="qp-fee">Fee label</Label>
-                  <Input
-                    id="qp-fee"
-                    value={display.fee_label}
-                    onChange={(e) => patch({ fee_label: e.target.value })}
+                  <Label htmlFor="qp-rated">Rated section</Label>
+                  <Select
+                    value={rated?.id ?? ''}
+                    onValueChange={(v) => v && patch({ rate_section_id: v })}
                     disabled={!editable}
-                  />
+                  >
+                    <SelectTrigger id="qp-rated" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sections.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>
+                          {s.title}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                <label className="flex items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={display.list_items}
-                    onCheckedChange={(c) => patch({ list_items: Boolean(c) })}
-                    disabled={!editable}
-                  />
-                  List included items (no prices)
-                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="qp-qty">Quantity</Label>
+                    <Input
+                      id="qp-qty"
+                      type="number"
+                      min={0}
+                      step="0.001"
+                      value={qtyText}
+                      onChange={(e) => {
+                        setQtyText(e.target.value)
+                        patch({ rate_qty: Number(e.target.value) || 0 })
+                      }}
+                      disabled={!editable}
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <Label htmlFor="qp-unit">Unit</Label>
+                    <Input
+                      id="qp-unit"
+                      value={display.rate_unit}
+                      onChange={(e) => patch({ rate_unit: e.target.value })}
+                      disabled={!editable}
+                    />
+                  </div>
+                </div>
+                <p className="text-sm text-muted-foreground tabular-nums">{ratePreview}</p>
               </>
+            )}
+            {mode === 'lump_sum' || mode === 'unit_rate' ? (
+              <label className="flex items-center gap-2 text-sm">
+                <Checkbox
+                  checked={display.list_items}
+                  onCheckedChange={(c) => patch({ list_items: Boolean(c) })}
+                  disabled={!editable}
+                />
+                List included items (no prices)
+              </label>
             ) : (
               <label className="flex items-center gap-2 text-sm">
                 <Checkbox
