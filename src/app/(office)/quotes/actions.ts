@@ -601,7 +601,8 @@ export async function moveSection(
 
 // ─── Lines ───────────────────────────────────────────────────────────────────
 
-export async function addLine(data: unknown): Promise<Result> {
+/** On success carries the new line's id, so the caller can point at it. */
+export async function addLine(data: unknown): Promise<Result & { id?: string }> {
   await requireRole('admin', 'office')
 
   const parsed = quoteLineCreateSchema.safeParse(data)
@@ -661,17 +662,21 @@ export async function addLine(data: unknown): Promise<Result> {
     .limit(1)
     .maybeSingle()
 
-  const { error } = await supabase.from('quote_lines').insert({
-    quote_id: parsed.data.quote_id,
-    section_id: parsed.data.section_id,
-    position: (last?.position ?? -1) + 1,
-    qty: 1,
-    ...line,
-  })
+  const { data: inserted, error } = await supabase
+    .from('quote_lines')
+    .insert({
+      quote_id: parsed.data.quote_id,
+      section_id: parsed.data.section_id,
+      position: (last?.position ?? -1) + 1,
+      qty: 1,
+      ...line,
+    })
+    .select('id')
+    .single()
   if (error) return { error: error.message }
 
   revalidateQuote(parsed.data.quote_id)
-  return {}
+  return { id: inserted.id }
 }
 
 export async function updateLine(id: string, data: unknown): Promise<Result> {

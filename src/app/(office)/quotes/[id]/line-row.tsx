@@ -58,11 +58,17 @@ export function LineRow({
   editable,
   isFirst,
   isLast,
+  highlighted = false,
+  onEdited,
 }: {
   line: LineData
   editable: boolean
   isFirst: boolean
   isLast: boolean
+  /** Just added from the rate library: tinted so it stands out until it gets attention. */
+  highlighted?: boolean
+  /** Fired once a field save or a lock succeeds, which is when the tint comes off. */
+  onEdited?: () => void
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -117,6 +123,7 @@ export function LineRow({
         revert()
         return
       }
+      onEdited?.()
       router.refresh()
     })
   }
@@ -207,6 +214,7 @@ export function LineRow({
         setLocked(!next)
         return
       }
+      onEdited?.()
       router.refresh()
     })
   }
@@ -239,7 +247,15 @@ export function LineRow({
   }
 
   return (
-    <div className={cn('grid items-center gap-2', LINE_GRID_COLS_EDITABLE)}>
+    <div
+      className={cn(
+        'grid items-center gap-2',
+        LINE_GRID_COLS_EDITABLE,
+        // The tint box is padded outwards so the columns stay put under it.
+        highlighted &&
+          '-mx-1 -my-0.5 rounded-lg bg-yellow-100/70 px-1 py-0.5 ring-1 ring-yellow-300/70 dark:bg-yellow-500/15 dark:ring-yellow-500/30'
+      )}
+    >
       <Button
         variant="ghost"
         size="icon-sm"

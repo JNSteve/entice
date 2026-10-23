@@ -30,11 +30,16 @@ export function LinesGrid({
   sectionId,
   lines,
   editable,
+  freshIds,
+  onLineEdited,
 }: {
   quoteId: string
   sectionId: string | null
   lines: LineData[]
   editable: boolean
+  /** Lines just added from the rate library, tinted until each is edited or locked. */
+  freshIds?: ReadonlySet<string>
+  onLineEdited?: (lineId: string) => void
 }) {
   if (lines.length === 0) {
     return <p className="py-1 text-sm text-muted-foreground">No lines yet.</p>
@@ -100,6 +105,8 @@ export function LinesGrid({
               editable={editable}
               isFirst={i === 0}
               isLast={i === group.lines.length - 1}
+              highlighted={freshIds?.has(line.id) ?? false}
+              onEdited={onLineEdited ? () => onLineEdited(line.id) : undefined}
             />
           ))}
         </div>

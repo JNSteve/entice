@@ -668,6 +668,22 @@ function SectionCard({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [title, setTitle] = useState(section.title)
+  // Lines added from the rate library this visit: tinted on the grid until
+  // each one is edited or locked, so a run of picks is easy to find.
+  const [freshIds, setFreshIds] = useState<ReadonlySet<string>>(() => new Set())
+
+  function markFresh(lineId: string) {
+    setFreshIds((prev) => new Set(prev).add(lineId))
+  }
+
+  function clearFresh(lineId: string) {
+    setFreshIds((prev) => {
+      if (!prev.has(lineId)) return prev
+      const next = new Set(prev)
+      next.delete(lineId)
+      return next
+    })
+  }
 
   function saveTitle() {
     if (!title.trim()) {
@@ -778,6 +794,8 @@ function SectionCard({
           sectionId={section.id}
           lines={lines}
           editable={editable}
+          freshIds={freshIds}
+          onLineEdited={clearFresh}
         />
 
         {editable && (
@@ -790,6 +808,7 @@ function SectionCard({
               quoteId={quoteId}
               sectionId={section.id}
               rateItems={rateItems}
+              onAdded={markFresh}
             />
           </div>
         )}

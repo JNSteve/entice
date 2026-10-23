@@ -108,3 +108,29 @@ describe('LineRow category', () => {
     expect(refresh).not.toHaveBeenCalled()
   })
 })
+
+describe('LineRow highlight', () => {
+  test('a highlighted row carries the yellow tinge; a plain one does not', () => {
+    const { container, unmount } = render(<LineRow line={line()} editable isFirst isLast highlighted />)
+    expect((container.firstChild as HTMLElement).className).toMatch(/yellow/)
+    unmount()
+    const plain = render(<LineRow line={line()} editable isFirst isLast />)
+    expect((plain.container.firstChild as HTMLElement).className).not.toMatch(/yellow/)
+  })
+
+  test('a successful save reports the line as edited', async () => {
+    const onEdited = vi.fn()
+    render(<LineRow line={line()} editable isFirst isLast highlighted onEdited={onEdited} />)
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'plant' } })
+    await waitFor(() => expect(onEdited).toHaveBeenCalledTimes(1))
+  })
+
+  test('a failed save does not', async () => {
+    updateLine.mockResolvedValue({ error: 'Line is locked. Unlock it to edit.' })
+    const onEdited = vi.fn()
+    render(<LineRow line={line()} editable isFirst isLast highlighted onEdited={onEdited} />)
+    fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'plant' } })
+    await waitFor(() => expect(toastError).toHaveBeenCalled())
+    expect(onEdited).not.toHaveBeenCalled()
+  })
+})
