@@ -10,7 +10,7 @@ const sections = [
 ]
 const totals = { subtotal: 550.5, gst: 55.05, gstRate: 10, total: 605.55 }
 
-for (const mode of ['itemised', 'section_totals', 'lump_sum'] as const) {
+for (const mode of ['itemised', 'section_totals', 'lump_sum', 'unit_rate'] as const) {
   test(`standard quote pdf renders in ${mode} mode`, async () => {
     const buffer = await renderToBuffer(
       <QuotePdf
@@ -21,7 +21,7 @@ for (const mode of ['itemised', 'section_totals', 'lump_sum'] as const) {
         validDays={14}
         description="Scope"
         quoteFooter="Fine print"
-        display={{ ...DEFAULT_PRICING, mode, fee_label: 'Fixed fee' }}
+        display={{ ...DEFAULT_PRICING, mode, fee_label: 'Fixed fee', rate_qty: 95 }}
       />
     )
     expect(buffer.subarray(0, 4).toString()).toBe('%PDF')

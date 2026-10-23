@@ -93,6 +93,7 @@ export async function buildQuotePdfResponse(
 
   const pdfSections: QuotePdfSection[] = (sections ?? [])
     .map((s) => ({
+      id: s.id as string,
       title: s.title as string,
       lines: allLines.filter((l) => l.section_id === s.id),
     }))

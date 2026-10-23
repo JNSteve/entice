@@ -28,7 +28,7 @@ function doc(): QuoteDoc {
   return d
 }
 
-for (const mode of ['lump_sum', 'section_totals', 'itemised'] as const) {
+for (const mode of ['lump_sum', 'unit_rate', 'section_totals', 'itemised'] as const) {
   test(`templated quote renders in ${mode} mode`, async () => {
     const buffer = await renderToBuffer(
       <QuoteDocPdf
@@ -36,7 +36,7 @@ for (const mode of ['lump_sum', 'section_totals', 'itemised'] as const) {
         company={company}
         doc={doc()}
         details={details}
-        pricing={buildPricingModel(sections, totals, { ...DEFAULT_PRICING, mode })}
+        pricing={buildPricingModel(sections, totals, { ...DEFAULT_PRICING, mode, rate_qty: 95 })}
         quoteFooter="Fine print"
       />
     )

@@ -57,7 +57,7 @@ function Totals({ totals, style }: { totals: TotalsRows; style?: PdfStyle }) {
       {totals.rows.map((r, i) => (
         <View key={i} style={totalsStyles.row}>
           <Text style={totalsStyles.label}>{r.label}</Text>
-          <Text style={totalsStyles.value}>{aud(r.value)}</Text>
+          <Text style={totalsStyles.value}>{'text' in r ? r.text : aud(r.value)}</Text>
         </View>
       ))}
       <View style={totalsStyles.grandRow}>
@@ -78,8 +78,8 @@ function SubtotalRow({ value }: { value: number }) {
 }
 
 export function PricingBlock({ model }: { model: PricingModel }) {
-  if (model.mode === 'lump_sum') {
-    // What the fee covers reads first; the money is the conclusion.
+  if (model.mode === 'lump_sum' || model.mode === 'unit_rate') {
+    // What the price covers reads first; the money is the conclusion.
     return (
       <View>
         {model.itemLists.map((list, i) => (
