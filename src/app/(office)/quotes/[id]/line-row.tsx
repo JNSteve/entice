@@ -26,6 +26,8 @@ export interface LineData {
   unit_sell: number
   /** Cost category from the source rate item; null for untagged manual lines. */
   kind: string | null
+  /** Finalised: every field and delete are refused until the padlock is pressed again. */
+  locked: boolean
 }
 
 export const LINE_GRID_COLS_EDITABLE =

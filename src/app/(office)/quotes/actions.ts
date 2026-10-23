@@ -216,7 +216,7 @@ export async function duplicateQuote(
   const { data: lines } = await supabase
     .from('quote_lines')
     .select(
-      'section_id, description, qty, unit, unit_cost, markup_pct, unit_sell, position, kind'
+      'section_id, description, qty, unit, unit_cost, markup_pct, unit_sell, position, kind, locked'
     )
     .eq('quote_id', quoteId)
     .order('position')
@@ -235,6 +235,7 @@ export async function duplicateQuote(
         unit_sell: l.unit_sell,
         position: l.position,
         kind: l.kind,
+        locked: l.locked,
       }))
     )
     if (linesErr) return { error: linesErr.message }

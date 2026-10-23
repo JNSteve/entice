@@ -37,6 +37,7 @@ function line(
     markup_pct: 0,
     unit_sell: 10,
     kind,
+    locked: false,
     ...overrides,
   }
 }

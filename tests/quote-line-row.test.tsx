@@ -30,6 +30,7 @@ function line(overrides: Partial<LineData> = {}): LineData {
     markup_pct: 0,
     unit_sell: 130,
     kind: null,
+    locked: false,
     ...overrides,
   }
 }

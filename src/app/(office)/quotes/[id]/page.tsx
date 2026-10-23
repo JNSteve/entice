@@ -50,7 +50,7 @@ export default async function QuoteBuilderPage({
         .order('id'),
       supabase
         .from('quote_lines')
-        .select('id, section_id, position, description, qty, unit, unit_cost, markup_pct, unit_sell, kind')
+        .select('id, section_id, position, description, qty, unit, unit_cost, markup_pct, unit_sell, kind, locked')
         .eq('quote_id', id)
         .order('position')
         .order('id'),
@@ -181,6 +181,7 @@ export default async function QuoteBuilderPage({
     markup_pct: Number(l.markup_pct),
     unit_sell: Number(l.unit_sell),
     kind: (l.kind as string | null) ?? null,
+    locked: Boolean(l.locked),
   }))
 
   const rateItemData: RateItemData[] = (rateItems ?? []).map((r) => ({
