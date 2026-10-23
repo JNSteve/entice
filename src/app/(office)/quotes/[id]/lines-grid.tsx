@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { aud } from '@/lib/format'
-import { groupLinesByKind } from '@/lib/quote-lines'
+import { duplicateLineIds, groupLinesByKind } from '@/lib/quote-lines'
 import { cn } from '@/lib/utils'
 import type { RateKind } from '@/lib/zod'
 import { addLine } from '../actions'
@@ -46,6 +46,8 @@ export function LinesGrid({
   }
 
   const groups = groupLinesByKind(lines)
+  // Same rate or same wording twice in this section: tinted blue to be checked.
+  const duplicates = duplicateLineIds(lines)
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -106,6 +108,7 @@ export function LinesGrid({
               isFirst={i === 0}
               isLast={i === group.lines.length - 1}
               highlighted={freshIds?.has(line.id) ?? false}
+              duplicate={duplicates.has(line.id)}
               onEdited={onLineEdited ? () => onLineEdited(line.id) : undefined}
             />
           ))}

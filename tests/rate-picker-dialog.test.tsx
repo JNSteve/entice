@@ -155,3 +155,39 @@ describe('RatePickerDialog', () => {
     await waitFor(() => expect(screen.queryByText('Add from rate library')).toBeNull())
   })
 })
+
+describe('RatePickerDialog rates already on the quote', () => {
+  async function openWith(props: Partial<Parameters<typeof RatePickerDialog>[0]>) {
+    render(<RatePickerDialog quoteId="q-1" sectionId="s-1" rateItems={rates} {...props} />)
+    fireEvent.click(screen.getByRole('button', { name: /add from rates/i }))
+    await screen.findByText('Add from rate library')
+  }
+
+  test('rates on the quote are blue and say where; the rest are plain', async () => {
+    await openWith({
+      onQuote: new Map([
+        ['r-bins', 2],
+        ['r-movers', 1],
+      ]),
+      inSection: new Map([['r-movers', 1]]),
+    })
+    const bins = screen.getByRole('button', { name: /waste bins/i })
+    expect(bins.className).toMatch(/sky/)
+    expect(bins.textContent).toMatch(/On quote ×2/)
+    const movers = screen.getByRole('button', { name: /air movers/i })
+    expect(movers.className).toMatch(/sky/)
+    expect(movers.textContent).toMatch(/In this section/)
+    const bags = screen.getByRole('button', { name: /asbestos bags/i })
+    expect(bags.className).not.toMatch(/sky/)
+    expect(bags.textContent).not.toMatch(/On quote|In this section/)
+  })
+
+  test('a blue rate can still be picked on purpose', async () => {
+    addLine.mockResolvedValueOnce({ id: 'line-1' })
+    const onAdded = vi.fn()
+    await openWith({ onQuote: new Map([['r-movers', 1]]), inSection: new Map([['r-movers', 1]]), onAdded })
+    await pickWhenEnabled(/air movers/i)
+    await waitFor(() => expect(onAdded).toHaveBeenCalledWith('line-1'))
+    expect(screen.getByRole('button', { name: /air movers/i }).textContent).toMatch(/Added$/)
+  })
+})

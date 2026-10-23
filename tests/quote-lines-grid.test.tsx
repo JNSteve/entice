@@ -39,6 +39,7 @@ function line(
     unit_sell: 10,
     kind,
     locked: false,
+    rate_item_id: null,
     ...overrides,
   }
 }
@@ -143,5 +144,53 @@ describe('LinesGrid', () => {
   test('empty list shows the placeholder', () => {
     render(<LinesGrid quoteId={QUOTE_ID} sectionId={SECTION_ID} lines={[]} editable />)
     expect(screen.getByText('No lines yet.')).toBeTruthy()
+  })
+})
+
+describe('LinesGrid duplicates', () => {
+  function rowOf(description: string | RegExp) {
+    return screen.getByDisplayValue(description).closest('.grid') as HTMLElement
+  }
+
+  test('lines sharing a rate item are tinted blue; a lone one is not', () => {
+    render(
+      <LinesGrid
+        quoteId={QUOTE_ID}
+        sectionId={SECTION_ID}
+        editable
+        lines={[
+          line('a', 'plant', 0, { description: 'Air movers', rate_item_id: 'r-movers' }),
+          line('b', 'plant', 1, { description: 'Air movers (upstairs)', rate_item_id: 'r-movers' }),
+          line('c', 'plant', 2, { description: 'Bobcat', rate_item_id: 'r-bobcat' }),
+        ]}
+      />
+    )
+    expect(rowOf('Air movers').className).toMatch(/sky/)
+    expect(rowOf('Air movers (upstairs)').className).toMatch(/sky/)
+    expect(rowOf('Bobcat').className).not.toMatch(/sky/)
+  })
+
+  test('manual lines with the same wording count too, whatever the case and spacing', () => {
+    render(
+      <LinesGrid
+        quoteId={QUOTE_ID}
+        sectionId={SECTION_ID}
+        editable
+        lines={[
+          line('a', null, 0, { description: 'Tip fees' }),
+          line('b', null, 1, { description: ' tip  FEES ' }),
+          line('c', null, 2, { description: 'Tip fees (extra)' }),
+          line('d', null, 3, { description: '' }),
+          line('e', null, 4, { description: '' }),
+        ]}
+      />
+    )
+    expect(rowOf('Tip fees').className).toMatch(/sky/)
+    expect(rowOf(/tip\s+FEES/).className).toMatch(/sky/)
+    expect(rowOf('Tip fees (extra)').className).not.toMatch(/sky/)
+    // Two blank lines are just blank, not duplicates of each other.
+    const blanks = screen.getAllByLabelText('Description').filter((i) => (i as HTMLInputElement).value === '')
+    expect(blanks).toHaveLength(2)
+    for (const b of blanks) expect((b.closest('.grid') as HTMLElement).className).not.toMatch(/sky/)
   })
 })

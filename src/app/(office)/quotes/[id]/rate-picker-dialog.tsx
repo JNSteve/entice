@@ -23,11 +23,14 @@ import { EmptyState } from '@/components/EmptyState'
 import { aud, pct } from '@/lib/format'
 import { lineSell } from '@/lib/money'
 import { PRICE_KIND_LABELS, PRICE_KINDS, type PriceKind } from '@/lib/price-list'
+import { cn } from '@/lib/utils'
 import { addLine } from '../actions'
 import type { RateItemData } from './quote-builder'
 import { BookOpenIcon, CheckIcon, Loader2Icon, SearchIcon } from 'lucide-react'
 
 const KIND_LABELS = PRICE_KIND_LABELS
+
+const EMPTY_COUNTS: ReadonlyMap<string, number> = new Map()
 
 /**
  * The matching rates in kind order (the order the kind filter lists them),
@@ -52,23 +55,36 @@ function groupByKind(rates: RateItemData[]) {
   return [...known, ...stray]
 }
 
+/** "×3" for a count above one, nothing for one. */
+function times(n: number) {
+  return n > 1 ? ` ×${n}` : ''
+}
+
 /**
  * Pick rates into a section one after another. The dialog stays open after
  * each pick — the search, kind filter and scroll position are untouched — so
  * a run of lines can be added without finding the place again. Every rate
  * picked keeps an "Added" tick until the dialog is next opened, so what has
- * gone in is plain to see. Each pick reports the new line's id through
- * `onAdded` so the section can mark it.
+ * gone in is plain to see. Rates the quote already carries (`onQuote`, and
+ * `inSection` for this section) are tinted blue with a note saying where,
+ * every time the dialog opens, so one is not added again by accident. Each
+ * pick reports the new line's id through `onAdded` so the section can mark it.
  */
 export function RatePickerDialog({
   quoteId,
   sectionId,
   rateItems,
+  onQuote = EMPTY_COUNTS,
+  inSection = EMPTY_COUNTS,
   onAdded,
 }: {
   quoteId: string
   sectionId: string
   rateItems: RateItemData[]
+  /** Rate item id → lines carrying it anywhere on the quote. */
+  onQuote?: ReadonlyMap<string, number>
+  /** Rate item id → lines carrying it in this section. */
+  inSection?: ReadonlyMap<string, number>
   onAdded?: (lineId: string) => void
 }) {
   const router = useRouter()
@@ -170,13 +186,27 @@ export function RatePickerDialog({
                       {group.items.map((r) => {
                         const adding = addingId === r.id
                         const added = addedTimes.get(r.id) ?? 0
+                        const here = inSection.get(r.id) ?? 0
+                        const anywhere = onQuote.get(r.id) ?? 0
+                        // Where the quote already has this rate, if it does.
+                        const where =
+                          here > 0
+                            ? `In this section${times(here)}`
+                            : anywhere > 0
+                              ? `On quote${times(anywhere)}`
+                              : null
+                        const onQuoteAlready = where !== null || added > 0
                         return (
                           <li key={r.id}>
                             <button
                               type="button"
                               onClick={() => handlePick(r.id)}
                               disabled={addingId !== null}
-                              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:cursor-wait"
+                              className={cn(
+                                'flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:cursor-wait',
+                                onQuoteAlready &&
+                                  'bg-sky-100/70 hover:bg-sky-100 dark:bg-sky-500/15 dark:hover:bg-sky-500/20'
+                              )}
                             >
                               <span className="truncate font-medium">{r.name}</span>
                               {adding ? (
@@ -184,13 +214,20 @@ export function RatePickerDialog({
                               ) : added > 0 ? (
                                 <span className="flex shrink-0 items-center gap-1 font-medium text-green-700 dark:text-green-400">
                                   <CheckIcon className="size-4" />
-                                  Added{added > 1 ? ` ×${added}` : ''}
+                                  Added{times(added)}
                                 </span>
                               ) : (
-                                <span className="shrink-0 text-right tabular-nums text-muted-foreground">
-                                  {aud(r.cost)} / {r.unit} @ {pct(r.default_markup_pct)} →{' '}
-                                  <span className="font-medium text-foreground">
-                                    {aud(lineSell(r.cost, r.default_markup_pct))}
+                                <span className="flex shrink-0 items-center gap-2 text-right tabular-nums text-muted-foreground">
+                                  {where && (
+                                    <span className="text-xs font-medium text-sky-700 dark:text-sky-400">
+                                      {where}
+                                    </span>
+                                  )}
+                                  <span>
+                                    {aud(r.cost)} / {r.unit} @ {pct(r.default_markup_pct)} →{' '}
+                                    <span className="font-medium text-foreground">
+                                      {aud(lineSell(r.cost, r.default_markup_pct))}
+                                    </span>
                                   </span>
                                 </span>
                               )}

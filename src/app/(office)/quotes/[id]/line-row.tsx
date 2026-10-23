@@ -34,7 +34,14 @@ export interface LineData {
   kind: string | null
   /** Finalised: every field and delete are refused until the padlock is pressed again. */
   locked: boolean
+  /** The rate-library item this line came from; null for a line typed by hand. */
+  rate_item_id: string | null
 }
+
+const DUPLICATE_TINT =
+  'bg-sky-100/70 ring-1 ring-sky-300/70 dark:bg-sky-500/15 dark:ring-sky-500/30'
+const FRESH_TINT =
+  'bg-yellow-100/70 ring-1 ring-yellow-300/70 dark:bg-yellow-500/15 dark:ring-yellow-500/30'
 
 export const LINE_GRID_COLS_EDITABLE =
   'grid-cols-[1.75rem_minmax(10rem,1fr)_10rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem_5.5rem]'
@@ -59,6 +66,7 @@ export function LineRow({
   isFirst,
   isLast,
   highlighted = false,
+  duplicate = false,
   onEdited,
 }: {
   line: LineData
@@ -67,7 +75,9 @@ export function LineRow({
   isLast: boolean
   /** Just added from the rate library: tinted so it stands out until it gets attention. */
   highlighted?: boolean
-  /** Fired once a field save or a lock succeeds, which is when the tint comes off. */
+  /** Appears more than once in its section: tinted blue so it can be checked. Wins over `highlighted`. */
+  duplicate?: boolean
+  /** Fired once a field save or a lock succeeds, which is when the fresh tint comes off. */
   onEdited?: () => void
 }) {
   const router = useRouter()
@@ -223,14 +233,22 @@ export function LineRow({
   const total = lineTotal(qtyNumber, sell)
   // Locked inputs keep legible figures: override the primitive's 50% fade.
   const frozen = locked ? 'disabled:opacity-100 disabled:text-foreground' : undefined
+  const tint = duplicate ? DUPLICATE_TINT : highlighted ? FRESH_TINT : null
+  const tintTitle = duplicate
+    ? 'Appears more than once in this section'
+    : highlighted
+      ? 'Added from the rate library'
+      : undefined
 
   if (!editable) {
     return (
       <div
         className={cn(
           'grid items-center gap-2 rounded-md px-1 py-1 text-sm',
-          LINE_GRID_COLS_READONLY
+          LINE_GRID_COLS_READONLY,
+          duplicate && DUPLICATE_TINT
         )}
+        title={tintTitle}
       >
         <span className="truncate">{description || '—'}</span>
         <span className="truncate text-muted-foreground">
@@ -252,9 +270,10 @@ export function LineRow({
         'grid items-center gap-2',
         LINE_GRID_COLS_EDITABLE,
         // The tint box is padded outwards so the columns stay put under it.
-        highlighted &&
-          '-mx-1 -my-0.5 rounded-lg bg-yellow-100/70 px-1 py-0.5 ring-1 ring-yellow-300/70 dark:bg-yellow-500/15 dark:ring-yellow-500/30'
+        tint && '-mx-1 -my-0.5 rounded-lg px-1 py-0.5',
+        tint
       )}
+      title={tintTitle}
     >
       <Button
         variant="ghost"

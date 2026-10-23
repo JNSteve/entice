@@ -32,6 +32,7 @@ function line(overrides: Partial<LineData> = {}): LineData {
     unit_sell: 130,
     kind: null,
     locked: false,
+    rate_item_id: null,
     ...overrides,
   }
 }
@@ -132,5 +133,22 @@ describe('LineRow highlight', () => {
     fireEvent.change(screen.getByLabelText('Category'), { target: { value: 'plant' } })
     await waitFor(() => expect(toastError).toHaveBeenCalled())
     expect(onEdited).not.toHaveBeenCalled()
+  })
+})
+
+describe('LineRow duplicate', () => {
+  test('a duplicate row is tinted blue, and blue wins over the fresh yellow', () => {
+    const { container, unmount } = render(<LineRow line={line()} editable isFirst isLast duplicate />)
+    expect((container.firstChild as HTMLElement).className).toMatch(/sky/)
+    unmount()
+    const both = render(<LineRow line={line()} editable isFirst isLast duplicate highlighted />)
+    const cls = (both.container.firstChild as HTMLElement).className
+    expect(cls).toMatch(/sky/)
+    expect(cls).not.toMatch(/yellow/)
+  })
+
+  test('a read-only duplicate row is tinted too', () => {
+    const { container } = render(<LineRow line={line()} editable={false} isFirst isLast duplicate />)
+    expect((container.firstChild as HTMLElement).className).toMatch(/sky/)
   })
 })

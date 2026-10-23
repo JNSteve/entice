@@ -44,6 +44,7 @@ function line(overrides: Partial<LineData> = {}): LineData {
     unit_sell: 100,
     kind: 'labour',
     locked: false,
+    rate_item_id: null,
     ...overrides,
   }
 }

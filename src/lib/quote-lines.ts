@@ -78,3 +78,44 @@ export function groupLinesByKind<T extends GroupableLine & { qty: number; unit_s
   }
   return groups
 }
+
+/** Rate-library item id → how many of `lines` carry it. Lines with no rate are skipped. */
+export function countByRate(
+  lines: readonly { rate_item_id: string | null }[]
+): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>()
+  for (const l of lines) {
+    if (!l.rate_item_id) continue
+    counts.set(l.rate_item_id, (counts.get(l.rate_item_id) ?? 0) + 1)
+  }
+  return counts
+}
+
+/** Description as compared for duplicates: case and runs of spaces don't count. */
+function descriptionKey(description: string): string {
+  return description.trim().toLowerCase().replace(/\s+/g, ' ')
+}
+
+/**
+ * Ids of the lines that appear more than once among `lines`: the same rate
+ * item on two lines, or the same wording on two lines. Blank descriptions
+ * never match each other.
+ */
+export function duplicateLineIds(
+  lines: readonly { id: string; rate_item_id: string | null; description: string }[]
+): ReadonlySet<string> {
+  const byRate = countByRate(lines)
+  const byDescription = new Map<string, number>()
+  for (const l of lines) {
+    const key = descriptionKey(l.description)
+    if (key) byDescription.set(key, (byDescription.get(key) ?? 0) + 1)
+  }
+  const duplicates = new Set<string>()
+  for (const l of lines) {
+    const key = descriptionKey(l.description)
+    const sameRate = l.rate_item_id !== null && (byRate.get(l.rate_item_id) ?? 0) > 1
+    const sameWording = key !== '' && (byDescription.get(key) ?? 0) > 1
+    if (sameRate || sameWording) duplicates.add(l.id)
+  }
+  return duplicates
+}

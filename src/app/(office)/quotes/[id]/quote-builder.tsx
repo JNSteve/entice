@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useTransition } from 'react'
+import React, { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -37,6 +37,7 @@ import {
 } from '../actions'
 import { LINE_KIND_LABELS, LINE_KIND_ORDER } from '@/lib/quote-lines'
 import type { LineData } from './line-row'
+import { countByRate } from '@/lib/quote-lines'
 import { LinesGrid } from './lines-grid'
 import {
   ChangeClientDialog,
@@ -165,6 +166,9 @@ export function QuoteBuilder({
   // Lines whose section was deleted out from under them (FK sets null).
   const orphanLines = lines.filter((l) => l.section_id === null)
 
+  // Which rate-library items are on the quote already, for the rate picker to mark.
+  const onQuote = useMemo(() => countByRate(lines), [lines])
+
   // Sell total per section (ex GST), for the PDF dialog's rated section picker.
   const pdfSections: PdfDialogSection[] = sections.map((s) => ({
     id: s.id,
@@ -208,6 +212,7 @@ export function QuoteBuilder({
           section={section}
           lines={lines.filter((l) => l.section_id === section.id)}
           rateItems={rateItems}
+          onQuote={onQuote}
           editable={editable}
           isFirst={i === 0}
           isLast={i === sections.length - 1}
@@ -653,6 +658,7 @@ function SectionCard({
   section,
   lines,
   rateItems,
+  onQuote,
   editable,
   isFirst,
   isLast,
@@ -661,6 +667,8 @@ function SectionCard({
   section: SectionData
   lines: LineData[]
   rateItems: RateItemData[]
+  /** Rate item id → lines carrying it anywhere on the quote. */
+  onQuote: ReadonlyMap<string, number>
   editable: boolean
   isFirst: boolean
   isLast: boolean
@@ -668,6 +676,8 @@ function SectionCard({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
   const [title, setTitle] = useState(section.title)
+  // The same, for this section alone: the picker says "In this section" for these.
+  const inSection = useMemo(() => countByRate(lines), [lines])
   // Lines added from the rate library this visit: tinted on the grid until
   // each one is edited or locked, so a run of picks is easy to find.
   const [freshIds, setFreshIds] = useState<ReadonlySet<string>>(() => new Set())
@@ -808,6 +818,8 @@ function SectionCard({
               quoteId={quoteId}
               sectionId={section.id}
               rateItems={rateItems}
+              onQuote={onQuote}
+              inSection={inSection}
               onAdded={markFresh}
             />
           </div>
