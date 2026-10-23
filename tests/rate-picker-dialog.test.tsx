@@ -51,6 +51,28 @@ async function pickWhenEnabled(name: RegExp) {
 }
 
 describe('RatePickerDialog', () => {
+  test('rates sit under kind headings, in the order the kind filter lists them', async () => {
+    await openDialog()
+    const headings = screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)
+    expect(headings).toEqual(['Consumable', 'Plant & equipment', 'Other'])
+
+    // Each rate follows its own heading.
+    const text = screen.getByRole('dialog').textContent ?? ''
+    const at = (s: string) => text.indexOf(s)
+    expect(at('Consumable')).toBeLessThan(at('Asbestos Bags'))
+    expect(at('Asbestos Bags')).toBeLessThan(at('Plant & equipment'))
+    expect(at('Plant & equipment')).toBeLessThan(at('Air movers'))
+    expect(at('Air movers')).toBeLessThan(at('Other'))
+    expect(at('Other')).toBeLessThan(at('waste bins'))
+  })
+
+  test('a search drops the headings of kinds with nothing left', async () => {
+    await openDialog()
+    fireEvent.change(screen.getByPlaceholderText(/search rates/i), { target: { value: 'bins' } })
+    expect(screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)).toEqual(['Other'])
+    expect(screen.queryByRole('button', { name: /air movers/i })).toBeNull()
+  })
+
   test('picking a rate adds it, keeps the dialog open and hands back the new line id', async () => {
     addLine.mockResolvedValueOnce({ id: 'line-9' })
     const onAdded = await openDialog()
@@ -85,12 +107,36 @@ describe('RatePickerDialog', () => {
     expect(screen.getByText('Add from rate library')).toBeTruthy()
   })
 
-  test('the picked row says Added so a click is visibly confirmed', async () => {
+  test('every picked row keeps its Added tick, counting repeat picks', async () => {
+    addLine
+      .mockResolvedValueOnce({ id: 'line-1' })
+      .mockResolvedValueOnce({ id: 'line-2' })
+      .mockResolvedValueOnce({ id: 'line-3' })
+    await openDialog()
+    await pickWhenEnabled(/air movers/i)
+    await waitFor(() => expect(screen.getByText('1 added')).toBeTruthy())
+    await pickWhenEnabled(/waste bins/i)
+    await waitFor(() => expect(screen.getByText('2 added')).toBeTruthy())
+    await pickWhenEnabled(/air movers/i)
+    await waitFor(() => expect(screen.getByText('3 added')).toBeTruthy())
+
+    // Both rows still say so; the one picked twice says how many times.
+    expect(screen.getByRole('button', { name: /waste bins/i }).textContent).toMatch(/Added$/)
+    expect(screen.getByRole('button', { name: /air movers/i }).textContent).toMatch(/Added ×2$/)
+  })
+
+  test('reopening the dialog starts a fresh tally', async () => {
     addLine.mockResolvedValueOnce({ id: 'line-1' })
     await openDialog()
     await pickWhenEnabled(/air movers/i)
-    const row = await screen.findByRole('button', { name: /air movers/i })
-    await waitFor(() => expect(row.textContent).toMatch(/added/i))
+    await waitFor(() => expect(screen.getByText('1 added')).toBeTruthy())
+    fireEvent.click(screen.getByRole('button', { name: /done/i }))
+    await waitFor(() => expect(screen.queryByText('Add from rate library')).toBeNull())
+
+    fireEvent.click(screen.getByRole('button', { name: /add from rates/i }))
+    await screen.findByText('Add from rate library')
+    expect(screen.queryByText(/added/i)).toBeNull()
+    expect(screen.getByRole('button', { name: /air movers/i }).textContent).not.toMatch(/Added/)
   })
 
   test('an error is reported, nothing is counted and the dialog stays put', async () => {

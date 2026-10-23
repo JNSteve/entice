@@ -1,9 +1,8 @@
 'use client'
 
-import React, { useEffect, useState, useTransition } from 'react'
+import React, { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -30,14 +29,36 @@ import { BookOpenIcon, CheckIcon, Loader2Icon, SearchIcon } from 'lucide-react'
 
 const KIND_LABELS = PRICE_KIND_LABELS
 
-/** How long the picked row keeps its "Added" tick. */
-const ADDED_TICK_MS = 1500
+/**
+ * The matching rates in kind order (the order the kind filter lists them),
+ * alphabetical within each kind as they arrive. Only populated kinds appear;
+ * a kind the list does not know goes last under its raw name.
+ */
+function groupByKind(rates: RateItemData[]) {
+  const byKind = new Map<string, RateItemData[]>()
+  for (const r of rates) {
+    const items = byKind.get(r.kind)
+    if (items) items.push(r)
+    else byKind.set(r.kind, [r])
+  }
+  const known = PRICE_KINDS.filter((k) => byKind.has(k)).map((k) => ({
+    kind: k as string,
+    label: KIND_LABELS[k],
+    items: byKind.get(k)!,
+  }))
+  const stray = [...byKind.keys()]
+    .filter((k) => !(PRICE_KINDS as readonly string[]).includes(k))
+    .map((k) => ({ kind: k, label: k, items: byKind.get(k)! }))
+  return [...known, ...stray]
+}
 
 /**
  * Pick rates into a section one after another. The dialog stays open after
  * each pick — the search, kind filter and scroll position are untouched — so
- * a run of lines can be added without finding the place again. Each pick
- * reports the new line's id through `onAdded` so the section can mark it.
+ * a run of lines can be added without finding the place again. Every rate
+ * picked keeps an "Added" tick until the dialog is next opened, so what has
+ * gone in is plain to see. Each pick reports the new line's id through
+ * `onAdded` so the section can mark it.
  */
 export function RatePickerDialog({
   quoteId,
@@ -57,16 +78,9 @@ export function RatePickerDialog({
   const [kind, setKind] = useState<'all' | PriceKind>('all')
   // One add at a time, so each line lands after the last; this row spins.
   const [addingId, setAddingId] = useState<string | null>(null)
-  // The last pick keeps a tick for a moment so the click is visibly confirmed.
-  // `n` makes picking the same rate twice restart the timer.
-  const [justAdded, setJustAdded] = useState<{ id: string; n: number } | null>(null)
+  // How many times each rate has been picked since the dialog was opened.
+  const [addedTimes, setAddedTimes] = useState<ReadonlyMap<string, number>>(() => new Map())
   const [addedCount, setAddedCount] = useState(0)
-
-  useEffect(() => {
-    if (!justAdded) return
-    const timer = setTimeout(() => setJustAdded(null), ADDED_TICK_MS)
-    return () => clearTimeout(timer)
-  }, [justAdded])
 
   const filtered = rateItems.filter((r) => {
     if (kind !== 'all' && r.kind !== kind) return false
@@ -74,10 +88,11 @@ export function RatePickerDialog({
       return false
     return true
   })
+  const groups = groupByKind(filtered)
 
   function handleOpen() {
     setAddedCount(0)
-    setJustAdded(null)
+    setAddedTimes(new Map())
     setOpen(true)
   }
 
@@ -95,7 +110,7 @@ export function RatePickerDialog({
       return
     }
     setAddedCount((n) => n + 1)
-    setJustAdded((prev) => ({ id: rateItemId, n: (prev?.n ?? 0) + 1 }))
+    setAddedTimes((prev) => new Map(prev).set(rateItemId, (prev.get(rateItemId) ?? 0) + 1))
     onAdded?.(result.id)
     // The quote behind the dialog picks the line up; the list is not blocked on it.
     startTransition(() => router.refresh())
@@ -138,49 +153,54 @@ export function RatePickerDialog({
             </Select>
           </div>
           <div className="max-h-80 overflow-y-auto rounded-lg border">
-            {filtered.length === 0 ? (
+            {groups.length === 0 ? (
               <EmptyState
                 title="No matching rates"
                 description="Try a different search or kind."
               />
             ) : (
               <ul className="divide-y">
-                {filtered.map((r) => {
-                  const adding = addingId === r.id
-                  const added = justAdded?.id === r.id
-                  return (
-                    <li key={r.id}>
-                      <button
-                        type="button"
-                        onClick={() => handlePick(r.id)}
-                        disabled={addingId !== null}
-                        className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:cursor-wait"
-                      >
-                        <span className="flex min-w-0 items-center gap-2">
-                          <Badge variant="secondary" className="shrink-0">
-                            {KIND_LABELS[r.kind as PriceKind] ?? r.kind}
-                          </Badge>
-                          <span className="truncate font-medium">{r.name}</span>
-                        </span>
-                        {adding ? (
-                          <Loader2Icon className="size-4 shrink-0 animate-spin text-muted-foreground" />
-                        ) : added ? (
-                          <span className="flex shrink-0 items-center gap-1 font-medium text-green-700 dark:text-green-400">
-                            <CheckIcon className="size-4" />
-                            Added
-                          </span>
-                        ) : (
-                          <span className="shrink-0 text-right tabular-nums text-muted-foreground">
-                            {aud(r.cost)} / {r.unit} @ {pct(r.default_markup_pct)} →{' '}
-                            <span className="font-medium text-foreground">
-                              {aud(lineSell(r.cost, r.default_markup_pct))}
-                            </span>
-                          </span>
-                        )}
-                      </button>
-                    </li>
-                  )
-                })}
+                {groups.map((group) => (
+                  <li key={group.kind}>
+                    {/* Sticky inside the scroll box, so the kind stays named while scrolling through it. */}
+                    <h4 className="sticky top-0 z-10 border-b bg-muted px-3 py-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                      {group.label}
+                    </h4>
+                    <ul className="divide-y">
+                      {group.items.map((r) => {
+                        const adding = addingId === r.id
+                        const added = addedTimes.get(r.id) ?? 0
+                        return (
+                          <li key={r.id}>
+                            <button
+                              type="button"
+                              onClick={() => handlePick(r.id)}
+                              disabled={addingId !== null}
+                              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-muted disabled:cursor-wait"
+                            >
+                              <span className="truncate font-medium">{r.name}</span>
+                              {adding ? (
+                                <Loader2Icon className="size-4 shrink-0 animate-spin text-muted-foreground" />
+                              ) : added > 0 ? (
+                                <span className="flex shrink-0 items-center gap-1 font-medium text-green-700 dark:text-green-400">
+                                  <CheckIcon className="size-4" />
+                                  Added{added > 1 ? ` ×${added}` : ''}
+                                </span>
+                              ) : (
+                                <span className="shrink-0 text-right tabular-nums text-muted-foreground">
+                                  {aud(r.cost)} / {r.unit} @ {pct(r.default_markup_pct)} →{' '}
+                                  <span className="font-medium text-foreground">
+                                    {aud(lineSell(r.cost, r.default_markup_pct))}
+                                  </span>
+                                </span>
+                              )}
+                            </button>
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </li>
+                ))}
               </ul>
             )}
           </div>
