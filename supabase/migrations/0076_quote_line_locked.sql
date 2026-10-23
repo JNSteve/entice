@@ -9,3 +9,10 @@
 
 alter table quote_lines
   add column if not exists locked boolean not null default false;
+
+comment on column quote_lines.locked is
+  'Finalised: updateLine/deleteLine refuse the line and the builder disables its fields until the padlock is pressed again. Moving it still works.';
+
+insert into supabase_migrations.schema_migrations (version, name, statements) values
+  ('20261023090000', '0076_quote_line_locked', array['see supabase/migrations/0076_quote_line_locked.sql'])
+on conflict (version) do nothing;
