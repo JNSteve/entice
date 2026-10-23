@@ -22,6 +22,7 @@ import {
   quoteSectionSchema,
   quoteLineCreateSchema,
   quoteLineUpdateSchema,
+  quoteLineLockSchema,
 } from '@/lib/zod'
 import {
   parseQuoteDocInput,
@@ -39,6 +40,8 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 type Result = { error?: string }
 
 const EDITABLE_STATUSES = ['draft', 'sent']
+
+const LOCKED_LINE_ERROR = 'Line is locked. Unlock it to edit.'
 
 function revalidateQuote(quoteId: string) {
   revalidatePath('/quotes')
@@ -682,13 +685,14 @@ export async function updateLine(id: string, data: unknown): Promise<Result> {
   const supabase = await createClient()
   const { data: line } = await supabase
     .from('quote_lines')
-    .select('id, quote_id, section_id, kind')
+    .select('id, quote_id, section_id, kind, locked')
     .eq('id', id)
     .single()
   if (!line) return { error: 'Line not found' }
 
   const editable = await assertEditable(supabase, line.quote_id)
   if (editable.error) return editable
+  if (line.locked) return { error: LOCKED_LINE_ERROR }
 
   const { sell_overridden, ...fields } = parsed.data
   // Server is the source of truth for the auto-computed sell price.
@@ -725,19 +729,52 @@ export async function updateLine(id: string, data: unknown): Promise<Result> {
   return {}
 }
 
-export async function deleteLine(id: string): Promise<Result> {
+/**
+ * Toggle a line's "finalised" padlock. The lock only stops edits and deletes
+ * (updateLine / deleteLine); moving the line and the quote-level actions are
+ * unaffected. Same role and editable-quote gates as every other line action.
+ */
+export async function setLineLocked(id: string, locked: boolean): Promise<Result> {
   await requireRole('admin', 'office')
+
+  const parsed = quoteLineLockSchema.safeParse({ locked })
+  if (!parsed.success) return { error: 'Invalid data' }
 
   const supabase = await createClient()
   const { data: line } = await supabase
     .from('quote_lines')
-    .select('id, quote_id, section_id')
+    .select('id, quote_id')
     .eq('id', id)
     .single()
   if (!line) return { error: 'Line not found' }
 
   const editable = await assertEditable(supabase, line.quote_id)
   if (editable.error) return editable
+
+  const { error } = await supabase
+    .from('quote_lines')
+    .update({ locked: parsed.data.locked })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  revalidateQuote(line.quote_id)
+  return {}
+}
+
+export async function deleteLine(id: string): Promise<Result> {
+  await requireRole('admin', 'office')
+
+  const supabase = await createClient()
+  const { data: line } = await supabase
+    .from('quote_lines')
+    .select('id, quote_id, section_id, locked')
+    .eq('id', id)
+    .single()
+  if (!line) return { error: 'Line not found' }
+
+  const editable = await assertEditable(supabase, line.quote_id)
+  if (editable.error) return editable
+  if (line.locked) return { error: LOCKED_LINE_ERROR }
 
   const { error } = await supabase.from('quote_lines').delete().eq('id', id)
   if (error) return { error: error.message }

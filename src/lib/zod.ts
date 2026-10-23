@@ -340,6 +340,10 @@ export const quoteLineUpdateSchema = z.object({
 
 export type QuoteLineUpdateInput = z.infer<typeof quoteLineUpdateSchema>
 
+export const quoteLineLockSchema = z.object({
+  locked: z.boolean(),
+})
+
 // ─── Takeoff & estimating ────────────────────────────────────────────────────
 
 export const TAKEOFF_SOURCES = ['measured', 'manual', 'report', 'assembly'] as const
