@@ -11,8 +11,14 @@ import { lineMarkup, lineSell, lineTotal } from '@/lib/money'
 import { LINE_KIND_LABELS, LINE_KIND_ORDER, lineKindLabel } from '@/lib/quote-lines'
 import { cn } from '@/lib/utils'
 import type { RateKind } from '@/lib/zod'
-import { deleteLine, moveLine, updateLine } from '../actions'
-import { ArrowDownIcon, ArrowUpIcon, Trash2Icon } from 'lucide-react'
+import { deleteLine, moveLine, setLineLocked, updateLine } from '../actions'
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  LockIcon,
+  LockOpenIcon,
+  Trash2Icon,
+} from 'lucide-react'
 
 export interface LineData {
   id: string
@@ -31,7 +37,7 @@ export interface LineData {
 }
 
 export const LINE_GRID_COLS_EDITABLE =
-  'grid-cols-[minmax(10rem,1fr)_10rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem_5.5rem]'
+  'grid-cols-[1.75rem_minmax(10rem,1fr)_10rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem_5.5rem]'
 export const LINE_GRID_COLS_READONLY =
   'grid-cols-[minmax(10rem,1fr)_10rem_4.5rem_4rem_7rem_5rem_7rem_6.5rem]'
 
@@ -77,6 +83,9 @@ export function LineRow({
   const [overridden, setOverridden] = useState(
     () => line.unit_sell !== lineSell(line.unit_cost, line.markup_pct)
   )
+  // Finalised lines are frozen on the server too; this mirrors line.locked
+  // optimistically so the padlock answers at once and reverts on failure.
+  const [locked, setLocked] = useState(line.locked)
 
   function revert() {
     setDescription(line.description)
@@ -188,8 +197,24 @@ export function LineRow({
     })
   }
 
+  function handleToggleLock() {
+    const next = !locked
+    setLocked(next)
+    startTransition(async () => {
+      const result = await setLineLocked(line.id, next)
+      if (result.error) {
+        toast.error(result.error)
+        setLocked(!next)
+        return
+      }
+      router.refresh()
+    })
+  }
+
   const qtyNumber = parseFloat(qty) || 0
   const total = lineTotal(qtyNumber, sell)
+  // Locked inputs keep legible figures: override the primitive's 50% fade.
+  const frozen = locked ? 'disabled:opacity-100 disabled:text-foreground' : undefined
 
   if (!editable) {
     return (
@@ -215,6 +240,17 @@ export function LineRow({
 
   return (
     <div className={cn('grid items-center gap-2', LINE_GRID_COLS_EDITABLE)}>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        onClick={handleToggleLock}
+        disabled={pending}
+        aria-pressed={locked}
+        title={locked ? 'Unlock line' : 'Lock line'}
+      >
+        {locked ? <LockIcon /> : <LockOpenIcon className="text-muted-foreground" />}
+        <span className="sr-only">{locked ? 'Unlock line' : 'Lock line'}</span>
+      </Button>
       <Input
         aria-label="Description"
         value={description}
@@ -223,12 +259,18 @@ export function LineRow({
           if (description !== line.description) save({ description })
         }}
         placeholder="Line description…"
+        disabled={locked}
+        className={frozen}
       />
       <select
         aria-label="Category"
-        className="h-9 w-full rounded-md border border-input bg-transparent px-2 text-base shadow-xs md:text-sm"
+        className={cn(
+          'h-9 w-full rounded-md border border-input bg-transparent px-2 text-base shadow-xs md:text-sm',
+          'disabled:cursor-not-allowed disabled:bg-input/50'
+        )}
         value={kind ?? ''}
         onChange={(e) => handleKindChange(e.target.value)}
+        disabled={locked}
       >
         <option value="">{LINE_KIND_LABELS.uncategorised}</option>
         {LINE_KIND_ORDER.map((k) => (
@@ -248,7 +290,8 @@ export function LineRow({
           const n = parseFloat(e.target.value) || 0
           if (n !== line.qty) save({ qty: n })
         }}
-        className="text-right tabular-nums"
+        className={cn('text-right tabular-nums', frozen)}
+        disabled={locked}
       />
       <Input
         aria-label="Unit"
@@ -258,8 +301,16 @@ export function LineRow({
           if (unit.trim() && unit !== line.unit) save({ unit: unit.trim() })
           else if (!unit.trim()) setUnit(line.unit)
         }}
+        disabled={locked}
+        className={frozen}
       />
-      <MoneyInput aria-label="Unit cost" value={cost} onChange={handleCostChange} />
+      <MoneyInput
+        aria-label="Unit cost"
+        value={cost}
+        onChange={handleCostChange}
+        disabled={locked}
+        className={frozen}
+      />
       <Input
         aria-label="Markup %"
         type="number"
@@ -267,9 +318,16 @@ export function LineRow({
         value={markup}
         onChange={(e) => setMarkup(e.target.value)}
         onBlur={handleMarkupBlur}
-        className="text-right tabular-nums"
+        className={cn('text-right tabular-nums', frozen)}
+        disabled={locked}
       />
-      <MoneyInput aria-label="Unit sell" value={sell} onChange={handleSellChange} />
+      <MoneyInput
+        aria-label="Unit sell"
+        value={sell}
+        onChange={handleSellChange}
+        disabled={locked}
+        className={frozen}
+      />
       <span className="px-1 text-right text-sm font-medium tabular-nums">
         {aud(total)}
       </span>
@@ -296,7 +354,7 @@ export function LineRow({
           variant="ghost"
           size="icon-sm"
           onClick={handleDelete}
-          disabled={pending}
+          disabled={pending || locked}
         >
           <Trash2Icon className="text-destructive" />
           <span className="sr-only">Delete line</span>

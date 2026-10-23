@@ -8,6 +8,7 @@ const toastError = vi.fn()
 
 vi.mock('../src/app/(office)/quotes/actions', () => ({
   updateLine: (...args: unknown[]) => updateLine(...args),
+  setLineLocked: vi.fn(),
   moveLine: vi.fn(),
   deleteLine: vi.fn(),
 }))

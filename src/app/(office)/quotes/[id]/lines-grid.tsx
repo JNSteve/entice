@@ -50,6 +50,7 @@ export function LinesGrid({
           editable ? LINE_GRID_COLS_EDITABLE : LINE_GRID_COLS_READONLY
         )}
       >
+        {editable && <span className="sr-only">Lock</span>}
         <span>Description</span>
         <span>Category</span>
         <span className="text-right">Qty</span>

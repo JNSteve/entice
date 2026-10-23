@@ -8,6 +8,7 @@ const refresh = vi.fn()
 vi.mock('../src/app/(office)/quotes/actions', () => ({
   addLine: (...args: unknown[]) => addLine(...args),
   updateLine: vi.fn(),
+  setLineLocked: vi.fn(),
   moveLine: vi.fn(),
   deleteLine: vi.fn(),
 }))

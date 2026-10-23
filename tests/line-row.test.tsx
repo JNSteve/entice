@@ -5,22 +5,30 @@ import { afterEach, beforeEach, expect, test, vi } from 'vitest'
 import * as React from 'react'
 
 const updateLine = vi.fn(async () => ({}))
+const setLineLocked = vi.fn(async (): Promise<{ error?: string }> => ({}))
 const refresh = vi.fn()
+const toastError = vi.fn()
 
 vi.mock('../src/app/(office)/quotes/actions', () => ({
   updateLine: (...args: unknown[]) => updateLine(...(args as [])),
+  setLineLocked: (...args: unknown[]) => setLineLocked(...(args as [])),
   moveLine: vi.fn(async () => ({})),
   deleteLine: vi.fn(async () => ({})),
 }))
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }))
+vi.mock('sonner', () => ({
+  toast: { success: vi.fn(), error: (m: string) => toastError(m) },
+}))
 
 import { LineRow, type LineData } from '../src/app/(office)/quotes/[id]/line-row'
 
 afterEach(cleanup)
 beforeEach(() => {
   updateLine.mockClear()
+  setLineLocked.mockClear()
+  setLineLocked.mockResolvedValue({})
   refresh.mockClear()
+  toastError.mockClear()
 })
 
 function line(overrides: Partial<LineData> = {}): LineData {
@@ -195,4 +203,78 @@ test('typing a markup still sets the sell from the cost', async () => {
     'line-1',
     expect.objectContaining({ unit_cost: 100, markup_pct: 25, unit_sell: 125, sell_overridden: false })
   )
+})
+
+const FIELD_LABELS = [
+  'Description',
+  'Category',
+  'Quantity',
+  'Unit',
+  'Unit cost',
+  'Markup %',
+  'Unit sell',
+] as const
+
+function fieldDisabled(label: string) {
+  return (screen.getByLabelText(label) as HTMLInputElement | HTMLSelectElement).disabled
+}
+
+function buttonDisabled(name: string) {
+  return (screen.getByRole('button', { name }) as HTMLButtonElement).disabled
+}
+
+test('pressing the padlock locks the line: saves locked and disables every field and delete, not the arrows', async () => {
+  const user = userEvent.setup()
+  render(<LineRow line={line()} editable isFirst={false} isLast={false} />)
+  expect(FIELD_LABELS.map(fieldDisabled)).toEqual(FIELD_LABELS.map(() => false))
+
+  await user.click(screen.getByRole('button', { name: 'Lock line' }))
+
+  await waitFor(() => expect(setLineLocked).toHaveBeenCalledWith('line-1', true))
+  const unlock = screen.getByRole('button', { name: 'Unlock line' })
+  expect(unlock.getAttribute('aria-pressed')).toBe('true')
+  expect(FIELD_LABELS.map(fieldDisabled)).toEqual(FIELD_LABELS.map(() => true))
+  expect(buttonDisabled('Delete line')).toBe(true)
+  await waitFor(() => expect(buttonDisabled('Move line up')).toBe(false))
+  expect(buttonDisabled('Move line down')).toBe(false)
+  await waitFor(() => expect(refresh).toHaveBeenCalled())
+})
+
+test('a locked line renders frozen and the padlock unlocks it', async () => {
+  const user = userEvent.setup()
+  renderRow(line({ locked: true }))
+
+  const unlock = screen.getByRole('button', { name: 'Unlock line' })
+  expect(unlock.getAttribute('aria-pressed')).toBe('true')
+  expect(FIELD_LABELS.map(fieldDisabled)).toEqual(FIELD_LABELS.map(() => true))
+  expect(buttonDisabled('Delete line')).toBe(true)
+
+  await user.click(unlock)
+
+  await waitFor(() => expect(setLineLocked).toHaveBeenCalledWith('line-1', false))
+  expect(screen.getByRole('button', { name: 'Lock line' }).getAttribute('aria-pressed')).toBe('false')
+  expect(FIELD_LABELS.map(fieldDisabled)).toEqual(FIELD_LABELS.map(() => false))
+  await waitFor(() => expect(buttonDisabled('Delete line')).toBe(false))
+})
+
+test('a failed lock save reverts the padlock and reports the error', async () => {
+  const user = userEvent.setup()
+  setLineLocked.mockResolvedValueOnce({ error: 'Quote is accepted and can no longer be edited' })
+  renderRow(line())
+
+  await user.click(screen.getByRole('button', { name: 'Lock line' }))
+
+  await waitFor(() =>
+    expect(toastError).toHaveBeenCalledWith('Quote is accepted and can no longer be edited')
+  )
+  const lock = screen.getByRole('button', { name: 'Lock line' })
+  expect(lock.getAttribute('aria-pressed')).toBe('false')
+  expect(FIELD_LABELS.map(fieldDisabled)).toEqual(FIELD_LABELS.map(() => false))
+  expect(refresh).not.toHaveBeenCalled()
+})
+
+test('a read-only row shows no padlock', () => {
+  render(<LineRow line={line({ locked: true })} editable={false} isFirst isLast />)
+  expect(screen.queryByRole('button', { name: 'Unlock line' })).toBeNull()
+  expect(screen.queryByRole('button', { name: 'Lock line' })).toBeNull()
 })
