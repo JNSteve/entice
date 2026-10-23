@@ -50,7 +50,13 @@ export function LinesGrid({
           editable ? LINE_GRID_COLS_EDITABLE : LINE_GRID_COLS_READONLY
         )}
       >
-        {editable && <span className="sr-only">Lock</span>}
+        {/* A real cell, so the padlock column lines up: sr-only alone is
+            absolutely positioned and would take no grid slot. */}
+        {editable && (
+          <span>
+            <span className="sr-only">Lock</span>
+          </span>
+        )}
         <span>Description</span>
         <span>Category</span>
         <span className="text-right">Qty</span>
