@@ -27,6 +27,36 @@ function iso(d: Date): string {
   return format(d, 'yyyy-MM-dd')
 }
 
+export type ProgrammeSpan = {
+  start: string // YYYY-MM-DD — earliest task start
+  end: string // YYYY-MM-DD — latest task end
+  days: number // inclusive calendar days
+}
+
+/**
+ * The real extent of the works: earliest task start to latest task end,
+ * with an inclusive calendar-day count. Baselines and hold points are
+ * deliberately excluded — this is what the header should quote as "the
+ * programme", distinct from the padded canvas range the Gantt draws.
+ * Returns null when there are no tasks.
+ */
+export function programmeSpan(
+  tasks: Pick<ProgrammeTaskDates, 'start_date' | 'end_date'>[]
+): ProgrammeSpan | null {
+  if (tasks.length === 0) return null
+  let start = tasks[0].start_date
+  let end = tasks[0].end_date
+  for (const t of tasks) {
+    if (t.start_date < start) start = t.start_date
+    if (t.end_date > end) end = t.end_date
+  }
+  return {
+    start,
+    end,
+    days: differenceInCalendarDays(parseISO(end), parseISO(start)) + 1,
+  }
+}
+
 /** predecessor → successors adjacency map. */
 function adjacency(links: ProgrammeLinkEdge[]): Map<string, string[]> {
   const out = new Map<string, string[]>()

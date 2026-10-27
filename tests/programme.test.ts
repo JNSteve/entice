@@ -3,6 +3,7 @@ import {
   computeAutoShifts,
   detectCycle,
   getDescendants,
+  programmeSpan,
 } from '../src/lib/programme-logic'
 
 const link = (predecessor_id: string, successor_id: string) => ({
@@ -135,4 +136,34 @@ test('auto-shift: terminates on a (malformed) cyclic graph', () => {
   const shifts = computeAutoShifts(tasks, links, 'a')
   // Must return (cycle guard) — exact shift values are not meaningful here.
   expect(Array.isArray(shifts)).toBe(true)
+})
+
+// ─── programmeSpan ────────────────────────────────────────────────────────────
+
+const dated = (id: string, start_date: string, end_date: string) => ({
+  id,
+  start_date,
+  end_date,
+})
+
+test('programmeSpan: earliest start to latest end, inclusive day count, order-independent', () => {
+  expect(
+    programmeSpan([
+      dated('tidy', '2027-02-25', '2027-02-26'),
+      dated('mobilise', '2027-01-25', '2027-01-25'),
+      dated('class-a', '2027-02-11', '2027-02-18'),
+    ])
+  ).toEqual({ start: '2027-01-25', end: '2027-02-26', days: 33 })
+})
+
+test('programmeSpan: single one-day task spans one day', () => {
+  expect(programmeSpan([dated('a', '2027-03-01', '2027-03-01')])).toEqual({
+    start: '2027-03-01',
+    end: '2027-03-01',
+    days: 1,
+  })
+})
+
+test('programmeSpan: no tasks → null', () => {
+  expect(programmeSpan([])).toBeNull()
 })

@@ -25,7 +25,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
 import { fmtDate } from '@/lib/format'
-import { getDescendants } from '@/lib/programme-logic'
+import { getDescendants, programmeSpan } from '@/lib/programme-logic'
 import {
   createProgrammeTask,
   deleteProgrammeTask,
@@ -134,8 +134,9 @@ export function Gantt({
   const colW = COL_W[zoom]
   const baselineSet = tasks.some((t) => t.baseline_start && t.baseline_end)
 
-  // ── Range: min(start)−7d → max(end)+14d, widened to cover baselines and
-  //    hold point markers (empty: project start or today → +90d)
+  // ── Canvas range: min(start)−7d → max(end)+14d, widened to cover baselines
+  //    and hold point markers (empty: project start or today → +90d). This is
+  //    drawing room only — the header quotes `span` (the real task extent).
   const { rangeStart, totalDays } = useMemo(() => {
     if (tasks.length === 0) {
       const base = projectStartDate ? parseISO(projectStartDate) : new Date()
@@ -165,9 +166,11 @@ export function Gantt({
     () => Array.from({ length: totalDays }, (_, i) => addDays(rangeStart, i)),
     [rangeStart, totalDays]
   )
-  const rangeEnd = days[days.length - 1]
   const todayIdx = differenceInCalendarDays(new Date(), rangeStart)
   const todayInRange = todayIdx >= 0 && todayIdx < totalDays
+
+  // Real extent of the works (earliest start → latest finish), for the header.
+  const span = useMemo(() => programmeSpan(tasks), [tasks])
 
   // ── Group tasks by phase, ordered CHRONOLOGICALLY so the programme always
   //    reads top-to-bottom in time regardless of the order rows were added:
@@ -285,9 +288,11 @@ export function Gantt({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-3">
           <h2 className="text-base font-semibold">Programme</h2>
-          <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
-            {fmtDate(rangeStart)} – {fmtDate(rangeEnd)} · {totalDays} days
-          </span>
+          {span && (
+            <span className="hidden text-xs text-muted-foreground tabular-nums sm:inline">
+              {fmtDate(span.start)} – {fmtDate(span.end)} · {span.days} days
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <div className="flex rounded-md border p-0.5">
