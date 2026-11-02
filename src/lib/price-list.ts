@@ -1,5 +1,6 @@
 import type { CostCategory } from './pnl'
 import type { RateKind } from './zod'
+import type { ExtractedPriceLine } from './extract-price-list'
 
 /** Price-list item types. `consumable` exists only here — quote/invoice lines use RATE_KINDS. */
 export const PRICE_KINDS = ['material', 'consumable', 'plant', 'subbie', 'labour', 'other'] as const
@@ -76,6 +77,33 @@ export function round4(n: number): number {
   return (sign * Math.round((Math.abs(n) + Number.EPSILON) * 10_000)) / 10_000
 }
 
+const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
+
+/**
+ * A tier heading with its dashes and spacing tidied, so "5 – 8  Weeks" and
+ * "5-8 Weeks" read as the same tier on a re-import; null when blank.
+ */
+export function tidyTier(tier: string | null | undefined): string | null {
+  const t = (tier ?? '')
+    .replace(/\s*[-–—]+\s*/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim()
+  return t ? t.slice(0, 120) : null
+}
+
+/**
+ * The name a tiered line is saved under: "Name (tier)". A rate item has one
+ * cost, so each hire-duration or quantity-break tier becomes its own item,
+ * told apart by the tier in its name. A name that already carries the tier
+ * wording is left alone.
+ */
+export function withTier(name: string, tier: string | null | undefined): string {
+  const base = name.trim()
+  const t = tidyTier(tier)
+  if (!t) return base
+  return norm(base).includes(norm(t)) ? base : `${base} (${t})`
+}
+
 export function toExGst(price: number, includesGst: boolean, gstRate: number): number {
   return round4(includesGst ? price / (1 + gstRate / 100) : price)
 }
@@ -89,6 +117,14 @@ export interface ImportLine {
   qty: number | null
   kind: PriceKind
   note: string | null
+  /**
+   * The heading of the price column this price came from, when the document
+   * prices the line at several hire durations or quantity breaks ("1 Week",
+   * "5-8 Weeks", "Per Day"); null for a single-price line. A tiered line is
+   * saved as its own rate item named with the tier (withTier), and matched
+   * by that name rather than by product code, which its sibling tiers share.
+   */
+  tier: string | null
 }
 
 export interface ColumnMapping {
@@ -169,9 +205,33 @@ export function rowsFromTable(
       qty: qty != null && qty > 0 ? qty : null,
       kind: mapping.kind == null ? mapping.defaultKind : parseKind(at(row, mapping.kind), mapping.defaultKind),
       note: null,
+      tier: null,
     })
   }
   return { lines, skipped }
+}
+
+/**
+ * The PDF reader's lines as import lines: trimmed, unit defaulting to ea,
+ * prices at 4 dp, each tier folded into its line's name. Lines with no name
+ * or no price above zero are dropped; an unknown kind becomes material.
+ */
+export function importLinesFromExtraction(lines: ExtractedPriceLine[]): ImportLine[] {
+  return lines
+    .filter((l) => l.name?.trim() && Number.isFinite(l.unit_price) && l.unit_price > 0)
+    .map((l) => {
+      const tier = tidyTier(l.tier)
+      return {
+        code: l.code?.trim() || null,
+        name: withTier(l.name, tier),
+        unit: l.unit?.trim() || 'ea',
+        unitPrice: round4(l.unit_price),
+        qty: l.qty != null && l.qty > 0 ? l.qty : null,
+        kind: (PRICE_KINDS as readonly string[]).includes(l.kind) ? l.kind : 'material',
+        note: l.note?.trim() || null,
+        tier,
+      }
+    })
 }
 
 export interface ExistingItem {
@@ -191,17 +251,21 @@ export type LineStatus =
   | { status: 'changed'; id: string; oldCost: number }
   | { status: 'unchanged'; id: string }
 
-const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, ' ')
-
-/** Supplier + product code first, else supplier + name (case-insensitive); active items preferred. */
+/**
+ * Supplier + product code first, else supplier + name (case-insensitive);
+ * active items preferred. A tiered line shares its product code with its
+ * sibling tiers, so it is matched by name alone.
+ */
 export function matchLine(line: ImportLine, supplier: string, existing: ExistingItem[]): LineStatus {
   const key = supplierKey(supplier)
   const mine = existing
     .filter((e) => e.supplier != null && supplierKey(e.supplier) === key)
     .sort((a, b) => Number(b.active) - Number(a.active))
-  const hit =
-    (line.code ? mine.find((e) => e.product_code != null && norm(e.product_code) === norm(line.code!)) : undefined) ??
-    mine.find((e) => norm(e.name) === norm(line.name))
+  const byCode =
+    line.code && !line.tier
+      ? mine.find((e) => e.product_code != null && norm(e.product_code) === norm(line.code!))
+      : undefined
+  const hit = byCode ?? mine.find((e) => norm(e.name) === norm(line.name))
   if (!hit) return { status: 'new' }
   const same =
     Math.abs(hit.cost - line.unitPrice) < 0.00005 &&

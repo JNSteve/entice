@@ -17,6 +17,8 @@ export type ExtractedPriceLine = {
   unit_price: number
   kind: PriceKind
   note: string | null
+  /** Heading of the price column, when the line is priced under several (hire durations, quantity breaks); else null. */
+  tier: string | null
 }
 
 export type ExtractedPriceDocument = {
@@ -43,7 +45,7 @@ const EXTRACTION_SCHEMA = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['code', 'name', 'unit', 'qty', 'unit_price', 'kind', 'note'],
+        required: ['code', 'name', 'unit', 'qty', 'unit_price', 'kind', 'note', 'tier'],
         properties: {
           code: nullable('string'),
           name: { type: 'string' },
@@ -52,6 +54,7 @@ const EXTRACTION_SCHEMA = {
           unit_price: { type: 'number' },
           kind: { type: 'string', enum: [...PRICE_KINDS] },
           note: nullable('string'),
+          tier: nullable('string'),
         },
       },
     },
@@ -63,11 +66,12 @@ const EXTRACTION_PROMPT = `This PDF is from a supplier to an Australian asbestos
 For each line:
 - code: the supplier's stock/product code, or null.
 - name: the product description exactly as written (fix obvious typos only if certain).
-- unit: unit of measure if shown (ea, roll, box, bag, m, m2, kg, pk…), else null.
+- unit: unit of measure if shown (ea, roll, box, bag, m, m2, kg, pk…); for hire, what the price is charged per (day, week, month); else null.
 - qty: the quantity on this document if it is an order/invoice, else null.
 - unit_price: the UNIT price exactly as printed, with every decimal place kept (e.g. 99.313, 5.6525). Never a line total.
 - kind: consumable (used up on the job: plastic sheeting, tape, rags, filters, bags, PPE, binder, fasteners), material (becomes part of the works: concrete, timber, membrane, sheeting installed), plant (reusable equipment, tools, machines, vacuum parts and attachments, hire), subbie (a subcontracted service), labour, or other.
-- note: any extra instruction printed under the line (e.g. "Mixing ratio 5:1, approx 20 m2 coverage"), else null.
+- note: any extra instruction printed under the line (e.g. "Mixing ratio 5:1, approx 20 m2 coverage"), else null. Never a price column heading.
+- tier: null for a line with one price. When the same line is priced under several columns for different hire durations or quantity breaks (headings such as "1 Week", "2-4 Weeks", "5-8 Weeks", "Per Day", "1-9", "10+"), output ONE line per priced column, each with tier set to that column's heading exactly as printed and the same code, name and unit as its siblings. Never fold the heading into the name or note, and never leave a column out.
 
 Do NOT output lines for: zero-price lines, serial-number lines, freight/delivery/courier lines, headings, notes, or totals. Put a note line under the product it belongs to instead.
 

@@ -8,10 +8,10 @@ import { round2 } from '@/lib/money'
 import { extractPriceList, priceExtractionEnabled } from '@/lib/extract-price-list'
 import {
   detectPricesIncludeGst,
+  importLinesFromExtraction,
   kindToCategory,
   matchLine,
   PRICE_KINDS,
-  round4,
   supplierKey,
   toExGst,
   type ColumnMapping,
@@ -119,17 +119,7 @@ export async function extractPriceListPdf(input: unknown): Promise<{ error?: str
     const out = await extractPriceList(bytes.toString('base64'))
     if (out.error || !out.result) return { error: out.error ?? 'Reading failed' }
 
-    const lines: ImportLine[] = out.result.lines
-      .filter((l) => l.name?.trim() && Number.isFinite(l.unit_price) && l.unit_price > 0)
-      .map((l) => ({
-        code: l.code?.trim() || null,
-        name: l.name.trim(),
-        unit: l.unit?.trim() || 'ea',
-        unitPrice: round4(l.unit_price),
-        qty: l.qty != null && l.qty > 0 ? l.qty : null,
-        kind: (PRICE_KINDS as readonly string[]).includes(l.kind) ? l.kind : 'material',
-        note: l.note?.trim() || null,
-      }))
+    const lines = importLinesFromExtraction(out.result.lines)
     if (lines.length === 0) return { error: 'No priced items were found in this document' }
 
     return {
@@ -187,6 +177,7 @@ const lineSchema = z.object({
   qty: z.number().positive().max(1_000_000).nullable(),
   kind: z.enum(PRICE_KINDS),
   note: z.string().trim().max(500).nullable(),
+  tier: z.string().trim().max(120).nullable(),
 })
 
 const matchSchema = z.object({

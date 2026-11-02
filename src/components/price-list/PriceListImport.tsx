@@ -51,7 +51,7 @@ interface PriceListImportProps {
 }
 
 function toImportLine(l: ReviewLine): ImportLine {
-  return { code: l.code?.trim() || null, name: l.name.trim(), unit: l.unit.trim() || 'ea', unitPrice: l.unitPrice, qty: l.qty, kind: l.kind, note: l.note }
+  return { code: l.code?.trim() || null, name: l.name.trim(), unit: l.unit.trim() || 'ea', unitPrice: l.unitPrice, qty: l.qty, kind: l.kind, note: l.note, tier: l.tier }
 }
 
 const SELECT = 'h-8 rounded-lg border bg-transparent px-2 text-base md:text-sm'

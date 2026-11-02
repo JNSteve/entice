@@ -2,6 +2,7 @@ import { describe, expect, test } from 'vitest'
 import {
   detectPricesIncludeGst,
   guessColumns,
+  importLinesFromExtraction,
   kindToCategory,
   matchLine,
   parseKind,
@@ -9,6 +10,7 @@ import {
   rowsFromTable,
   supplierKey,
   toExGst,
+  withTier,
   type ExistingItem,
 } from '../src/lib/price-list'
 
@@ -55,8 +57,8 @@ describe('spreadsheet import', () => {
     )
     expect(skipped).toBe(2)
     expect(lines).toEqual([
-      { code: 'D85220', name: 'Black Plastic 200um', unit: 'roll', unitPrice: 99.313, qty: null, kind: 'consumable', note: null },
-      { code: '107420416DOP', name: 'Nilfisk VHS42 Vacuum', unit: 'ea', unitPrice: 1810, qty: null, kind: 'plant', note: null },
+      { code: 'D85220', name: 'Black Plastic 200um', unit: 'roll', unitPrice: 99.313, qty: null, kind: 'consumable', note: null, tier: null },
+      { code: '107420416DOP', name: 'Nilfisk VHS42 Vacuum', unit: 'ea', unitPrice: 1810, qty: null, kind: 'plant', note: null, tier: null },
     ])
   })
 
@@ -76,7 +78,7 @@ describe('matching against the existing price list', () => {
     { id: 'b', supplier: 'Allens Industrial', product_code: null, name: 'White T-Shirt Rags 10kg', cost: 43.94, unit: 'ea', active: true },
     { id: 'c', supplier: 'Bunnings', product_code: 'D85220', name: 'Other', cost: 1, unit: 'ea', active: true },
   ]
-  const line = (over: object) => ({ code: null, name: 'X', unit: 'ea', unitPrice: 1, qty: null, kind: 'consumable' as const, note: null, ...over })
+  const line = (over: object) => ({ code: null, name: 'X', unit: 'ea', unitPrice: 1, qty: null, kind: 'consumable' as const, note: null, tier: null, ...over })
 
   test('matches supplier + code first and reports a price change', () => {
     expect(matchLine(line({ code: 'd85220', unitPrice: 99.313, unit: 'roll' }), 'ALLENS  industrial', existing))
@@ -116,8 +118,47 @@ test('a changed type counts as a change; other suppliers never deactivate', () =
   const existing: ExistingItem[] = [
     { id: 'a', supplier: 'ABC Supplies', product_code: 'X1', name: 'Tape', cost: 5, unit: 'ea', kind: 'material', active: true },
   ]
-  const line = { code: 'X1', name: 'Tape', unit: 'ea', unitPrice: 5, qty: null, kind: 'consumable' as const, note: null }
+  const line = { code: 'X1', name: 'Tape', unit: 'ea', unitPrice: 5, qty: null, kind: 'consumable' as const, note: null, tier: null }
   expect(matchLine(line, 'ABC Supplies', existing)).toEqual({ status: 'changed', id: 'a', oldCost: 5 })
   expect(matchLine({ ...line, kind: 'material' }, 'ABC Supplies', existing)).toEqual({ status: 'unchanged', id: 'a' })
   expect(matchLine(line, 'ABC Safety Supplies', existing)).toEqual({ status: 'new' })
+})
+
+describe('hire-duration tiers', () => {
+  test('withTier folds the price column heading into the name', () => {
+    expect(withTier('SMH NPU5000 Negative Pressure Unit', '5 – 8  Weeks')).toBe('SMH NPU5000 Negative Pressure Unit (5-8 Weeks)')
+    expect(withTier('Omniguard Monitor', '1 - 4 weeks')).toBe('Omniguard Monitor (1-4 weeks)')
+    expect(withTier('Omniguard Monitor', null)).toBe('Omniguard Monitor')
+    expect(withTier('Omniguard Monitor', '  ')).toBe('Omniguard Monitor')
+    // A name that already carries the tier is left alone.
+    expect(withTier('Omniguard Monitor (1-4 weeks)', '1 – 4 weeks')).toBe('Omniguard Monitor (1-4 weeks)')
+    expect(withTier('Omniguard Monitor 1-4 weeks', '1-4 Weeks')).toBe('Omniguard Monitor 1-4 weeks')
+  })
+
+  test('importLinesFromExtraction keeps one line per tier and drops unpriced lines', () => {
+    const lines = importLinesFromExtraction([
+      { code: 'NPU5', name: 'SMH NPU5000', unit: 'week', qty: null, unit_price: 450, kind: 'plant', note: null, tier: '1 Week' },
+      { code: 'NPU5', name: 'SMH NPU5000', unit: 'week', qty: null, unit_price: 391, kind: 'plant', note: null, tier: '5 – 8 Weeks' },
+      { code: null, name: ' Rags ', unit: null, qty: 2, unit_price: 43.9449, kind: 'consumable', note: ' 10kg bag ', tier: null },
+      { code: null, name: 'Delivery', unit: null, qty: null, unit_price: 0, kind: 'other', note: null, tier: null },
+      { code: null, name: 'Odd kind', unit: null, qty: null, unit_price: 1, kind: 'widget' as never, note: null, tier: '  ' },
+    ])
+    expect(lines).toEqual([
+      { code: 'NPU5', name: 'SMH NPU5000 (1 Week)', unit: 'week', unitPrice: 450, qty: null, kind: 'plant', note: null, tier: '1 Week' },
+      { code: 'NPU5', name: 'SMH NPU5000 (5-8 Weeks)', unit: 'week', unitPrice: 391, qty: null, kind: 'plant', note: null, tier: '5-8 Weeks' },
+      { code: null, name: 'Rags', unit: 'ea', unitPrice: 43.9449, qty: 2, kind: 'consumable', note: '10kg bag', tier: null },
+      { code: null, name: 'Odd kind', unit: 'ea', unitPrice: 1, qty: null, kind: 'material', note: null, tier: null },
+    ])
+  })
+
+  test('tiered lines match by name, so tiers sharing a product code are not merged', () => {
+    const existing: ExistingItem[] = [
+      { id: 'w1', supplier: 'Assured', product_code: 'NPU5', name: 'SMH NPU5000 (1 Week)', cost: 450, unit: 'week', kind: 'plant', active: true },
+    ]
+    const tier = (over: object) => ({ code: 'NPU5', name: 'SMH NPU5000 (1 Week)', unit: 'week', unitPrice: 450, qty: null, kind: 'plant' as const, note: null, tier: '1 Week', ...over })
+    expect(matchLine(tier({}), 'Assured', existing)).toEqual({ status: 'unchanged', id: 'w1' })
+    expect(matchLine(tier({ name: 'SMH NPU5000 (5-8 Weeks)', tier: '5-8 Weeks', unitPrice: 391 }), 'Assured', existing)).toEqual({ status: 'new' })
+    // An untiered line still matches on the code alone, so a renamed product keeps its item.
+    expect(matchLine(tier({ name: 'NPU 5000 unit', tier: null }), 'Assured', existing)).toEqual({ status: 'unchanged', id: 'w1' })
+  })
 })
