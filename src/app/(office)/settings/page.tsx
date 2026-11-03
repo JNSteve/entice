@@ -9,6 +9,7 @@ import {
 } from '@/lib/quote-doc'
 import { SettingsTabs, type SettingsTab } from './settings-tabs'
 import { fetchAll } from '@/lib/pnl-queries'
+import { loadRateKinds } from '@/lib/rate-kinds-queries'
 import { getXeroStatus } from '@/lib/xero/status'
 import type { XeroRunRow } from './xero-section'
 
@@ -51,6 +52,7 @@ export default async function SettingsPage({
     requireRole('admin'),
     createClient(),
   ])
+  const rateKinds = await loadRateKinds(supabase)
 
   const [
     { data: settings },
@@ -344,6 +346,7 @@ export default async function SettingsPage({
         profiles={profiles ?? []}
         currentUserId={caller.id}
         rateItems={rateItems ?? []}
+        rateKinds={rateKinds}
         gstRate={Number(settings?.gst_rate ?? 10)}
         costCodes={costCodes ?? []}
         plant={plant ?? []}

@@ -4,6 +4,8 @@ import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth'
 import { createClient as createSupabaseClient } from '@/lib/supabase/server'
 import { nextNumber } from '@/lib/numbering'
+import { slugKey } from '@/lib/rate-kinds'
+import { loadRateKinds } from '@/lib/rate-kinds-queries'
 import {
   accessReviewSchema,
   settingsSchema,
@@ -11,6 +13,9 @@ import {
   profileUpdateSchema,
   rateItemSchema,
   rateImportSchema,
+  rateKindCreateSchema,
+  rateKindRenameSchema,
+  rateKindKey,
   costCodeSchema,
   plantSchema,
   checklistTemplateSchema,
@@ -173,6 +178,8 @@ export async function upsertRateItem(data: unknown): Promise<{ error?: string }>
 
   const supabase = await createSupabaseClient()
   const { id, ...fields } = parsed.data
+  const kinds = await loadRateKinds(supabase)
+  if (!kinds.some((k) => k.key === fields.kind)) return { error: 'Unknown category' }
   const rest = { ...fields, updated_at: new Date().toISOString() }
 
   if (id) {
@@ -216,6 +223,10 @@ export async function importRateItems(
   }
 
   const supabase = await createSupabaseClient()
+
+  const kinds = await loadRateKinds(supabase)
+  const unknown = parsed.data.find((row) => !kinds.some((k) => k.key === row.kind))
+  if (unknown) return { error: `Unknown category "${unknown.kind}"` }
 
   // Fetch all active rows once and match in JS (case-insensitive name).
   const { data: existing, error: fetchError } = await supabase
@@ -264,6 +275,88 @@ export async function importRateItems(
 
   revalidatePath('/settings')
   return { added, updated }
+}
+
+// ─── Rate categories ─────────────────────────────────────────────────────────
+// The rate_kinds catalog (lib/rate-kinds). Built-ins keep their keys — code
+// maps them to P&L categories and Xero accounts — and cannot be deleted; a
+// custom category can be deleted only while no rate or line uses it, which
+// the foreign keys enforce.
+
+export async function createRateKind(
+  data: unknown
+): Promise<{ error?: string; key?: string }> {
+  await requireRole('admin')
+
+  const parsed = rateKindCreateSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+  const key = slugKey(parsed.data.label)
+  if (!key) return { error: 'Use letters or numbers in the name' }
+
+  const supabase = await createSupabaseClient()
+  const { error } = await supabase
+    .from('rate_kinds')
+    .insert({ key, label: parsed.data.label, builtin: false })
+  if (error) {
+    return {
+      error: error.code === '23505' ? 'A category with that name already exists' : error.message,
+    }
+  }
+
+  revalidatePath('/settings')
+  return { key }
+}
+
+export async function renameRateKind(data: unknown): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const parsed = rateKindRenameSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0]?.message ?? 'Invalid data' }
+  }
+
+  const supabase = await createSupabaseClient()
+  const { data: rows, error } = await supabase
+    .from('rate_kinds')
+    .update({ label: parsed.data.label })
+    .eq('key', parsed.data.key)
+    .select('key')
+  if (error) return { error: error.message }
+  if (!rows?.length) return { error: 'Category not found' }
+
+  revalidatePath('/settings')
+  return {}
+}
+
+export async function deleteRateKind(key: string): Promise<{ error?: string }> {
+  await requireRole('admin')
+
+  const parsed = rateKindKey.safeParse(key)
+  if (!parsed.success) return { error: 'Unknown category' }
+
+  const supabase = await createSupabaseClient()
+  const { data: row } = await supabase
+    .from('rate_kinds')
+    .select('builtin')
+    .eq('key', parsed.data)
+    .maybeSingle()
+  if (!row) return { error: 'Category not found' }
+  if (row.builtin) return { error: 'Built-in categories cannot be deleted' }
+
+  const { error } = await supabase.from('rate_kinds').delete().eq('key', parsed.data)
+  if (error) {
+    return {
+      error:
+        error.code === '23503'
+          ? 'That category is still used by rates or lines. Move them first.'
+          : error.message,
+    }
+  }
+
+  revalidatePath('/settings')
+  return {}
 }
 
 // ─── Cost codes ──────────────────────────────────────────────────────────────

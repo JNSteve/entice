@@ -35,7 +35,7 @@ import {
   updateQuoteHeader,
   updateSection,
 } from '../actions'
-import { LINE_KIND_LABELS, LINE_KIND_ORDER } from '@/lib/quote-lines'
+import { BUILTIN_RATE_KINDS, compareKinds, kindLabel, type RateKindRow } from '@/lib/rate-kinds'
 import type { LineData } from './line-row'
 import { countByRate } from '@/lib/quote-lines'
 import { LinesGrid } from './lines-grid'
@@ -145,6 +145,7 @@ export function QuoteBuilder({
   sections,
   lines,
   rateItems,
+  rateKinds = BUILTIN_RATE_KINDS,
   pmOptions,
   templates,
   clients,
@@ -155,6 +156,8 @@ export function QuoteBuilder({
   sections: SectionData[]
   lines: LineData[]
   rateItems: RateItemData[]
+  /** The rate-category catalog (Settings → Rates → Categories), in display order. */
+  rateKinds?: readonly RateKindRow[]
   pmOptions: PmOption[]
   templates: TemplateOption[]
   clients: ClientOption[]
@@ -212,6 +215,7 @@ export function QuoteBuilder({
           section={section}
           lines={lines.filter((l) => l.section_id === section.id)}
           rateItems={rateItems}
+          rateKinds={rateKinds}
           onQuote={onQuote}
           editable={editable}
           isFirst={i === 0}
@@ -230,6 +234,7 @@ export function QuoteBuilder({
               sectionId={null}
               lines={orphanLines}
               editable={editable}
+              rateKinds={rateKinds}
             />
           </CardContent>
         </Card>
@@ -249,7 +254,7 @@ export function QuoteBuilder({
 
       {editable && <AddSectionButton quoteId={quote.id} count={sections.length} />}
 
-      <TotalsCard lines={lines} gstRate={quote.gst_rate} />
+      <TotalsCard lines={lines} gstRate={quote.gst_rate} rateKinds={rateKinds} />
     </div>
   )
 }
@@ -658,6 +663,7 @@ function SectionCard({
   section,
   lines,
   rateItems,
+  rateKinds,
   onQuote,
   editable,
   isFirst,
@@ -667,6 +673,7 @@ function SectionCard({
   section: SectionData
   lines: LineData[]
   rateItems: RateItemData[]
+  rateKinds: readonly RateKindRow[]
   /** Rate item id → lines carrying it anywhere on the quote. */
   onQuote: ReadonlyMap<string, number>
   editable: boolean
@@ -804,6 +811,7 @@ function SectionCard({
           sectionId={section.id}
           lines={lines}
           editable={editable}
+          rateKinds={rateKinds}
           freshIds={freshIds}
           onLineEdited={clearFresh}
         />
@@ -818,6 +826,7 @@ function SectionCard({
               quoteId={quoteId}
               sectionId={section.id}
               rateItems={rateItems}
+              rateKinds={rateKinds}
               onQuote={onQuote}
               inSection={inSection}
               onAdded={markFresh}
@@ -859,10 +868,15 @@ function AddSectionButton({ quoteId, count }: { quoteId: string; count: number }
 
 // ─── Totals ──────────────────────────────────────────────────────────────────
 
-/** Breakdown rows: the category order, then the untagged remainder. */
-const BREAKDOWN_ORDER = [...LINE_KIND_ORDER, 'uncategorised'] as const
-
-function TotalsCard({ lines, gstRate }: { lines: LineData[]; gstRate: number }) {
+function TotalsCard({
+  lines,
+  gstRate,
+  rateKinds = BUILTIN_RATE_KINDS,
+}: {
+  lines: LineData[]
+  gstRate: number
+  rateKinds?: readonly RateKindRow[]
+}) {
   const { subtotal, gst, total } = docTotals(
     lines.map((l) => ({ qty: l.qty, unitSell: l.unit_sell })),
     gstRate
@@ -876,29 +890,29 @@ function TotalsCard({ lines, gstRate }: { lines: LineData[]; gstRate: number }) 
   // Internal margin lens: where the money sits by cost category. Lines from
   // the rate library / takeoff carry their kind; hand-typed lines show as
   // Uncategorised. Only shown once at least one line is categorised.
-  const byKind = new Map<string, { cost: number; sell: number }>()
+  // Breakdown rows in catalog order (built-ins, custom kinds, then Uncategorised).
+  const byKind = new Map<string | null, { cost: number; sell: number }>()
   for (const l of lines) {
-    const key = l.kind ?? 'uncategorised'
+    const key = l.kind ?? null
     const entry = byKind.get(key) ?? { cost: 0, sell: 0 }
     entry.cost += lineTotal(l.qty, l.unit_cost)
     entry.sell += lineTotal(l.qty, l.unit_sell)
     byKind.set(key, entry)
   }
-  const breakdown = BREAKDOWN_ORDER.filter(
-    (k) => byKind.has(k) && k !== 'uncategorised'
-  ).length
-    ? BREAKDOWN_ORDER.filter((k) => byKind.has(k)).map((k) => {
-        const entry = byKind.get(k)!
-        const cost = round2(entry.cost)
-        const sell = round2(entry.sell)
-        return {
-          kind: k,
-          label: LINE_KIND_LABELS[k],
-          cost,
-          sell,
-          marginPct: sell > 0 ? round2(((sell - cost) / sell) * 100) : null,
-        }
-      })
+  const breakdown = [...byKind.keys()].some((k) => k !== null)
+    ? [...byKind.entries()]
+        .sort(([a], [b]) => compareKinds(a, b))
+        .map(([k, entry]) => {
+          const cost = round2(entry.cost)
+          const sell = round2(entry.sell)
+          return {
+            kind: k ?? 'uncategorised',
+            label: kindLabel(k, rateKinds),
+            cost,
+            sell,
+            marginPct: sell > 0 ? round2(((sell - cost) / sell) * 100) : null,
+          }
+        })
     : []
 
   return (

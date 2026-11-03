@@ -34,16 +34,16 @@ import { DataTable } from '@/components/DataTable'
 import { EmptyState } from '@/components/EmptyState'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud, pct } from '@/lib/format'
-import { RATE_KINDS } from '@/lib/zod'
-import { PRICE_KIND_LABELS, PRICE_KINDS, type PriceKind } from '@/lib/price-list'
+import { BUILTIN_RATE_KINDS, kindLabel, type RateKindRow } from '@/lib/rate-kinds'
 import { PriceListImport } from '@/components/price-list/PriceListImport'
 import { importRateItems, setRateItemActive, upsertRateItem } from './actions'
+import { RateKindsDialog } from './rate-kinds-dialog'
 import { ActiveBadge, ToggleActiveButton } from './users-section'
 import { ListIcon, PencilIcon, PlusIcon, UploadIcon } from 'lucide-react'
 
 export interface RateItemRow {
   id: string
-  kind: PriceKind
+  kind: string
   supplier?: string | null
   product_code?: string | null
   name: string
@@ -53,10 +53,17 @@ export interface RateItemRow {
   active: boolean
 }
 
-const KIND_LABELS = PRICE_KIND_LABELS
-
-export function RatesSection({ rateItems, gstRate = 10 }: { rateItems: RateItemRow[]; gstRate?: number }) {
-  const [kindFilter, setKindFilter] = useState<'all' | PriceKind>('all')
+export function RatesSection({
+  rateItems,
+  gstRate = 10,
+  rateKinds = BUILTIN_RATE_KINDS,
+}: {
+  rateItems: RateItemRow[]
+  gstRate?: number
+  /** The rate-category catalog (Settings → Rates → Categories), in display order. */
+  rateKinds?: readonly RateKindRow[]
+}) {
+  const [kindFilter, setKindFilter] = useState<string>('all')
   const [supplierFilter, setSupplierFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [importing, setImporting] = useState(false)
@@ -75,16 +82,16 @@ export function RatesSection({ rateItems, gstRate = 10 }: { rateItems: RateItemR
       <div className="flex flex-wrap items-center gap-2">
         <Select
           value={kindFilter}
-          onValueChange={(v) => setKindFilter(v as 'all' | PriceKind)}
+          onValueChange={(v) => setKindFilter(String(v ?? 'all'))}
         >
           <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All kinds</SelectItem>
-            {PRICE_KINDS.map((k) => (
-              <SelectItem key={k} value={k}>
-                {KIND_LABELS[k]}
+            {rateKinds.map((k) => (
+              <SelectItem key={k.key} value={k.key}>
+                {k.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -113,22 +120,28 @@ export function RatesSection({ rateItems, gstRate = 10 }: { rateItems: RateItemR
           aria-label="Search rates"
         />
         <div className="ml-auto flex items-center gap-2">
+          <RateKindsDialog rateKinds={rateKinds} />
           <Button variant="outline" onClick={() => setImporting(true)}>
             <UploadIcon />
             Import price list
           </Button>
-          <ImportCsvDialog />
-          <RateItemDialog />
+          <ImportCsvDialog rateKinds={rateKinds} />
+          <RateItemDialog rateKinds={rateKinds} />
         </div>
       </div>
-      <PriceListImport open={importing} onClose={() => setImporting(false)} gstRate={gstRate} />
+      <PriceListImport
+        open={importing}
+        onClose={() => setImporting(false)}
+        gstRate={gstRate}
+        rateKinds={rateKinds}
+      />
       <DataTable
         columns={[
           {
             key: 'kind',
             header: 'Kind',
             render: (r: RateItemRow) => (
-              <Badge variant="secondary">{KIND_LABELS[r.kind] ?? r.kind}</Badge>
+              <Badge variant="secondary">{kindLabel(r.kind, rateKinds)}</Badge>
             ),
           },
           {
@@ -181,7 +194,7 @@ export function RatesSection({ rateItems, gstRate = 10 }: { rateItems: RateItemR
             className: 'w-0',
             render: (r: RateItemRow) => (
               <div className="flex items-center justify-end gap-1">
-                <RateItemDialog item={r} />
+                <RateItemDialog item={r} rateKinds={rateKinds} />
                 <ToggleActiveButton
                   active={r.active}
                   label={r.name}
@@ -199,7 +212,7 @@ export function RatesSection({ rateItems, gstRate = 10 }: { rateItems: RateItemR
             title={
               kindFilter === 'all'
                 ? 'No rate items yet'
-                : `No ${KIND_LABELS[kindFilter as PriceKind].toLowerCase()} rates yet`
+                : `No ${kindLabel(kindFilter, rateKinds).toLowerCase()} rates yet`
             }
             description="Add rate items to speed up quoting."
           />
@@ -209,11 +222,17 @@ export function RatesSection({ rateItems, gstRate = 10 }: { rateItems: RateItemR
   )
 }
 
-function RateItemDialog({ item }: { item?: RateItemRow }) {
+function RateItemDialog({
+  item,
+  rateKinds,
+}: {
+  item?: RateItemRow
+  rateKinds: readonly RateKindRow[]
+}) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
 
-  const [kind, setKind] = useState<PriceKind>(item?.kind ?? 'labour')
+  const [kind, setKind] = useState<string>(item?.kind ?? 'labour')
   const [supplier, setSupplier] = useState(item?.supplier ?? '')
   const [productCode, setProductCode] = useState(item?.product_code ?? '')
   const [name, setName] = useState(item?.name ?? '')
@@ -276,14 +295,14 @@ function RateItemDialog({ item }: { item?: RateItemRow }) {
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="ri-kind">Kind</Label>
-              <Select value={kind} onValueChange={(v) => setKind(v as PriceKind)}>
+              <Select value={kind} onValueChange={(v) => setKind(String(v ?? 'labour'))}>
                 <SelectTrigger id="ri-kind" className="w-full">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {PRICE_KINDS.map((k) => (
-                    <SelectItem key={k} value={k}>
-                      {KIND_LABELS[k]}
+                  {rateKinds.map((k) => (
+                    <SelectItem key={k.key} value={k.key}>
+                      {k.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -376,7 +395,14 @@ function splitCsvLine(line: string): string[] {
   })
 }
 
-function parseCsv(text: string): ParsedRow[] {
+/** A CSV kind cell → catalog key: the key itself or a label, case-insensitive. */
+function resolveKind(text: string, kinds: readonly RateKindRow[]): string | null {
+  const t = text.trim().toLowerCase()
+  if (!t) return null
+  return kinds.find((k) => k.key === t || k.label.toLowerCase() === t)?.key ?? null
+}
+
+function parseCsv(text: string, kinds: readonly RateKindRow[]): ParsedRow[] {
   const lines = text
     .split(/\r?\n/)
     .map((l) => l.trim())
@@ -384,8 +410,7 @@ function parseCsv(text: string): ParsedRow[] {
   if (lines.length === 0) return []
 
   const firstCells = splitCsvLine(lines[0])
-  const firstCellLower = firstCells[0]?.toLowerCase() ?? ''
-  const headerless = (RATE_KINDS as readonly string[]).includes(firstCellLower)
+  const headerless = resolveKind(firstCells[0] ?? '', kinds) !== null
 
   // Map each import column to its position in the row.
   let colIndex: Record<string, number>
@@ -408,14 +433,15 @@ function parseCsv(text: string): ParsedRow[] {
       const i = colIndex[col]
       return i >= 0 ? (cells[i] ?? '') : ''
     }
-    const kind = get('kind').toLowerCase()
+    const kindKey = resolveKind(get('kind'), kinds)
+    const kind = kindKey ?? get('kind')
     const name = get('name')
     const unit = get('unit')
     const cost = get('cost')
     const markup = get('default_markup_pct')
 
     let error: string | null = null
-    if (!(RATE_KINDS as readonly string[]).includes(kind)) {
+    if (kindKey === null) {
       error = `Bad kind "${get('kind')}"`
     } else if (!name) {
       error = 'Missing name'
@@ -436,13 +462,13 @@ function parseCsv(text: string): ParsedRow[] {
   })
 }
 
-function ImportCsvDialog() {
+function ImportCsvDialog({ rateKinds }: { rateKinds: readonly RateKindRow[] }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
   const [text, setText] = useState('')
 
-  const rows = parseCsv(text)
+  const rows = parseCsv(text, rateKinds)
   const validRows = rows.filter((r) => r.error === null)
   const invalidCount = rows.length - validRows.length
   const canImport = validRows.length > 0 && invalidCount === 0

@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { RATE_KINDS, type RateKind } from '@/lib/zod'
+import { BUILTIN_RATE_KINDS, quoteLineKinds, type RateKindRow } from '@/lib/rate-kinds'
 import type { XeroStatus } from '@/lib/xero/status'
 import { cn } from '@/lib/utils'
 import {
@@ -59,11 +59,10 @@ export interface XeroSectionProps {
   runs: XeroRunRow[]
   events: XeroEventRow[]
   isAdmin: boolean
+  /** The rate-category catalog; one income-account mapping per kind. */
+  rateKinds?: readonly RateKindRow[]
 }
 
-const KIND_LABELS: Record<RateKind, string> = {
-  labour: 'Labour', plant: 'Plant', material: 'Materials', subbie: 'Subcontract', other: 'Other',
-}
 const NONE = '__none__'
 
 const FLAG_COPY: Record<string, { tone: 'ok' | 'warn'; text: string }> = {
@@ -110,7 +109,7 @@ export function XeroSection(p: XeroSectionProps) {
 
       {p.status.connected && (
         <>
-          <MappingForm mapping={p.mapping} accounts={p.accounts} taxRates={p.taxRates} categories={p.trackingCategories} disabled={!p.isAdmin || pending} onSave={(data) => run(() => saveXeroMapping(data), 'Xero mapping saved')} />
+          <MappingForm mapping={p.mapping} accounts={p.accounts} taxRates={p.taxRates} categories={p.trackingCategories} rateKinds={p.rateKinds ?? BUILTIN_RATE_KINDS} disabled={!p.isAdmin || pending} onSave={(data) => run(() => saveXeroMapping(data), 'Xero mapping saved')} />
           <UnlinkedClients clients={p.unlinkedClients} contacts={p.contacts} pending={pending} onLink={(c, x) => run(() => linkClientToXeroContact(c, x), 'Client linked')} />
           {p.pendingClaims.length > 0 && (
             <section className="flex flex-col gap-2">
@@ -203,9 +202,9 @@ function AccountSelect({ id, active, value, onChange, allowNone }: {
   )
 }
 
-function MappingForm({ mapping, accounts, taxRates, categories, disabled, onSave }: {
+function MappingForm({ mapping, accounts, taxRates, categories, rateKinds, disabled, onSave }: {
   mapping: XeroMappingRow; accounts: XeroAccountRow[]; taxRates: XeroTaxRateRow[]; categories: XeroTrackingCategoryRow[]
-  disabled: boolean; onSave: (data: XeroMappingRow) => void
+  rateKinds: readonly RateKindRow[]; disabled: boolean; onSave: (data: XeroMappingRow) => void
 }) {
   const [m, setM] = useState<XeroMappingRow>(mapping)
   const active = accounts.filter((a) => a.status !== 'ARCHIVED')
@@ -219,9 +218,9 @@ function MappingForm({ mapping, accounts, taxRates, categories, disabled, onSave
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="flex flex-col gap-1.5"><Label htmlFor="x-default">Default income account</Label><AccountSelect id="x-default" active={active} value={m.xero_default_account} onChange={(v) => set('xero_default_account', v)} allowNone={false} /></div>
         <div className="flex flex-col gap-1.5"><Label htmlFor="x-claims">Progress claims account</Label><AccountSelect id="x-claims" active={active} value={m.xero_claims_account} onChange={(v) => set('xero_claims_account', v)} allowNone={false} /></div>
-        {RATE_KINDS.map((k) => (
+        {quoteLineKinds(rateKinds).map(({ key: k, label }) => (
           <div key={k} className="flex flex-col gap-1.5">
-            <Label htmlFor={`x-kind-${k}`}>{`${KIND_LABELS[k]} lines`}</Label>
+            <Label htmlFor={`x-kind-${k}`}>{`${label} lines`}</Label>
             <AccountSelect id={`x-kind-${k}`} active={active} value={m.xero_account_by_kind[k] ?? null} allowNone onChange={(v) => { const next = { ...m.xero_account_by_kind }; if (v) next[k] = v; else delete next[k]; set('xero_account_by_kind', next) }} />
           </div>
         ))}

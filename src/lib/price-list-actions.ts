@@ -11,17 +11,16 @@ import {
   importLinesFromExtraction,
   kindToCategory,
   matchLine,
-  PRICE_KINDS,
   supplierKey,
   toExGst,
   type ColumnMapping,
   type ExistingItem,
   type ImportLine,
   type LineStatus,
-  type PriceKind,
 } from '@/lib/price-list'
 import { removeUploadedObject } from '@/lib/storage-keys'
 import { fetchAll } from '@/lib/pnl-queries'
+import { rateKindKey } from '@/lib/zod'
 
 type Supabase = Awaited<ReturnType<typeof createClient>>
 
@@ -34,7 +33,7 @@ export interface PriceItemHit {
   product_code: string | null
   unit: string
   cost: number
-  kind: PriceKind
+  kind: string
 }
 
 async function gstRate(supabase: Supabase): Promise<number> {
@@ -46,11 +45,11 @@ async function gstRate(supabase: Supabase): Promise<number> {
 
 const searchSchema = z.object({
   query: z.string().max(100),
-  kinds: z.array(z.enum(PRICE_KINDS)).min(1),
+  kinds: z.array(rateKindKey).min(1),
 })
 
 /** Active price-list items of the given kinds matching name / code / supplier. */
-export async function searchPriceItems(query: string, kinds: PriceKind[]): Promise<{ items: PriceItemHit[]; error?: string }> {
+export async function searchPriceItems(query: string, kinds: string[]): Promise<{ items: PriceItemHit[]; error?: string }> {
   await requireRole('admin', 'office')
   const parsed = searchSchema.safeParse({ query, kinds })
   if (!parsed.success) return { items: [], error: 'Invalid search' }
@@ -79,7 +78,7 @@ export async function searchPriceItems(query: string, kinds: PriceKind[]): Promi
       product_code: r.product_code,
       unit: r.unit,
       cost: Number(r.cost),
-      kind: r.kind as PriceKind,
+      kind: String(r.kind),
     })),
   }
 }
@@ -175,7 +174,7 @@ const lineSchema = z.object({
   unit: z.string().trim().min(1).max(30),
   unitPrice: z.number().positive('Prices must be above zero').max(10_000_000),
   qty: z.number().positive().max(1_000_000).nullable(),
-  kind: z.enum(PRICE_KINDS),
+  kind: rateKindKey,
   note: z.string().trim().max(500).nullable(),
   tier: z.string().trim().max(120).nullable(),
 })
@@ -214,7 +213,7 @@ const mappingSchema = z.object({
   kind: z.number().int().min(0).nullable().optional(),
   qty: z.number().int().min(0).nullable().optional(),
   headerRow: z.boolean(),
-  defaultKind: z.enum(PRICE_KINDS),
+  defaultKind: rateKindKey,
 })
 
 export async function loadSupplierMapping(supplier: string): Promise<ColumnMapping | null> {

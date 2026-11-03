@@ -8,9 +8,9 @@ import { Input } from '@/components/ui/input'
 import { MoneyInput } from '@/components/MoneyInput'
 import { aud } from '@/lib/format'
 import { lineMarkup, lineSell, lineTotal } from '@/lib/money'
-import { LINE_KIND_LABELS, LINE_KIND_ORDER, lineKindLabel } from '@/lib/quote-lines'
+import { lineKindLabel } from '@/lib/quote-lines'
+import { BUILTIN_RATE_KINDS, quoteLineKinds, type RateKindRow } from '@/lib/rate-kinds'
 import { cn } from '@/lib/utils'
-import type { RateKind } from '@/lib/zod'
 import { deleteLine, moveLine, setLineLocked, updateLine } from '../actions'
 import {
   ArrowDownIcon,
@@ -57,7 +57,7 @@ interface LinePayload {
   unit_sell: number
   sell_overridden: boolean
   /** Cost category; null = uncategorised. */
-  kind: RateKind | null
+  kind: string | null
 }
 
 export function LineRow({
@@ -65,6 +65,7 @@ export function LineRow({
   editable,
   isFirst,
   isLast,
+  rateKinds = BUILTIN_RATE_KINDS,
   highlighted = false,
   duplicate = false,
   onEdited,
@@ -73,6 +74,8 @@ export function LineRow({
   editable: boolean
   isFirst: boolean
   isLast: boolean
+  /** The rate-category catalog the category select offers (consumable excluded). */
+  rateKinds?: readonly RateKindRow[]
   /** Just added from the rate library: tinted so it stands out until it gets attention. */
   highlighted?: boolean
   /** Appears more than once in its section: tinted blue so it can be checked. Wins over `highlighted`. */
@@ -90,7 +93,7 @@ export function LineRow({
   const [cost, setCost] = useState<number>(line.unit_cost)
   const [markup, setMarkup] = useState(String(line.markup_pct))
   const [sell, setSell] = useState<number>(line.unit_sell)
-  const [kind, setKind] = useState<RateKind | null>((line.kind as RateKind | null) ?? null)
+  const [kind, setKind] = useState<string | null>(line.kind ?? null)
   // Cost and sell are what gets typed; markup is derived from them, so editing
   // either one re-derives the markup and leaves the other alone. Typing a
   // markup directly is the exception: that sets the sell from the cost. A sell
@@ -110,7 +113,7 @@ export function LineRow({
     setCost(line.unit_cost)
     setMarkup(String(line.markup_pct))
     setSell(line.unit_sell)
-    setKind((line.kind as RateKind | null) ?? null)
+    setKind(line.kind ?? null)
     setOverridden(line.unit_sell !== lineSell(line.unit_cost, line.markup_pct))
   }
 
@@ -185,7 +188,7 @@ export function LineRow({
   }
 
   function handleKindChange(value: string) {
-    const next = (value || null) as RateKind | null
+    const next = value || null
     if (next === kind) return
     setKind(next)
     save({ kind: next })
@@ -252,7 +255,7 @@ export function LineRow({
       >
         <span className="truncate">{description || '—'}</span>
         <span className="truncate text-muted-foreground">
-          {line.kind ? lineKindLabel(line.kind) : '—'}
+          {line.kind ? lineKindLabel(line.kind, rateKinds) : '—'}
         </span>
         <span className="text-right tabular-nums">{line.qty}</span>
         <span className="text-muted-foreground">{unit}</span>
@@ -307,12 +310,16 @@ export function LineRow({
         onChange={(e) => handleKindChange(e.target.value)}
         disabled={locked}
       >
-        <option value="">{LINE_KIND_LABELS.uncategorised}</option>
-        {LINE_KIND_ORDER.map((k) => (
-          <option key={k} value={k}>
-            {LINE_KIND_LABELS[k]}
+        <option value="">{lineKindLabel(null)}</option>
+        {quoteLineKinds(rateKinds).map((k) => (
+          <option key={k.key} value={k.key}>
+            {k.label}
           </option>
         ))}
+        {/* A kind the catalog no longer lists keeps its option, so the select still shows it. */}
+        {kind && !rateKinds.some((k) => k.key === kind) && (
+          <option value={kind}>{kind}</option>
+        )}
       </select>
       <Input
         aria-label="Quantity"

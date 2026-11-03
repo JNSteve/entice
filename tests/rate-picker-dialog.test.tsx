@@ -54,15 +54,16 @@ describe('RatePickerDialog', () => {
   test('rates sit under kind headings, in the order the kind filter lists them', async () => {
     await openDialog()
     const headings = screen.getAllByRole('heading', { level: 4 }).map((h) => h.textContent)
-    expect(headings).toEqual(['Consumable', 'Plant & equipment', 'Other'])
+    // Catalog order: labour, plant, material, consumable, subbie, other.
+    expect(headings).toEqual(['Plant & equipment', 'Consumables', 'Other'])
 
     // Each rate follows its own heading.
     const text = screen.getByRole('dialog').textContent ?? ''
     const at = (s: string) => text.indexOf(s)
-    expect(at('Consumable')).toBeLessThan(at('Asbestos Bags'))
-    expect(at('Asbestos Bags')).toBeLessThan(at('Plant & equipment'))
     expect(at('Plant & equipment')).toBeLessThan(at('Air movers'))
-    expect(at('Air movers')).toBeLessThan(at('Other'))
+    expect(at('Air movers')).toBeLessThan(at('Consumables'))
+    expect(at('Consumables')).toBeLessThan(at('Asbestos Bags'))
+    expect(at('Asbestos Bags')).toBeLessThan(at('Other'))
     expect(at('Other')).toBeLessThan(at('waste bins'))
   })
 

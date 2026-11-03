@@ -35,7 +35,8 @@ import { MoneyInput } from '@/components/MoneyInput'
 import { StatusBadge } from '@/components/StatusBadge'
 import { aud, fmtDate, pct } from '@/lib/format'
 import { docTotals, lineTotal, round2 } from '@/lib/money'
-import { PAYMENT_METHODS, RATE_KINDS, type PaymentMethod, type RateKind } from '@/lib/zod'
+import { PAYMENT_METHODS, type PaymentMethod } from '@/lib/zod'
+import { BUILTIN_RATE_KINDS, quoteLineKinds, type RateKindRow } from '@/lib/rate-kinds'
 import { cn } from '@/lib/utils'
 import {
   addInvoiceLine,
@@ -129,6 +130,7 @@ export function InvoiceEditor({
   isAdmin,
   xeroConnected,
   xeroSendMode,
+  rateKinds = BUILTIN_RATE_KINDS,
 }: {
   invoice: InvoiceData
   lines: InvoiceLineData[]
@@ -136,6 +138,8 @@ export function InvoiceEditor({
   isAdmin: boolean
   xeroConnected: boolean
   xeroSendMode: 'draft' | 'xero' | 'ecr'
+  /** The rate-category catalog the line kind select offers (drives the Xero account). */
+  rateKinds?: readonly RateKindRow[]
 }) {
   const managedInXero = invoice.xero !== null
   // A draft parked in Xero (draft send mode) is Xero's to edit from then on.
@@ -157,7 +161,7 @@ export function InvoiceEditor({
         xeroSendMode={xeroSendMode}
       />
       {(invoice.xero || invoice.origin === 'xero') && <XeroPanel invoice={invoice} />}
-      <LinesCard invoiceId={invoice.id} lines={lines} editable={editable} />
+      <LinesCard invoiceId={invoice.id} lines={lines} editable={editable} rateKinds={rateKinds} />
       {(payments.length > 0 || invoice.status === 'sent' || invoice.status === 'paid') && (
         <PaymentsCard
           invoice={invoice}
@@ -485,10 +489,12 @@ function LinesCard({
   invoiceId,
   lines,
   editable,
+  rateKinds,
 }: {
   invoiceId: string
   lines: InvoiceLineData[]
   editable: boolean
+  rateKinds: readonly RateKindRow[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -533,6 +539,7 @@ function LinesCard({
                 editable={editable}
                 isFirst={i === 0}
                 isLast={i === lines.length - 1}
+                rateKinds={rateKinds}
               />
             ))}
           </div>
@@ -556,7 +563,7 @@ interface LinePayload {
   qty: number
   unit: string
   unit_sell: number
-  kind: RateKind | null
+  kind: string | null
 }
 
 function InvoiceLineRow({
@@ -564,11 +571,13 @@ function InvoiceLineRow({
   editable,
   isFirst,
   isLast,
+  rateKinds,
 }: {
   line: InvoiceLineData
   editable: boolean
   isFirst: boolean
   isLast: boolean
+  rateKinds: readonly RateKindRow[]
 }) {
   const router = useRouter()
   const [pending, startTransition] = useTransition()
@@ -593,7 +602,7 @@ function InvoiceLineRow({
       qty: parseFloat(qty) || 0,
       unit: unit.trim() || 'ea',
       unit_sell: sell,
-      kind: (kind || null) as RateKind | null,
+      kind: kind || null,
       ...overrides,
     }
     startTransition(async () => {
@@ -676,15 +685,18 @@ function InvoiceLineRow({
           value={kind}
           onChange={(e) => {
             setKind(e.target.value)
-            save({ kind: (e.target.value || null) as RateKind | null })
+            save({ kind: e.target.value || null })
           }}
         >
           <option value="">Default account</option>
-          {RATE_KINDS.map((k) => (
-            <option key={k} value={k}>
-              {k}
+          {quoteLineKinds(rateKinds).map((k) => (
+            <option key={k.key} value={k.key}>
+              {k.label}
             </option>
           ))}
+          {kind && !rateKinds.some((k) => k.key === kind) && (
+            <option value={kind}>{kind}</option>
+          )}
         </select>
       </div>
       <Input

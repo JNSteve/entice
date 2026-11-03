@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react'
 import { Loader2Icon, SearchIcon } from 'lucide-react'
 import { Input } from '@/components/ui/input'
 import { aud } from '@/lib/format'
-import type { PriceKind } from '@/lib/price-list'
 import { searchPriceItems, type PriceItemHit } from '@/lib/price-list-actions'
 
 /** Search the price list (server-side) for items of the given kinds. */
@@ -13,7 +12,7 @@ export function ItemSearch({
   onPick,
   onCustom,
 }: {
-  kinds: PriceKind[]
+  kinds: string[]
   onPick: (item: PriceItemHit) => void
   onCustom: () => void
 }) {
@@ -26,7 +25,7 @@ export function ItemSearch({
     let cancelled = false
     const t = setTimeout(async () => {
       setLoading(true)
-      const res = await searchPriceItems(query, kindKey.split(',') as PriceKind[])
+      const res = await searchPriceItems(query, kindKey.split(','))
       if (!cancelled) {
         setItems(res.items)
         setLoading(false)

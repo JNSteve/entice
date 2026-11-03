@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RATE_KIND_KEY_RE } from '@/lib/rate-kinds'
 import { PROPERTY_COMPLIANCE_KINDS } from '@/lib/portal'
 import { REQUEST_STATUSES } from '@/lib/portal-interactions'
 import {
@@ -173,10 +174,24 @@ export const RATE_KINDS = [
 ] as const
 export type RateKind = (typeof RATE_KINDS)[number]
 
+/**
+ * A rate category key: one of the built-ins above, 'consumable', or a custom
+ * category the owner added (lib/rate-kinds). Shape only — the rate_kinds
+ * foreign key and the settings actions check the key exists.
+ */
+export const rateKindKey = z.string().regex(RATE_KIND_KEY_RE, 'Unknown category')
+export const rateKindLabel = z
+  .string()
+  .trim()
+  .min(1, 'Name is required')
+  .max(40, 'Keep the name under 40 characters')
+
+export const rateKindCreateSchema = z.object({ label: rateKindLabel })
+export const rateKindRenameSchema = z.object({ key: rateKindKey, label: rateKindLabel })
+
 export const rateItemSchema = z.object({
   id: z.string().uuid().optional(),
-  // Price-list items add 'consumable' (see PRICE_KINDS in lib/price-list).
-  kind: z.enum([...RATE_KINDS, 'consumable']),
+  kind: rateKindKey,
   supplier: optionalText.optional(),
   product_code: optionalText.optional(),
   name: z.string().min(1, 'Name is required'),
@@ -191,7 +206,7 @@ export type RateItemInput = z.infer<typeof rateItemSchema>
 export const rateImportSchema = z
   .array(
     z.object({
-      kind: z.enum(RATE_KINDS),
+      kind: rateKindKey,
       name: z.string().min(1),
       unit: z.string().min(1),
       cost: z.coerce.number().min(0),
@@ -320,7 +335,7 @@ export const quoteLineCreateSchema = z.object({
   /** When set, the line is prefilled from this rate item. */
   rate_item_id: z.uuid().optional(),
   /** Cost category for a blank manual line; ignored when rate_item_id is set. */
-  kind: z.enum(RATE_KINDS).optional(),
+  kind: rateKindKey.optional(),
 })
 
 export type QuoteLineCreateInput = z.infer<typeof quoteLineCreateSchema>
@@ -335,7 +350,7 @@ export const quoteLineUpdateSchema = z.object({
   /** When false, unit_sell is recomputed server-side from cost + markup. */
   sell_overridden: z.boolean(),
   /** Cost category; null = uncategorised. */
-  kind: z.enum(RATE_KINDS).nullable(),
+  kind: rateKindKey.nullable(),
 })
 
 export type QuoteLineUpdateInput = z.infer<typeof quoteLineUpdateSchema>
@@ -478,7 +493,7 @@ export const invoiceLineUpdateSchema = z.object({
   qty: z.coerce.number().min(0),
   unit: z.string().min(1, 'Unit is required'),
   unit_sell: z.coerce.number().min(0),
-  kind: z.enum(RATE_KINDS).nullable().optional(),
+  kind: rateKindKey.nullable().optional(),
 })
 
 export type InvoiceLineUpdateInput = z.infer<typeof invoiceLineUpdateSchema>
@@ -501,7 +516,7 @@ export type PaymentInput = z.infer<typeof paymentSchema>
 export const xeroMappingSchema = z.object({
   xero_email_mode: z.enum(['draft', 'xero', 'ecr']),
   xero_default_account: optionalText.nullable(),
-  xero_account_by_kind: z.partialRecord(z.enum(RATE_KINDS), z.string().min(1)).default({}),
+  xero_account_by_kind: z.record(rateKindKey, z.string().min(1)).default({}),
   xero_claims_account: optionalText.nullable(),
   xero_gst_tax_type: z.string().min(1),
   xero_no_gst_tax_type: z.string().min(1),

@@ -1,6 +1,7 @@
 import { notFound } from 'next/navigation'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { loadRateKinds } from '@/lib/rate-kinds-queries'
 import { getXeroStatus } from '@/lib/xero/status'
 import {
   InvoiceEditor,
@@ -97,6 +98,8 @@ export default async function InvoicePage({
     kind: (l.kind as string | null) ?? null,
   }))
 
+  const rateKinds = await loadRateKinds(supabase)
+
   const paymentData: PaymentData[] = (payments ?? []).map((p) => ({
     id: p.id,
     date: p.date,
@@ -111,6 +114,7 @@ export default async function InvoicePage({
       invoice={invoiceData}
       lines={lineData}
       payments={paymentData}
+      rateKinds={rateKinds}
       isAdmin={profile.role === 'admin'}
       xeroConnected={xero.connected}
       xeroSendMode={xero.sendMode}

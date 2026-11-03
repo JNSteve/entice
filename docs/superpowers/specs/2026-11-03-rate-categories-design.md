@@ -23,7 +23,9 @@ a code change.
   deleted.
 - A custom category can be deleted only while nothing uses it. The database enforces this with
   foreign keys; the UI explains the refusal.
-- Order is fixed and needs no server round-trip: built-ins in their current order, then custom
+- Order is fixed and needs no server round-trip: built-ins as Labour, Plant & equipment,
+  Materials, Consumables, Subcontract, Other (the quote builder's order, with Consumables
+  beside Materials — the rates list and rate picker used to lead with Materials), then custom
   categories alphabetically by key, then Uncategorised. No reorder UI.
 
 ## Design

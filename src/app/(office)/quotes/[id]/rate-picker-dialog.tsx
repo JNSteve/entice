@@ -22,37 +22,29 @@ import {
 import { EmptyState } from '@/components/EmptyState'
 import { aud, pct } from '@/lib/format'
 import { lineSell } from '@/lib/money'
-import { PRICE_KIND_LABELS, PRICE_KINDS, type PriceKind } from '@/lib/price-list'
+import { BUILTIN_RATE_KINDS, compareKinds, kindLabel, type RateKindRow } from '@/lib/rate-kinds'
 import { cn } from '@/lib/utils'
 import { addLine } from '../actions'
 import type { RateItemData } from './quote-builder'
 import { BookOpenIcon, CheckIcon, Loader2Icon, SearchIcon } from 'lucide-react'
 
-const KIND_LABELS = PRICE_KIND_LABELS
-
 const EMPTY_COUNTS: ReadonlyMap<string, number> = new Map()
 
 /**
- * The matching rates in kind order (the order the kind filter lists them),
+ * The matching rates in catalog order (the order the kind filter lists them),
  * alphabetical within each kind as they arrive. Only populated kinds appear;
- * a kind the list does not know goes last under its raw name.
+ * a kind the catalog does not know goes last under its raw key.
  */
-function groupByKind(rates: RateItemData[]) {
+function groupByKind(rates: RateItemData[], kinds: readonly RateKindRow[]) {
   const byKind = new Map<string, RateItemData[]>()
   for (const r of rates) {
     const items = byKind.get(r.kind)
     if (items) items.push(r)
     else byKind.set(r.kind, [r])
   }
-  const known = PRICE_KINDS.filter((k) => byKind.has(k)).map((k) => ({
-    kind: k as string,
-    label: KIND_LABELS[k],
-    items: byKind.get(k)!,
-  }))
-  const stray = [...byKind.keys()]
-    .filter((k) => !(PRICE_KINDS as readonly string[]).includes(k))
-    .map((k) => ({ kind: k, label: k, items: byKind.get(k)! }))
-  return [...known, ...stray]
+  return [...byKind.keys()]
+    .sort(compareKinds)
+    .map((k) => ({ kind: k, label: kindLabel(k, kinds), items: byKind.get(k)! }))
 }
 
 /** "×3" for a count above one, nothing for one. */
@@ -74,6 +66,7 @@ export function RatePickerDialog({
   quoteId,
   sectionId,
   rateItems,
+  rateKinds = BUILTIN_RATE_KINDS,
   onQuote = EMPTY_COUNTS,
   inSection = EMPTY_COUNTS,
   onAdded,
@@ -81,6 +74,8 @@ export function RatePickerDialog({
   quoteId: string
   sectionId: string
   rateItems: RateItemData[]
+  /** The rate-category catalog: the kind filter's options and the group headings. */
+  rateKinds?: readonly RateKindRow[]
   /** Rate item id → lines carrying it anywhere on the quote. */
   onQuote?: ReadonlyMap<string, number>
   /** Rate item id → lines carrying it in this section. */
@@ -91,7 +86,7 @@ export function RatePickerDialog({
   const [open, setOpen] = useState(false)
   const [, startTransition] = useTransition()
   const [search, setSearch] = useState('')
-  const [kind, setKind] = useState<'all' | PriceKind>('all')
+  const [kind, setKind] = useState<string>('all')
   // One add at a time, so each line lands after the last; this row spins.
   const [addingId, setAddingId] = useState<string | null>(null)
   // How many times each rate has been picked since the dialog was opened.
@@ -104,7 +99,7 @@ export function RatePickerDialog({
       return false
     return true
   })
-  const groups = groupByKind(filtered)
+  const groups = groupByKind(filtered, rateKinds)
 
   function handleOpen() {
     setAddedCount(0)
@@ -154,15 +149,15 @@ export function RatePickerDialog({
                 autoFocus
               />
             </div>
-            <Select value={kind} onValueChange={(v) => setKind(v as 'all' | PriceKind)}>
+            <Select value={kind} onValueChange={(v) => setKind(String(v ?? 'all'))}>
               <SelectTrigger className="w-32">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All kinds</SelectItem>
-                {PRICE_KINDS.map((k) => (
-                  <SelectItem key={k} value={k}>
-                    {KIND_LABELS[k]}
+                {rateKinds.map((k) => (
+                  <SelectItem key={k.key} value={k.key}>
+                    {k.label}
                   </SelectItem>
                 ))}
               </SelectContent>

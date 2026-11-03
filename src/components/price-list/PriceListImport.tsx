@@ -13,15 +13,13 @@ import { round2 } from '@/lib/money'
 import {
   guessColumns,
   parseCsvTable,
-  PRICE_KIND_LABELS,
-  PRICE_KINDS,
   rowsFromTable,
   toExGst,
   type ColumnMapping,
   type ImportLine,
   type LineStatus,
-  type PriceKind,
 } from '@/lib/price-list'
+import { BUILTIN_RATE_KINDS, type RateKindRow } from '@/lib/rate-kinds'
 import {
   commitPriceListImport,
   extractPriceListPdf,
@@ -48,6 +46,8 @@ interface PriceListImportProps {
   gstRate: number
   /** When set, lines can also be added to this job's costs. */
   job?: ImportJobTarget
+  /** The rate-category catalog for the type selects; built-ins when not given. */
+  rateKinds?: readonly RateKindRow[]
 }
 
 function toImportLine(l: ReviewLine): ImportLine {
@@ -69,7 +69,13 @@ function StatusBadge({ status, exPrice }: { status: LineStatus | undefined; exPr
   )
 }
 
-export function PriceListImport({ open, onClose, gstRate, job }: PriceListImportProps) {
+export function PriceListImport({
+  open,
+  onClose,
+  gstRate,
+  job,
+  rateKinds = BUILTIN_RATE_KINDS,
+}: PriceListImportProps) {
   const [step, setStep] = useState<'source' | 'map' | 'review'>('source')
   const [pending, startTransition] = useTransition()
   const [reading, setReading] = useState(false)
@@ -398,13 +404,13 @@ export function PriceListImport({ open, onClose, gstRate, job }: PriceListImport
                   value={mapping.kind == null ? `all:${mapping.defaultKind}` : String(mapping.kind)}
                   onChange={(e) => {
                     const v = e.target.value
-                    if (v.startsWith('all:')) setMapping({ ...mapping, kind: null, defaultKind: v.slice(4) as PriceKind })
+                    if (v.startsWith('all:')) setMapping({ ...mapping, kind: null, defaultKind: v.slice(4) })
                     else setMapping({ ...mapping, kind: Number(v) })
                   }}
                 >
-                  {PRICE_KINDS.map((k) => (
-                    <option key={k} value={`all:${k}`}>
-                      Whole file: {PRICE_KIND_LABELS[k]}
+                  {rateKinds.map((k) => (
+                    <option key={k.key} value={`all:${k.key}`}>
+                      Whole file: {k.label}
                     </option>
                   ))}
                   {columnOptions.map((o) => (
@@ -552,13 +558,16 @@ export function PriceListImport({ open, onClose, gstRate, job }: PriceListImport
                           <select
                             className={SELECT}
                             value={l.kind}
-                            onChange={(e) => updateLine(l.key, { kind: e.target.value as PriceKind })}
+                            onChange={(e) => updateLine(l.key, { kind: e.target.value })}
                           >
-                            {PRICE_KINDS.map((k) => (
-                              <option key={k} value={k}>
-                                {PRICE_KIND_LABELS[k]}
+                            {rateKinds.map((k) => (
+                              <option key={k.key} value={k.key}>
+                                {k.label}
                               </option>
                             ))}
+                            {!rateKinds.some((k) => k.key === l.kind) && (
+                              <option value={l.kind}>{l.kind}</option>
+                            )}
                           </select>
                         </td>
                         <td className="px-2 py-1.5">

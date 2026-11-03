@@ -6,8 +6,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { aud } from '@/lib/format'
 import { duplicateLineIds, groupLinesByKind } from '@/lib/quote-lines'
+import { BUILTIN_RATE_KINDS, type RateKindRow } from '@/lib/rate-kinds'
 import { cn } from '@/lib/utils'
-import type { RateKind } from '@/lib/zod'
 import { addLine } from '../actions'
 import {
   LineRow,
@@ -30,6 +30,7 @@ export function LinesGrid({
   sectionId,
   lines,
   editable,
+  rateKinds = BUILTIN_RATE_KINDS,
   freshIds,
   onLineEdited,
 }: {
@@ -37,6 +38,8 @@ export function LinesGrid({
   sectionId: string | null
   lines: LineData[]
   editable: boolean
+  /** The rate-category catalog, for group headings and the category select. */
+  rateKinds?: readonly RateKindRow[]
   /** Lines just added from the rate library, tinted until each is edited or locked. */
   freshIds?: ReadonlySet<string>
   onLineEdited?: (lineId: string) => void
@@ -45,7 +48,7 @@ export function LinesGrid({
     return <p className="py-1 text-sm text-muted-foreground">No lines yet.</p>
   }
 
-  const groups = groupLinesByKind(lines)
+  const groups = groupLinesByKind(lines, rateKinds)
   // Same rate or same wording twice in this section: tinted blue to be checked.
   const duplicates = duplicateLineIds(lines)
 
@@ -107,6 +110,7 @@ export function LinesGrid({
               editable={editable}
               isFirst={i === 0}
               isLast={i === group.lines.length - 1}
+              rateKinds={rateKinds}
               highlighted={freshIds?.has(line.id) ?? false}
               duplicate={duplicates.has(line.id)}
               onEdited={onLineEdited ? () => onLineEdited(line.id) : undefined}
@@ -126,7 +130,7 @@ function AddGroupLineButton({
 }: {
   quoteId: string
   sectionId: string
-  kind: RateKind | null
+  kind: string | null
   label: string
 }) {
   const router = useRouter()

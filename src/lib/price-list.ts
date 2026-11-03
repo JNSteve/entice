@@ -1,5 +1,4 @@
 import type { CostCategory } from './pnl'
-import type { RateKind } from './zod'
 import type { ExtractedPriceLine } from './extract-price-list'
 
 /** Price-list item types. `consumable` exists only here — quote/invoice lines use RATE_KINDS. */
@@ -15,7 +14,7 @@ export const PRICE_KIND_LABELS: Record<PriceKind, string> = {
   other: 'Other',
 }
 
-export function kindToCategory(kind: PriceKind): CostCategory {
+export function kindToCategory(kind: string): CostCategory {
   switch (kind) {
     case 'material':
       return 'materials'
@@ -51,13 +50,13 @@ export function kindsForCategory(category: CostCategory): PriceKind[] {
 }
 
 /** Kind to store on a quote/invoice line (they don't know `consumable`). */
-export function quoteKind(kind: string | null): RateKind | null {
+export function quoteKind(kind: string | null): string | null {
   if (kind == null) return null
-  return (kind === 'consumable' ? 'material' : kind) as RateKind
+  return kind === 'consumable' ? 'material' : kind
 }
 
 /** Loose reading of a supplier's category wording. */
-export function parseKind(text: string | null | undefined, fallback: PriceKind): PriceKind {
+export function parseKind(text: string | null | undefined, fallback: string): string {
   const t = (text ?? '').toLowerCase()
   if (!t.trim()) return fallback
   if (/consum/.test(t)) return 'consumable'
@@ -115,7 +114,7 @@ export interface ImportLine {
   /** Ex GST, 4 dp. */
   unitPrice: number
   qty: number | null
-  kind: PriceKind
+  kind: string
   note: string | null
   /**
    * The heading of the price column this price came from, when the document
@@ -136,7 +135,7 @@ export interface ColumnMapping {
   qty?: number | null
   headerRow: boolean
   /** Type for rows without (or without a readable) type column. */
-  defaultKind: PriceKind
+  defaultKind: string
 }
 
 type Cell = string | number | boolean | Date | null | undefined

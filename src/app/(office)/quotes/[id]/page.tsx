@@ -1,4 +1,5 @@
 import { fetchAll } from '@/lib/pnl-queries'
+import { loadRateKinds } from '@/lib/rate-kinds-queries'
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { RulerIcon } from 'lucide-react'
@@ -185,6 +186,8 @@ export default async function QuoteBuilderPage({
     rate_item_id: (l.rate_item_id as string | null) ?? null,
   }))
 
+  const rateKinds = await loadRateKinds(supabase)
+
   const rateItemData: RateItemData[] = (rateItems ?? []).map((r) => ({
     id: r.id,
     kind: r.kind,
@@ -210,6 +213,7 @@ export default async function QuoteBuilderPage({
         sections={sectionData}
         lines={lineData}
         rateItems={rateItemData}
+        rateKinds={rateKinds}
         pmOptions={pmOptions ?? []}
         templates={(templates ?? []).map((t) => {
           const p = pricingDisplaySchema.safeParse(t.pricing_defaults)

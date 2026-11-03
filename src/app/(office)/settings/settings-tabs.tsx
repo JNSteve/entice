@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { CompanyForm, type SettingsRow } from './company-form'
 import { UsersSection, type ProfileRow } from './users-section'
 import { RatesSection, type RateItemRow } from './rates-section'
+import type { RateKindRow } from '@/lib/rate-kinds'
 import { CostCodesSection, type CostCodeRow } from './cost-codes-section'
 import { PlantSection, type PlantRow } from './plant-section'
 import {
@@ -92,6 +93,7 @@ interface SettingsTabsProps {
   profiles: ProfileRow[]
   currentUserId: string
   rateItems: RateItemRow[]
+  rateKinds: readonly RateKindRow[]
   gstRate: number
   costCodes: CostCodeRow[]
   plant: PlantRow[]
@@ -125,6 +127,7 @@ export function SettingsTabs({
   profiles,
   currentUserId,
   rateItems,
+  rateKinds,
   gstRate,
   costCodes,
   plant,
@@ -176,7 +179,7 @@ export function SettingsTabs({
         <UsersSection profiles={profiles} currentUserId={currentUserId} />
       </TabsContent>
       <TabsContent value="rates" className="pt-4">
-        <RatesSection rateItems={rateItems} gstRate={gstRate} />
+        <RatesSection rateItems={rateItems} gstRate={gstRate} rateKinds={rateKinds} />
       </TabsContent>
       <TabsContent value="cost-codes" className="pt-4">
         <CostCodesSection costCodes={costCodes} />
@@ -232,7 +235,7 @@ export function SettingsTabs({
         />
       </TabsContent>
       <TabsContent value="xero" className="pt-4">
-        <XeroSection {...xero} />
+        <XeroSection {...xero} rateKinds={rateKinds} />
       </TabsContent>
     </Tabs>
   )
