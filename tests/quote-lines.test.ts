@@ -4,20 +4,17 @@ import {
   LINE_KIND_ORDER,
   groupLinesByKind,
   lineKindLabel,
-  lineKindRank,
   sortLinesGrouped,
 } from '../src/lib/quote-lines'
+import { BUILTIN_RATE_KINDS } from '../src/lib/rate-kinds'
 
 function line(id: string, kind: string | null, position: number, qty = 1, unit_sell = 10) {
   return { id, kind, position, qty, unit_sell }
 }
 
 describe('category order and labels', () => {
-  test('ranks labour, plant, material, subbie, other; null and unknown last', () => {
+  test('the quote-line kinds are labour, plant, material, subbie, other', () => {
     expect([...LINE_KIND_ORDER]).toEqual(['labour', 'plant', 'material', 'subbie', 'other'])
-    expect(LINE_KIND_ORDER.map(lineKindRank)).toEqual([0, 1, 2, 3, 4])
-    expect(lineKindRank(null)).toBe(5)
-    expect(lineKindRank('consumable')).toBe(5)
   })
 
   test('labels are the owner-facing names', () => {
@@ -31,7 +28,13 @@ describe('category order and labels', () => {
     })
     expect(lineKindLabel('plant')).toBe('Plant & equipment')
     expect(lineKindLabel(null)).toBe('Uncategorised')
-    expect(lineKindLabel('consumable')).toBe('Uncategorised')
+    expect(lineKindLabel('consumable')).toBe('Consumables')
+  })
+
+  test('a custom kind is labelled from the catalog, else by its key', () => {
+    const kinds = [...BUILTIN_RATE_KINDS, { key: 'waste', label: 'Waste disposal', builtin: false }]
+    expect(lineKindLabel('waste', kinds)).toBe('Waste disposal')
+    expect(lineKindLabel('waste')).toBe('waste')
   })
 })
 
@@ -53,6 +56,16 @@ describe('sortLinesGrouped', () => {
     const sorted = sortLinesGrouped([line('b', 'other', 0), line('a', 'other', 0)])
     expect(sorted.map((l) => l.id)).toEqual(['a', 'b'])
   })
+
+  test('custom kinds sort after the built-ins, by key, and before uncategorised', () => {
+    const out = sortLinesGrouped([
+      line('a', null, 0),
+      line('b', 'waste', 0),
+      line('c', 'other', 0),
+      line('d', 'air', 0),
+    ])
+    expect(out.map((l) => l.id)).toEqual(['c', 'd', 'b', 'a'])
+  })
 })
 
 describe('groupLinesByKind', () => {
@@ -72,11 +85,17 @@ describe('groupLinesByKind', () => {
     ])
   })
 
-  test('unknown kinds share the uncategorised group', () => {
-    const groups = groupLinesByKind([line('x', 'consumable', 0), line('y', null, 1)])
-    expect(groups).toHaveLength(1)
-    expect(groups[0].kind).toBeNull()
-    expect(groups[0].lines.map((l) => l.id)).toEqual(['x', 'y'])
+  test('a custom kind gets its own group, labelled from the catalog', () => {
+    const kinds = [...BUILTIN_RATE_KINDS, { key: 'waste', label: 'Waste disposal', builtin: false }]
+    const groups = groupLinesByKind(
+      [line('a', 'waste', 0), line('y', null, 1), line('b', 'labour', 0)],
+      kinds
+    )
+    expect(groups.map((g) => [g.kind, g.label, g.lines.map((l) => l.id)])).toEqual([
+      ['labour', 'Labour', ['b']],
+      ['waste', 'Waste disposal', ['a']],
+      [null, 'Uncategorised', ['y']],
+    ])
   })
 
   test('empty input gives no groups', () => {
