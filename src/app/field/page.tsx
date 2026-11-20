@@ -92,6 +92,9 @@ export default async function MyDayPage() {
     `)
     .eq('user_id', profile.id)
     .is('end_at', null)
+    // Newest first + limit 1 so a duplicate open row can't blind this read.
+    .order('start_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
 
   // ─── Tomorrow's assignments ───────────────────────────────────────────────
@@ -212,6 +215,8 @@ export default async function MyDayPage() {
         return {
           id: openRow.id,
           assignment_id: openRow.assignment_id,
+          job_id: openRow.job_id,
+          project_id: openRow.project_id,
           start_at: openRow.start_at,
           job_number: j?.number ?? null,
           job_title: j?.title ?? null,

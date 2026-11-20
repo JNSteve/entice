@@ -3,7 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { ChevronRightIcon, FileTextIcon } from 'lucide-react'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
-import { fmtDate } from '@/lib/format'
+import { fmtDateAU } from '@/lib/field-today'
 import { parseWorkKind } from '@/lib/live-work'
 
 export default async function WorkDocsPage({
@@ -70,7 +70,7 @@ export default async function WorkDocsPage({
                     </span>
                   </span>
                   <span className="shrink-0 text-xs text-muted-foreground">
-                    {fmtDate(doc.created_at as string)}
+                    {fmtDateAU(doc.created_at as string)}
                   </span>
                 </>
               )

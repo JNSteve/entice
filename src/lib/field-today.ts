@@ -18,6 +18,20 @@ export function fmtTimeAU(iso: string): string {
     .toLowerCase()
 }
 
+/**
+ * '20/11/2026' — the Brisbane calendar date of a stored UTC instant. Use this,
+ * not fmtDate(), for timestamps rendered on the server: fmtDate formats in the
+ * server's own zone, which is UTC in production, so anything recorded before
+ * 10 am Brisbane would show the previous day.
+ */
+export function fmtDateAU(iso: string): string {
+  // en-CA formats as YYYY-MM-DD.
+  const [y, m, d] = new Intl.DateTimeFormat('en-CA', { timeZone: TZ })
+    .format(new Date(iso))
+    .split('-')
+  return `${d}/${m}/${y}`
+}
+
 export interface TodayStatus {
   /** submitted_at of today's pre-start meeting on this work, or null. */
   prestartSubmittedAt: string | null

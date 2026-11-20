@@ -29,7 +29,7 @@ async function liveWorkError(supabase: SupabaseClient, work: Work): Promise<stri
     .maybeSingle()
   if (!data) return 'That job could not be found.'
   if (!isLiveWork(work.kind, data.status as string, Boolean(data.archived))) {
-    return 'That job is closed — hours can no longer be logged against it.'
+    return "Hours can't be logged against that job at its current status."
   }
   return null
 }
@@ -52,14 +52,44 @@ async function findAssignmentId(
   return (data?.id as string | undefined) ?? null
 }
 
-async function openEntry(supabase: SupabaseClient, userId: string) {
-  const { data } = await supabase
+type OpenRow = { id: string; job_id: string | null; project_id: string | null }
+
+const READ_FAILED = "Couldn't check whether you're already checked in. Try again."
+
+/**
+ * The person's open entry (no finish time). Nothing in the database enforces
+ * "one open entry", so this must not fail open: a read error is returned to
+ * the caller rather than read as "not checked in", and the newest row is
+ * taken if a duplicate ever exists (a bare maybeSingle() would error on two
+ * rows and blind every reader).
+ */
+async function openEntry(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<{ entry: OpenRow | null; error: string | null }> {
+  const { data, error } = await supabase
     .from('timesheet_entries')
     .select('id, job_id, project_id')
     .eq('user_id', userId)
     .is('end_at', null)
+    .order('start_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
-  return data as { id: string; job_id: string | null; project_id: string | null } | null
+  if (error) return { entry: null, error: READ_FAILED }
+  return { entry: (data as OpenRow | null) ?? null, error: null }
+}
+
+/**
+ * Closes every open entry the person has. Normally that is exactly one; if a
+ * duplicate ever exists this heals it instead of stranding it.
+ */
+async function closeOpenEntries(supabase: SupabaseClient, userId: string) {
+  const { error } = await supabase
+    .from('timesheet_entries')
+    .update({ end_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .is('end_at', null)
+  return error ? error.message : null
 }
 
 async function insertOpenEntry(
@@ -100,7 +130,12 @@ export async function checkIn(data: unknown): Promise<Result> {
   const notLive = await liveWorkError(supabase, work)
   if (notLive) return { error: notLive }
 
-  if (await openEntry(supabase, profile.id)) {
+  const open = await openEntry(supabase, profile.id)
+  if (open.error) return { error: open.error }
+  if (open.entry) {
+    // The screen that sent this was stale (checked in from another tab or
+    // device since it rendered) — refresh it so it offers Switch / Check out.
+    revalidatePath('/field', 'layout')
     return { error: 'You are already checked in. Check out first.' }
   }
 
@@ -133,23 +168,21 @@ export async function switchCheckIn(data: unknown): Promise<Result> {
   if (notLive) return { error: notLive }
 
   const open = await openEntry(supabase, profile.id)
-  if (open) {
-    if (open[WORK_COLUMN[work.kind]] === work.id) {
+  if (open.error) return { error: open.error }
+  if (open.entry) {
+    if (open.entry[WORK_COLUMN[work.kind]] === work.id) {
+      revalidatePath('/field', 'layout')
       return { error: 'You are already checked in here.' }
     }
-    const { error } = await supabase
-      .from('timesheet_entries')
-      .update({ end_at: new Date().toISOString() })
-      .eq('id', open.id)
-      .eq('user_id', profile.id)
-    if (error) return { error: error.message }
+    const closeFailed = await closeOpenEntries(supabase, profile.id)
+    if (closeFailed) return { error: closeFailed }
   }
 
   const failed = await insertOpenEntry(supabase, profile.id, work)
   revalidatePath('/field', 'layout')
   if (failed) {
     return {
-      error: open
+      error: open.entry
         ? `You were checked out of the other job, but check-in here failed. Try again. (${failed})`
         : failed,
     }
@@ -166,14 +199,14 @@ export async function checkOut(): Promise<Result> {
 
   const supabase = await createClient()
   const open = await openEntry(supabase, profile.id)
-  if (!open) return { error: 'No open timesheet entry found.' }
+  if (open.error) return { error: open.error }
+  if (!open.entry) {
+    revalidatePath('/field', 'layout')
+    return { error: 'No open timesheet entry found.' }
+  }
 
-  const { error } = await supabase
-    .from('timesheet_entries')
-    .update({ end_at: new Date().toISOString() })
-    .eq('id', open.id)
-    .eq('user_id', profile.id)
-  if (error) return { error: error.message }
+  const failed = await closeOpenEntries(supabase, profile.id)
+  if (failed) return { error: failed }
 
   revalidatePath('/field', 'layout')
   return {}

@@ -5,8 +5,7 @@ import { Button } from '@/components/ui/button'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { todayAU } from '@/lib/tz'
-import { fmtDate } from '@/lib/format'
-import { fmtTimeAU } from '@/lib/field-today'
+import { fmtDateAU, fmtTimeAU } from '@/lib/field-today'
 import { parseWorkKind } from '@/lib/live-work'
 import { FORM_KIND_LABELS, FORM_KIND_ORDER } from '@/lib/form-kinds'
 import type { FormTemplateKind } from '@/lib/zod'
@@ -17,6 +16,22 @@ type SubmissionRow = {
   submitted_at: string
   by: string | null
   name: string | null
+  /** The submission this one amends, if any (form_submissions.amends). */
+  amends: string | null
+}
+
+const SUBMISSION_COLUMNS =
+  'id, kind, submitted_at, amends, form_templates(name), profiles!form_submissions_submitted_by_fkey(full_name)'
+
+function toRow(s: Record<string, unknown>): SubmissionRow {
+  return {
+    id: s.id as string,
+    kind: s.kind as string,
+    submitted_at: s.submitted_at as string,
+    by: (s.profiles as unknown as { full_name: string } | null)?.full_name ?? null,
+    name: (s.form_templates as unknown as { name: string } | null)?.name ?? null,
+    amends: (s.amends as string | null) ?? null,
+  }
 }
 
 export default async function WorkPrestartPage({
@@ -37,7 +52,9 @@ export default async function WorkPrestartPage({
   const dayStartMs = new Date(`${todayAU()}T00:00:00+10:00`).getTime()
 
   const supabase = await createClient()
-  const [{ data: templates }, { data: rawSubmissions }] = await Promise.all([
+  // Meetings and other forms are fetched separately, so a busy project's other
+  // forms can't crowd the meetings out of their list (or the other way round).
+  const [{ data: templates }, { data: rawMeetings }, { data: rawOthers }] = await Promise.all([
     supabase
       .from('form_templates')
       .select('id, kind, name, version')
@@ -47,27 +64,47 @@ export default async function WorkPrestartPage({
       .order('version', { ascending: false }),
     supabase
       .from('form_submissions')
-      .select(
-        'id, kind, submitted_at, form_templates(name), profiles!form_submissions_submitted_by_fkey(full_name)'
-      )
+      .select(SUBMISSION_COLUMNS)
       .eq(col, id)
+      .eq('kind', 'prestart_meeting')
       .order('submitted_at', { ascending: false })
-      .limit(40),
+      .limit(30),
+    supabase
+      .from('form_submissions')
+      .select(SUBMISSION_COLUMNS)
+      .eq(col, id)
+      .neq('kind', 'prestart_meeting')
+      .order('submitted_at', { ascending: false })
+      .limit(10),
   ])
 
-  const submissions: SubmissionRow[] = (rawSubmissions ?? []).map((s) => ({
-    id: s.id as string,
-    kind: s.kind as string,
-    submitted_at: s.submitted_at as string,
-    by: (s.profiles as unknown as { full_name: string } | null)?.full_name ?? null,
-    name: (s.form_templates as unknown as { name: string } | null)?.name ?? null,
-  }))
+  const allMeetings = (rawMeetings ?? []).map((s) => toRow(s as Record<string, unknown>))
+  const otherRecent = (rawOthers ?? []).map((s) => toRow(s as Record<string, unknown>))
 
-  const meetings = submissions.filter((s) => s.kind === 'prestart_meeting')
+  // An amended meeting is replaced by its amendment: list the newest version only.
+  const superseded = new Set(
+    allMeetings.map((m) => m.amends).filter((v): v is string => Boolean(v))
+  )
+  const meetings = allMeetings.filter((m) => !superseded.has(m.id))
   const todaysMeeting =
     meetings.find((m) => new Date(m.submitted_at).getTime() >= dayStartMs) ?? null
   const earlier = meetings.filter((m) => m.id !== todaysMeeting?.id).slice(0, 14)
-  const otherRecent = submissions.filter((s) => s.kind !== 'prestart_meeting').slice(0, 10)
+
+  // Sign-ons stay on the version people signed, so count them across the
+  // amendment chain, not only on the newest version.
+  const byId = new Map(allMeetings.map((m) => [m.id, m]))
+  const chainIds: string[] = []
+  let cursor: SubmissionRow | null = todaysMeeting
+  while (cursor && !chainIds.includes(cursor.id)) {
+    chainIds.push(cursor.id)
+    if (!cursor.amends) break
+    const previous: SubmissionRow | undefined = byId.get(cursor.amends)
+    if (!previous) {
+      chainIds.push(cursor.amends)
+      break
+    }
+    cursor = previous
+  }
 
   // Templates come newest version first, so the first prestart_meeting is current.
   const meetingTemplate = (templates ?? []).find((t) => t.kind === 'prestart_meeting') ?? null
@@ -80,11 +117,11 @@ export default async function WorkPrestartPage({
     )
 
   let signedOn = 0
-  if (todaysMeeting) {
+  if (chainIds.length > 0) {
     const { count } = await supabase
       .from('form_signons')
       .select('id', { count: 'exact', head: true })
-      .eq('submission_id', todaysMeeting.id)
+      .in('submission_id', chainIds)
     signedOn = count ?? 0
   }
 
@@ -138,7 +175,7 @@ export default async function WorkPrestartPage({
                 href={`/field/safety/submission/${m.id}`}
                 className="flex items-center justify-between gap-3 px-4 py-3"
               >
-                <span className="text-sm">{fmtDate(m.submitted_at)}</span>
+                <span className="text-sm">{fmtDateAU(m.submitted_at)}</span>
                 <span className="flex items-center gap-2 text-xs text-muted-foreground">
                   {m.by ?? ''}
                   <ChevronRightIcon className="size-4" />
@@ -188,7 +225,7 @@ export default async function WorkPrestartPage({
                   <span className="truncate text-xs text-muted-foreground">{s.by ?? ''}</span>
                 </span>
                 <span className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
-                  {fmtDate(s.submitted_at)}
+                  {fmtDateAU(s.submitted_at)}
                   <ChevronRightIcon className="size-4" />
                 </span>
               </Link>

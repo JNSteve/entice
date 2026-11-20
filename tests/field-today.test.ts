@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
+  fmtDateAU,
   fmtDuration,
   fmtTimeAU,
   hoursBetween,
@@ -23,6 +24,22 @@ describe('fmtTimeAU', () => {
     // 20:50 UTC on the 19th is 6:50 am on the 20th in Brisbane (+10, no DST).
     expect(fmtTimeAU('2026-11-19T20:50:00Z')).toBe('6:50 am')
     expect(fmtTimeAU('2026-11-20T05:05:00Z')).toBe('3:05 pm')
+  })
+})
+
+describe('fmtDateAU', () => {
+  it('gives the Brisbane date, not the UTC date, for an early-morning instant', () => {
+    // 6:50 am Friday 20 Nov in Brisbane is still Thursday 19 Nov in UTC.
+    expect(fmtDateAU('2026-11-19T20:50:00Z')).toBe('20/11/2026')
+  })
+
+  it('agrees with UTC once Brisbane is past 10 am', () => {
+    expect(fmtDateAU('2026-11-20T05:05:00Z')).toBe('20/11/2026')
+  })
+
+  it('accepts the +00:00 form Postgres returns', () => {
+    expect(fmtDateAU('2026-01-01T13:59:59.123456+00:00')).toBe('01/01/2026')
+    expect(fmtDateAU('2026-01-01T14:00:00+00:00')).toBe('02/01/2026')
   })
 })
 

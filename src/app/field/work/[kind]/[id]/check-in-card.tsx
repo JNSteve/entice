@@ -68,7 +68,7 @@ export function CheckInCard({
   if (!live) {
     return (
       <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm">
-        This job is closed — hours can no longer be logged against it.
+        Hours can&apos;t be logged against this job at its current status.
       </p>
     )
   }

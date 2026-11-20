@@ -33,12 +33,12 @@ export async function fetchLiveWork(supabase: SupabaseClient): Promise<LiveWorkR
   const [{ data: jobs }, { data: projects }] = await Promise.all([
     supabase
       .from('jobs')
-      .select('id, number, title, status, clients:client_id ( name ), sites:site_id ( name, suburb )')
+      .select('id, number, title, status, clients:client_id ( name ), sites:site_id ( name, address, suburb )')
       .eq('archived', false)
       .in('status', [...LIVE_JOB_STATUSES]),
     supabase
       .from('projects')
-      .select('id, number, name, status, clients:client_id ( name ), sites:site_id ( name, suburb )')
+      .select('id, number, name, status, clients:client_id ( name ), sites:site_id ( name, address, suburb )')
       .eq('archived', false)
       .in('status', [...LIVE_PROJECT_STATUSES]),
   ])
@@ -57,6 +57,7 @@ export async function fetchLiveWork(supabase: SupabaseClient): Promise<LiveWorkR
       status: j.status as string,
       client: one<{ name: string }>(j.clients)?.name ?? null,
       site: siteLabel(j.sites),
+      address: one<SiteRel>(j.sites)?.address ?? null,
     })),
     ...(projects ?? []).map((p) => ({
       kind: 'project' as const,
@@ -66,6 +67,7 @@ export async function fetchLiveWork(supabase: SupabaseClient): Promise<LiveWorkR
       status: p.status as string,
       client: one<{ name: string }>(p.clients)?.name ?? null,
       site: siteLabel(p.sites),
+      address: one<SiteRel>(p.sites)?.address ?? null,
     })),
   ]
 }
@@ -111,6 +113,11 @@ export async function fetchOpenEntry(
     )
     .eq('user_id', userId)
     .is('end_at', null)
+    // Newest first + limit 1: nothing in the database enforces "one open
+    // entry", and a bare maybeSingle() errors on two rows, which would read
+    // as "not checked in".
+    .order('start_at', { ascending: false })
+    .limit(1)
     .maybeSingle()
   if (!data) return null
 
@@ -195,8 +202,6 @@ export async function fetchWorkHeader(
 }
 
 export type TodayData = TodayStatus & {
-  prestartSubmissionId: string | null
-  prestartTemplateId: string | null
   /** Today's schedule note for this person on this work. */
   note: string | null
 }
@@ -210,15 +215,7 @@ export async function fetchTodayStatus(
   // Brisbane is fixed +10 — the AU day starts at T00:00:00+10:00.
   const dayStartIso = new Date(`${today}T00:00:00+10:00`).toISOString()
 
-  const [template, meeting, swms, usage, diary, photos, assignment] = await Promise.all([
-    supabase
-      .from('form_templates')
-      .select('id')
-      .eq('kind', 'prestart_meeting')
-      .eq('active', true)
-      .order('version', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
+  const [meeting, swms, usage, diary, photos, assignment] = await Promise.all([
     supabase
       .from('form_submissions')
       .select('id, submitted_at')
@@ -272,8 +269,6 @@ export async function fetchTodayStatus(
 
   return {
     prestartSubmittedAt: (meeting.data?.submitted_at as string | undefined) ?? null,
-    prestartSubmissionId: (meeting.data?.id as string | undefined) ?? null,
-    prestartTemplateId: (template.data?.id as string | undefined) ?? null,
     swmsTotal: instances.length,
     swmsToSign,
     usageCount: usage.count ?? 0,

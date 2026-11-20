@@ -30,6 +30,8 @@ export type AssignmentCard = {
 export type OpenEntry = {
   id: string
   assignment_id: string | null
+  job_id: string | null
+  project_id: string | null
   start_at: string
   job_number: string | null
   job_title: string | null
@@ -388,7 +390,15 @@ export function MyDayClient({
               key={a.id}
               assignment={a}
               hasOpenEntry={openEntry !== null}
-              isCheckedIntoThis={openEntry?.assignment_id === a.id}
+              // Match on the job, not the schedule entry: an off-schedule
+              // check-in has no schedule link, and the office may add the
+              // person to the schedule after they have started.
+              isCheckedIntoThis={
+                openEntry !== null &&
+                (a.job_id
+                  ? openEntry.job_id === a.job_id
+                  : openEntry.project_id === a.project_id)
+              }
             />
           ))}
           <Link

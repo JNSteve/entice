@@ -73,7 +73,10 @@ export interface LiveWorkRow {
   title: string
   status: string
   client: string | null
+  /** Site name and suburb — shown on the row. */
   site: string | null
+  /** Street address — searched, not shown. */
+  address?: string | null
 }
 
 export interface LiveWorkGroups {
@@ -105,11 +108,13 @@ export function groupLiveWork(
   return groups
 }
 
-/** Case-insensitive match on number, title, client and site. */
+/** Case-insensitive match on number, title, client, site and street address. */
 export function searchLiveWork(rows: LiveWorkRow[], query: string): LiveWorkRow[] {
   const q = query.trim().toLowerCase()
   if (!q) return rows
   return rows.filter((r) =>
-    [r.number, r.title, r.client, r.site].some((v) => v?.toLowerCase().includes(q))
+    [r.number, r.title, r.client, r.site, r.address].some((v) =>
+      v?.toLowerCase().includes(q)
+    )
   )
 }

@@ -127,6 +127,11 @@ describe('searchLiveWork', () => {
     expect(searchLiveWork(rows, 'tomago').map((r) => r.id)).toEqual(['j1'])
   })
 
+  it('matches the street address even though the row does not show it', () => {
+    const withAddress = [row({ id: 'j9', address: '14 Smith St' }), ...rows]
+    expect(searchLiveWork(withAddress, 'smith st').map((r) => r.id)).toEqual(['j9'])
+  })
+
   it('copes with a missing client and site', () => {
     expect(searchLiveWork(rows, 'strata').map((r) => r.id)).toEqual(['j1'])
   })

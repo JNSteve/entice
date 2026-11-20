@@ -44,4 +44,9 @@ describe('manualEntrySchema', () => {
   it('rejects a malformed time', () => {
     expect(manualEntrySchema.safeParse({ ...ok, start_time: '7am' }).success).toBe(false)
   })
+
+  it('rejects a time that is not on the clock', () => {
+    expect(manualEntrySchema.safeParse({ ...ok, end_time: '25:00' }).success).toBe(false)
+    expect(manualEntrySchema.safeParse({ ...ok, end_time: '15:60' }).success).toBe(false)
+  })
 })
