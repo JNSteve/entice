@@ -1,11 +1,13 @@
 import Link from 'next/link'
 import { redirect } from 'next/navigation'
-import { CheckCircle2Icon, ShieldCheckIcon } from 'lucide-react'
+import { CameraIcon, CheckCircle2Icon, ShieldCheckIcon } from 'lucide-react'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { todayAU, dateAU } from '@/lib/tz'
 import { CalendarFeedCard } from '@/components/CalendarFeedCard'
-import { MyDayClient, type AssignmentCard, type OpenEntry, type TomorrowItem, type WeekSummary } from './my-day-client'
+import { fetchLiveWork } from '@/lib/field-work-queries'
+import { workKey } from '@/lib/live-work'
+import { MyDayClient, type AssignmentCard, type OpenEntry, type TomorrowItem, type WeekSummary, type WorkOption } from './my-day-client'
 
 export default async function MyDayPage() {
   const profile = await getProfile()
@@ -123,6 +125,10 @@ export default async function MyDayPage() {
     .eq('profile_id', profile.id)
     .maybeSingle()
 
+  // ─── Every live job and project, for manual time ─────────────────────────
+
+  const liveWork = await fetchLiveWork(supabase)
+
   // ─── Shape data ───────────────────────────────────────────────────────────
 
   const assignments: AssignmentCard[] = (rawAssignments ?? []).map((row) => {
@@ -218,9 +224,26 @@ export default async function MyDayPage() {
   const tomorrow: TomorrowItem[] = (tomorrowRows ?? []).map((row) => {
     const job = Array.isArray(row.jobs) ? row.jobs[0] : row.jobs
     const project = Array.isArray(row.projects) ? row.projects[0] : row.projects
-    if (job) return { number: `J-${job.number}`, title: job.title }
-    return { number: `P-${project!.number}`, title: project!.name }
+    if (job) return { number: job.number, title: job.title }
+    return { number: project!.number, title: project!.name }
   })
+
+  // Manual time can go on any live job: scheduled ones first, then the rest.
+  const scheduled = new Set(
+    assignments.map((a) => workKey(a.target_type, (a.job_id ?? a.project_id) as string))
+  )
+  const workOptions: WorkOption[] = liveWork
+    .map((w) => ({
+      key: workKey(w.kind, w.id),
+      label: `${w.number} — ${w.title}`,
+      job_id: w.kind === 'job' ? w.id : null,
+      project_id: w.kind === 'project' ? w.id : null,
+    }))
+    .sort(
+      (a, b) =>
+        Number(scheduled.has(b.key)) - Number(scheduled.has(a.key)) ||
+        b.label.localeCompare(a.label, 'en', { numeric: true })
+    )
 
   const weekSummary: WeekSummary = (() => {
     let totalMs = 0
@@ -303,7 +326,19 @@ export default async function MyDayPage() {
         tomorrow={tomorrow}
         weekSummary={weekSummary}
         today={todayStr}
+        workOptions={workOptions}
       />
+
+      <Link
+        href="/field/photo"
+        className="flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium"
+      >
+        <CameraIcon className="size-5 shrink-0 text-muted-foreground" />
+        Quick photo
+        <span className="ml-auto text-xs font-normal text-muted-foreground">
+          Any job, including quotes
+        </span>
+      </Link>
 
       <CalendarFeedCard
         initialToken={

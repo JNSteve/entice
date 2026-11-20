@@ -3,12 +3,13 @@
 import React, { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { MapPinIcon, PhoneIcon, LogInIcon, LogOutIcon, ChevronDownIcon, ChevronUpIcon, PackageIcon } from 'lucide-react'
+import { BriefcaseIcon, MapPinIcon, PhoneIcon, LogInIcon, LogOutIcon, ChevronDownIcon, ChevronUpIcon, ChevronRightIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { checkIn, checkOut, createManualEntry } from './actions'
 import { useElapsed } from './use-elapsed'
+import { workHref } from '@/lib/live-work'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -46,12 +47,20 @@ export type WeekSummary = {
   entries: number
 }
 
+export type WorkOption = {
+  key: string
+  label: string
+  job_id: string | null
+  project_id: string | null
+}
+
 interface Props {
   assignments: AssignmentCard[]
   openEntry: OpenEntry | null
   tomorrow: TomorrowItem[]
   weekSummary: WeekSummary
   today: string // YYYY-MM-DD
+  workOptions: WorkOption[]
 }
 
 // ─── Checked-in banner ──────────────────────────────────────────────────────
@@ -61,9 +70,9 @@ function CheckedInBanner({ entry }: { entry: OpenEntry }) {
   const elapsed = useElapsed(entry.start_at)
 
   const target = entry.job_number
-    ? `J-${entry.job_number} — ${entry.job_title ?? ''}`
+    ? `${entry.job_number} — ${entry.job_title ?? ''}`
     : entry.project_number
-      ? `P-${entry.project_number} — ${entry.project_name ?? ''}`
+      ? `${entry.project_number} — ${entry.project_name ?? ''}`
       : 'Unknown'
 
   const startTime = new Date(entry.start_at).toLocaleTimeString('en-AU', {
@@ -144,7 +153,6 @@ function AssignmentCardItem({
   }
 
   const chipLabel = assignment.target_type === 'job' ? 'Job' : 'Project'
-  const prefix = assignment.target_type === 'job' ? 'J-' : 'P-'
 
   return (
     <Card>
@@ -155,7 +163,7 @@ function AssignmentCardItem({
               {chipLabel}
             </Badge>
             <span className="text-xs text-muted-foreground font-mono shrink-0">
-              {prefix}{assignment.number}
+              {assignment.number}
             </span>
             <span className="text-sm font-medium truncate">{assignment.title}</span>
           </div>
@@ -222,16 +230,15 @@ function AssignmentCardItem({
             className="mt-2 w-full text-xs"
             render={
               <Link
-                href={
-                  assignment.job_id
-                    ? `/field/usage?job=${assignment.job_id}`
-                    : `/field/usage?project=${assignment.project_id}`
-                }
+                href={workHref(
+                  assignment.target_type,
+                  (assignment.job_id ?? assignment.project_id) as string
+                )}
               />
             }
           >
-            <PackageIcon className="size-3.5 mr-1" />
-            Log materials &amp; plant
+            Open job
+            <ChevronRightIcon className="size-3.5 ml-1" />
           </Button>
         </div>
       </CardContent>
@@ -242,27 +249,27 @@ function AssignmentCardItem({
 // ─── Manual entry form ───────────────────────────────────────────────────────
 
 function ManualEntrySection({
-  assignments,
+  options,
   today,
 }: {
-  assignments: AssignmentCard[]
+  options: WorkOption[]
   today: string
 }) {
   const [open, setOpen] = useState(false)
   const [pending, startTransition] = useTransition()
-  const [assignmentId, setAssignmentId] = useState(assignments[0]?.id ?? '')
+  const [workKey, setWorkKey] = useState(options[0]?.key ?? '')
   const [startTime, setStartTime] = useState('')
   const [endTime, setEndTime] = useState('')
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    const a = assignments.find((x) => x.id === assignmentId)
-    if (!a) return
+    const w = options.find((x) => x.key === workKey)
+    if (!w) return
 
     startTransition(async () => {
       const result = await createManualEntry({
-        job_id: a.job_id,
-        project_id: a.project_id,
+        job_id: w.job_id,
+        project_id: w.project_id,
         date: today,
         start_time: startTime,
         end_time: endTime,
@@ -278,7 +285,7 @@ function ManualEntrySection({
     })
   }
 
-  if (assignments.length === 0) return null
+  if (options.length === 0) return null
 
   return (
     <div className="rounded-xl border">
@@ -298,21 +305,18 @@ function ManualEntrySection({
       {open && (
         <form onSubmit={handleSubmit} className="flex flex-col gap-3 border-t px-4 py-3">
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-medium">Assignment</label>
+            <label className="text-xs font-medium">Job</label>
             <select
               className="rounded-md border bg-background px-3 py-2 text-base md:text-sm"
-              value={assignmentId}
-              onChange={(e) => setAssignmentId(e.target.value)}
+              value={workKey}
+              onChange={(e) => setWorkKey(e.target.value)}
               required
             >
-              {assignments.map((a) => {
-                const prefix = a.target_type === 'job' ? 'J-' : 'P-'
-                return (
-                  <option key={a.id} value={a.id}>
-                    {prefix}{a.number} — {a.title}
-                  </option>
-                )
-              })}
+              {options.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
             </select>
           </div>
 
@@ -356,6 +360,7 @@ export function MyDayClient({
   tomorrow,
   weekSummary,
   today,
+  workOptions,
 }: Props) {
   return (
     <div className="flex flex-col gap-4">
@@ -364,11 +369,17 @@ export function MyDayClient({
 
       {/* Assignment cards */}
       {assignments.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-12 text-center gap-2">
-          <p className="text-sm font-medium">No assignments today</p>
-          <p className="text-sm text-muted-foreground">
-            Your scheduled work will show up here.
-          </p>
+        <div className="flex flex-col items-center justify-center gap-3 py-8 text-center">
+          <div>
+            <p className="text-sm font-medium">Nothing scheduled for you today</p>
+            <p className="text-sm text-muted-foreground">
+              Pick the job you&apos;re on and check in there.
+            </p>
+          </div>
+          <Button render={<Link href="/field/jobs" />}>
+            <BriefcaseIcon className="size-4 mr-1" />
+            Pick a job
+          </Button>
         </div>
       ) : (
         <div className="flex flex-col gap-3">
@@ -380,13 +391,23 @@ export function MyDayClient({
               isCheckedIntoThis={openEntry?.assignment_id === a.id}
             />
           ))}
+          <Link
+            href="/field/jobs"
+            className="flex items-center justify-between gap-3 rounded-xl border px-4 py-3"
+          >
+            <span className="flex flex-col">
+              <span className="text-sm font-medium">Somewhere else today?</span>
+              <span className="text-xs text-muted-foreground">
+                Open any live job or project, scheduled or not.
+              </span>
+            </span>
+            <ChevronRightIcon className="size-4 shrink-0 text-muted-foreground" />
+          </Link>
         </div>
       )}
 
-      {/* Manual entry */}
-      {assignments.length > 0 && (
-        <ManualEntrySection assignments={assignments} today={today} />
-      )}
+      {/* Manual entry — any live job */}
+      <ManualEntrySection options={workOptions} today={today} />
 
       {/* Tomorrow preview */}
       {tomorrow.length > 0 && (
@@ -396,7 +417,7 @@ export function MyDayClient({
           </p>
           {tomorrow.map((t) => (
             <p key={t.number} className="text-sm text-muted-foreground">
-              {t.number.startsWith('P-') ? t.number : `J-${t.number}`} — {t.title}
+              {t.number} — {t.title}
             </p>
           ))}
         </div>

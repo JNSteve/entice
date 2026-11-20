@@ -2,22 +2,27 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import {
-  CameraIcon,
-  HardHatIcon,
-  NotebookPenIcon,
-  SunIcon,
-  WrenchIcon,
-} from 'lucide-react'
+import { BriefcaseIcon, HardHatIcon, SunIcon, WrenchIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 const TABS = [
   { label: 'My Day', href: '/field', icon: SunIcon },
-  { label: 'Diary', href: '/field/diary', icon: NotebookPenIcon },
+  { label: 'Jobs', href: '/field/jobs', icon: BriefcaseIcon },
   { label: 'Safety', href: '/field/safety', icon: HardHatIcon },
-  { label: 'Photos', href: '/field/photo', icon: CameraIcon },
   { label: 'Maintenance', href: '/field/maintenance', icon: WrenchIcon },
 ]
+
+function isActive(href: string, pathname: string): boolean {
+  if (href === '/field') return pathname === '/field'
+  if (pathname === href || pathname.startsWith(`${href}/`)) return true
+  // The job screen lives under /field/work but belongs to Jobs.
+  if (href === '/field/jobs') return pathname.startsWith('/field/work/')
+  // SWMS sign pages and waste-load logging belong to Safety.
+  if (href === '/field/safety') {
+    return pathname.startsWith('/field/swms') || pathname.startsWith('/field/waste')
+  }
+  return false
+}
 
 export function FieldTabs() {
   const pathname = usePathname()
@@ -26,18 +31,9 @@ export function FieldTabs() {
     // pb clears the iPhone home indicator, which otherwise sits over the last
     // tab in standalone mode.
     <nav className="sticky bottom-0 z-30 mx-auto w-full max-w-md border-t bg-background pb-[env(safe-area-inset-bottom)]">
-      <div className="grid grid-cols-5">
+      <div className="grid grid-cols-4">
         {TABS.map((tab) => {
-          const active =
-            tab.href === '/field'
-              ? pathname === '/field'
-              : pathname === tab.href ||
-                pathname.startsWith(`${tab.href}/`) ||
-                // SWMS pages live under /field/swms but belong to Safety;
-                // waste-load logging lives under /field/waste, same home.
-                (tab.href === '/field/safety' &&
-                  (pathname.startsWith('/field/swms') ||
-                    pathname.startsWith('/field/waste')))
+          const active = isActive(tab.href, pathname)
           const Icon = tab.icon
           return (
             <Link
