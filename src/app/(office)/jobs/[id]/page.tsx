@@ -526,6 +526,7 @@ export default async function JobDetailPage({
           items={docItems}
           canDelete={canDeleteAttachment}
           canCurate={canDeleteAttachment}
+          canCrew={canDeleteAttachment}
         />
       </section>
     </div>

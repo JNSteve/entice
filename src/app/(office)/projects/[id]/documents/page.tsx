@@ -97,7 +97,12 @@ export default async function ProjectDocumentsPage({
         {documents.length === 0 ? (
           <p className="text-sm text-muted-foreground">No documents yet.</p>
         ) : (
-          <AttachmentList items={documents} canDelete={canDeleteAttachment} canCurate={canUpload} />
+          <AttachmentList
+            items={documents}
+            canDelete={canDeleteAttachment}
+            canCurate={canUpload}
+            canCrew={canUpload}
+          />
         )}
       </section>
     </div>

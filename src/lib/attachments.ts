@@ -241,6 +241,45 @@ export async function setAttachmentClientVisible(
 }
 
 /**
+ * Crew curation: flips an attachment's field_visible flag, which decides
+ * whether the field job screen's Docs tab lists it. Admin/office only, and
+ * only on job/project attachments. A display filter, not a security boundary
+ * (migration 0019 already lets the crew read job and project attachments).
+ */
+export async function setAttachmentFieldVisible(
+  id: string,
+  visible: boolean
+): Promise<{ error?: string }> {
+  const profile = await getProfile()
+  if (!profile) return { error: 'Not authenticated' }
+  if (profile.role !== 'admin' && profile.role !== 'office') {
+    return { error: 'Only admin/office can change what the crew sees' }
+  }
+
+  const supabase = await createClient()
+
+  const { data: row } = await supabase
+    .from('attachments')
+    .select('id, parent_type, parent_id')
+    .eq('id', id)
+    .maybeSingle()
+  if (!row) return { error: 'Attachment not found' }
+  if (row.parent_type !== 'job' && row.parent_type !== 'project') {
+    return { error: 'Only job and project documents can be shown to the crew' }
+  }
+
+  const { error } = await supabase
+    .from('attachments')
+    .update({ field_visible: visible })
+    .eq('id', id)
+  if (error) return { error: error.message }
+
+  await revalidateParent(supabase, row.parent_type, row.parent_id)
+  revalidatePath(`/field/work/${row.parent_type}/${row.parent_id}/docs`)
+  return {}
+}
+
+/**
  * Deletes an attachment row and its backing storage object.
  * Allowed when: role is admin/office OR the caller created the attachment.
  */

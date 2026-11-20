@@ -2,7 +2,11 @@
 
 import React, { useState, useTransition } from 'react'
 import { toast } from 'sonner'
-import { deleteAttachment, setAttachmentClientVisible } from '@/lib/attachments'
+import {
+  deleteAttachment,
+  setAttachmentClientVisible,
+  setAttachmentFieldVisible,
+} from '@/lib/attachments'
 import { Button } from '@/components/ui/button'
 import {
   Dialog,
@@ -18,6 +22,7 @@ import {
   FileImageIcon,
   EyeIcon,
   EyeOffIcon,
+  HardHatIcon,
 } from 'lucide-react'
 import { fmtDate } from '@/lib/format'
 
@@ -32,6 +37,8 @@ export interface AttachmentItem {
   caption: string | null
   /** Client-portal curation flag; only meaningful when canCurate is set. */
   client_visible?: boolean
+  /** Crew curation flag; only meaningful when canCrew is set. */
+  field_visible?: boolean
   created_by: string
   created_by_name: string | null
   created_at: string
@@ -46,6 +53,11 @@ interface AttachmentListProps {
    * job/project attachments only — the client-portal curation surface).
    */
   canCurate?: boolean
+  /**
+   * Shows the per-document "Show to crew" toggle (admin/office on job/project
+   * documents) — decides what the field Docs tab lists.
+   */
+  canCrew?: boolean
 }
 
 // ─── Client-visibility toggle (portal curation) ──────────────────────────────
@@ -67,6 +79,33 @@ function useClientVisibleToggle() {
           next
             ? `${item.filename} is now visible in the client portal`
             : `${item.filename} hidden from the client portal`
+        )
+      }
+    })
+  }
+
+  return { toggle, togglingId }
+}
+
+// ─── Crew-visibility toggle (field Docs tab) ─────────────────────────────────
+
+function useFieldVisibleToggle() {
+  const [, startTransition] = useTransition()
+  const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  function toggle(item: AttachmentItem) {
+    const next = !item.field_visible
+    setTogglingId(item.id)
+    startTransition(async () => {
+      const result = await setAttachmentFieldVisible(item.id, next)
+      setTogglingId(null)
+      if (result.error) {
+        toast.error(result.error)
+      } else {
+        toast.success(
+          next
+            ? `${item.filename} now shows to the crew`
+            : `${item.filename} hidden from the crew`
         )
       }
     })
@@ -254,6 +293,9 @@ interface DocListProps {
   canCurate?: boolean
   onCurate?: (item: AttachmentItem) => void
   curating?: string | null
+  canCrew?: boolean
+  onCrew?: (item: AttachmentItem) => void
+  crewing?: string | null
 }
 
 function DocList({
@@ -264,6 +306,9 @@ function DocList({
   canCurate,
   onCurate,
   curating,
+  canCrew,
+  onCrew,
+  crewing,
 }: DocListProps) {
   if (docs.length === 0) {
     return <p className="text-sm text-muted-foreground">No documents yet.</p>
@@ -284,6 +329,28 @@ function DocList({
             </p>
           </div>
           <div className="flex items-center gap-1 shrink-0">
+            {canCrew && onCrew && (
+              <button
+                type="button"
+                onClick={() => onCrew(doc)}
+                disabled={crewing === doc.id}
+                aria-pressed={Boolean(doc.field_visible)}
+                aria-label={
+                  doc.field_visible
+                    ? `Hide ${doc.filename} from the crew`
+                    : `Show ${doc.filename} to the crew`
+                }
+                title={doc.field_visible ? 'Shown to the crew' : 'Show to crew'}
+                className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium focus:outline-none ${
+                  doc.field_visible
+                    ? 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300'
+                    : 'border-transparent text-muted-foreground'
+                }`}
+              >
+                <HardHatIcon className="size-3.5" />
+                {doc.field_visible ? 'Crew' : ''}
+              </button>
+            )}
             {canCurate && onCurate && (
               <span
                 className={`flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-medium ${
@@ -344,10 +411,11 @@ function DocList({
 
 // ─── Main export ─────────────────────────────────────────────────────────────
 
-export function AttachmentList({ items, canDelete, canCurate }: AttachmentListProps) {
+export function AttachmentList({ items, canDelete, canCurate, canCrew }: AttachmentListProps) {
   const [pending, startTransition] = useTransition()
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const { toggle: handleCurate, togglingId } = useClientVisibleToggle()
+  const { toggle: handleCrew, togglingId: crewingId } = useFieldVisibleToggle()
 
   const photos = items.filter((i) => i.kind === 'photo')
   const docs = items.filter((i) => i.kind !== 'photo')
@@ -389,6 +457,9 @@ export function AttachmentList({ items, canDelete, canCurate }: AttachmentListPr
           canCurate={canCurate}
           onCurate={handleCurate}
           curating={togglingId}
+          canCrew={canCrew}
+          onCrew={handleCrew}
+          crewing={crewingId}
         />
       )}
     </div>

@@ -15,6 +15,8 @@ export interface AttachmentRow {
   meta: Record<string, unknown> | null
   /** Client-portal curation flag — false unless office explicitly shares it. */
   client_visible: boolean
+  /** Crew curation flag — list on the field Docs tab. */
+  field_visible: boolean
   created_by: string
   created_at: string
   created_by_name: string | null
@@ -22,7 +24,7 @@ export interface AttachmentRow {
 }
 
 const ATTACHMENT_SELECT =
-  'id, parent_type, parent_id, bucket, path, filename, content_type, size, kind, caption, meta, client_visible, created_by, created_at, profiles!attachments_created_by_fkey(full_name)'
+  'id, parent_type, parent_id, bucket, path, filename, content_type, size, kind, caption, meta, client_visible, field_visible, created_by, created_at, profiles!attachments_created_by_fkey(full_name)'
 
 /** Batch-sign paths (all in the 'attachments' bucket) → path → signedUrl. */
 async function signedUrlMap(
@@ -66,6 +68,7 @@ function shapeRow(
     caption: (r.caption as string | null) ?? null,
     meta: (r.meta as Record<string, unknown> | null) ?? null,
     client_visible: Boolean(r.client_visible),
+    field_visible: Boolean(r.field_visible),
     created_by: r.created_by as string,
     created_at: r.created_at as string,
     created_by_name: profileRel?.full_name ?? null,
