@@ -25,7 +25,9 @@ export interface FieldSwmsItem {
  */
 export async function fetchMyFieldSwms(
   supabase: SupabaseClient,
-  profileId: string
+  profileId: string,
+  /** When set, only SWMS issued to this job or project. */
+  work?: { kind: 'job' | 'project'; id: string }
 ): Promise<FieldSwmsItem[]> {
   // Mon–Sun window anchored to the Australian calendar day.
   const todayDow = new Date(`${todayAU()}T00:00:00Z`).getUTCDay() // 0 = Sun
@@ -33,6 +35,16 @@ export async function fetchMyFieldSwms(
   const weekStartStr = dateAU(-daysFromMonday)
   const weekEndStr = dateAU(-daysFromMonday + 6)
 
+  let instanceQuery = supabase
+    .from('swms_instances')
+    .select(
+      'id, title, version, status, project_id, job_id, created_at, projects(number, name), jobs(number, title)'
+    )
+    .eq('status', 'active')
+    .order('created_at', { ascending: false })
+  if (work) {
+    instanceQuery = instanceQuery.eq(work.kind === 'job' ? 'job_id' : 'project_id', work.id)
+  }
   const [{ data: assignments }, { data: instances }] = await Promise.all([
     supabase
       .from('assignments')
@@ -40,13 +52,7 @@ export async function fetchMyFieldSwms(
       .eq('user_id', profileId)
       .gte('date', weekStartStr)
       .lte('date', weekEndStr),
-    supabase
-      .from('swms_instances')
-      .select(
-        'id, title, version, status, project_id, job_id, created_at, projects(number, name), jobs(number, title)'
-      )
-      .eq('status', 'active')
-      .order('created_at', { ascending: false }),
+    instanceQuery,
   ])
 
   const mySignatures = (instances ?? []).length

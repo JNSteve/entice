@@ -184,15 +184,22 @@ export default async function FormSubmissionPage({
       profile.role === 'office' ||
       profile.role === 'supervisor')
 
+  const backHref = submission.project_id
+    ? `/field/work/project/${submission.project_id}/prestart`
+    : submission.job_id
+      ? `/field/work/job/${submission.job_id}/prestart`
+      : '/field/safety'
+  const backLabel = submission.project_id || submission.job_id ? 'Back to job' : 'Safety'
+
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
         <Link
-          href="/field/safety"
+          href={backHref}
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ArrowLeftIcon className="size-3.5" />
-          Safety
+          {backLabel}
         </Link>
         <h1 className="text-lg font-bold">
           {template?.name ?? KIND_LABELS[submission.kind as FormTemplateKind]}
@@ -368,7 +375,7 @@ export default async function FormSubmissionPage({
         </section>
       )}
 
-      <Button render={<Link href="/field/safety" />} size="lg" variant="outline">
+      <Button render={<Link href={backHref} />} size="lg" variant="outline">
         Done
       </Button>
     </div>

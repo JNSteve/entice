@@ -114,11 +114,17 @@ export default async function NewFormPage({
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
         <Link
-          href="/field/safety"
+          href={
+            defaultProjectId
+              ? `/field/work/project/${defaultProjectId}/prestart`
+              : defaultJobId
+                ? `/field/work/job/${defaultJobId}/prestart`
+                : '/field/safety'
+          }
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ArrowLeftIcon className="size-3.5" />
-          Safety
+          {defaultProjectId || defaultJobId ? 'Back to job' : 'Safety'}
         </Link>
         <h1 className="text-lg font-bold">{template.name}</h1>
         {template.description && (
