@@ -1,8 +1,7 @@
 import Link from 'next/link'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import { ArrowLeftIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { WORK_STATUS_LABELS, parseWorkKind } from '@/lib/live-work'
 import { fetchWorkHeader } from '@/lib/field-work-queries'
@@ -17,9 +16,10 @@ export default async function WorkLayout({
   children: React.ReactNode
   params: Promise<{ kind: string; id: string }>
 }) {
-  const profile = await getProfile()
-  if (!profile) redirect('/login')
-
+  // No getProfile() here: the parent field layout already guards the role and
+  // every tab page checks the session itself, so a third check per view would
+  // only add another round trip to the auth server. RLS returns nothing for a
+  // signed-out request, which falls through to notFound() below.
   const { kind: rawKind, id } = await params
   const kind = parseWorkKind(rawKind)
   if (!kind || !UUID_RE.test(id)) notFound()
