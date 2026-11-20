@@ -15,7 +15,7 @@ import { todayAU, yesterdayAU } from '@/lib/tz'
 type Result = { error?: string }
 
 function revalidateDiary(projectId: string) {
-  revalidatePath(`/field/diary/${projectId}`)
+  revalidatePath(`/field/work/project/${projectId}/diary`)
   revalidatePath(`/projects/${projectId}/diary`)
 }
 

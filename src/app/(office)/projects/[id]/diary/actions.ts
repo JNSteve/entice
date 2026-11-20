@@ -101,7 +101,7 @@ export async function saveProjectDiary(data: unknown): Promise<Result> {
 
 function revalidateDiary(projectId: string) {
   revalidatePath(`/projects/${projectId}/diary`)
-  revalidatePath(`/field/diary/${projectId}`)
+  revalidatePath(`/field/work/project/${projectId}/diary`)
 }
 
 // NOTE: the child-row actions (addLabourRow, updateLabourRow, deleteLabourRow,

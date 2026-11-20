@@ -46,6 +46,8 @@ interface CaptureClientProps {
   recentTargets: CaptureTarget[]
   allTargets: CaptureTarget[]
   today: string
+  /** Set on the job screen: capture against this target and hide the picker. */
+  fixedTarget?: CaptureTarget
 }
 
 type Kind = 'photo' | 'docket'
@@ -289,9 +291,10 @@ export function CaptureClient({
   recentTargets,
   allTargets,
   today,
+  fixedTarget,
 }: CaptureClientProps) {
   const [selectedTarget, setSelectedTarget] = useState<CaptureTarget | null>(
-    recentTargets[0] ?? null
+    fixedTarget ?? recentTargets[0] ?? null
   )
   const [kind, setKind] = useState<Kind>('photo')
   const [caption, setCaption] = useState('')
@@ -501,13 +504,15 @@ export function CaptureClient({
 
   return (
     <div className="flex flex-col gap-6">
-      {/* Target picker */}
-      <TargetPicker
-        recentTargets={recentTargets}
-        allTargets={allTargets}
-        selected={selectedTarget}
-        onSelect={handleTargetSelect}
-      />
+      {/* Target picker — not shown when the job screen fixes the target */}
+      {!fixedTarget && (
+        <TargetPicker
+          recentTargets={recentTargets}
+          allTargets={allTargets}
+          selected={selectedTarget}
+          onSelect={handleTargetSelect}
+        />
+      )}
 
       {/* Kind toggle */}
       <KindToggle kind={kind} onChange={(k) => { setKind(k); setUploads([]) }} />
