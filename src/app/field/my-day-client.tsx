@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useRef, useState, useTransition } from 'react'
+import React, { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { MapPinIcon, PhoneIcon, LogInIcon, LogOutIcon, ChevronDownIcon, ChevronUpIcon, PackageIcon } from 'lucide-react'
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { checkIn, checkOut, createManualEntry } from './actions'
+import { useElapsed } from './use-elapsed'
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -51,34 +52,6 @@ interface Props {
   tomorrow: TomorrowItem[]
   weekSummary: WeekSummary
   today: string // YYYY-MM-DD
-}
-
-// ─── Elapsed timer ──────────────────────────────────────────────────────────
-
-function useElapsed(startAt: string | null): string {
-  const [elapsed, setElapsed] = useState('')
-  const interval = useRef<ReturnType<typeof setInterval> | null>(null)
-
-  useEffect(() => {
-    if (!startAt) return
-
-    function tick() {
-      const start = new Date(startAt!).getTime()
-      const diff = Math.max(0, Date.now() - start)
-      const h = Math.floor(diff / 3600000)
-      const m = Math.floor((diff % 3600000) / 60000)
-      const s = Math.floor((diff % 60000) / 1000)
-      setElapsed(`${h}h ${String(m).padStart(2, '0')}m ${String(s).padStart(2, '0')}s`)
-    }
-
-    tick()
-    interval.current = setInterval(tick, 1000)
-    return () => {
-      if (interval.current) clearInterval(interval.current)
-    }
-  }, [startAt])
-
-  return elapsed
 }
 
 // ─── Checked-in banner ──────────────────────────────────────────────────────
@@ -138,12 +111,10 @@ function AssignmentCardItem({
   assignment,
   hasOpenEntry,
   isCheckedIntoThis,
-  today,
 }: {
   assignment: AssignmentCard
   hasOpenEntry: boolean
   isCheckedIntoThis: boolean
-  today: string
 }) {
   const [pending, startTransition] = useTransition()
 
@@ -161,10 +132,8 @@ function AssignmentCardItem({
   function handleCheckIn() {
     startTransition(async () => {
       const result = await checkIn({
-        assignment_id: assignment.id,
         job_id: assignment.job_id,
         project_id: assignment.project_id,
-        date: today,
       })
       if (result.error) {
         toast.error(result.error)
@@ -292,7 +261,6 @@ function ManualEntrySection({
 
     startTransition(async () => {
       const result = await createManualEntry({
-        assignment_id: a.id,
         job_id: a.job_id,
         project_id: a.project_id,
         date: today,
@@ -410,7 +378,6 @@ export function MyDayClient({
               assignment={a}
               hasOpenEntry={openEntry !== null}
               isCheckedIntoThis={openEntry?.assignment_id === a.id}
-              today={today}
             />
           ))}
         </div>

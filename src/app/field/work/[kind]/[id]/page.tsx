@@ -16,7 +16,8 @@ import { todayAU } from '@/lib/tz'
 import { cn } from '@/lib/utils'
 import { parseWorkKind, workHref } from '@/lib/live-work'
 import { todayRows, type TodayRow } from '@/lib/field-today'
-import { fetchTodayStatus, fetchWorkHeader } from '@/lib/field-work-queries'
+import { fetchOpenEntry, fetchTodayStatus, fetchWorkHeader } from '@/lib/field-work-queries'
+import { CheckInCard } from './check-in-card'
 
 const ROW_ICONS: Record<TodayRow['key'], React.ComponentType<{ className?: string }>> = {
   prestart: ShieldCheckIcon,
@@ -45,11 +46,14 @@ export default async function WorkTodayPage({
   if (!kind) notFound()
 
   const supabase = await createClient()
-  const [header, status] = await Promise.all([
+  const [header, status, open] = await Promise.all([
     fetchWorkHeader(supabase, kind, id),
     fetchTodayStatus(supabase, { kind, id, userId: profile.id, today: todayAU() }),
+    fetchOpenEntry(supabase, profile.id),
   ])
   if (!header) notFound()
+
+  const here = open?.kind === kind && open.workId === id
 
   const mapsUrl = header.siteLabel
     ? `https://maps.google.com/?q=${encodeURIComponent(header.siteLabel)}`
@@ -57,6 +61,15 @@ export default async function WorkTodayPage({
 
   return (
     <div className="flex flex-col gap-4">
+      <CheckInCard
+        kind={kind}
+        id={id}
+        live={header.live}
+        state={here ? 'here' : open ? 'elsewhere' : 'none'}
+        startAt={open?.startAt ?? null}
+        elsewhere={open && !here ? `${open.number} — ${open.title}` : null}
+      />
+
       {(header.siteLabel || header.contactPhone) && (
         <div className="flex flex-col gap-2 rounded-xl border px-4 py-3">
           {header.siteLabel && (

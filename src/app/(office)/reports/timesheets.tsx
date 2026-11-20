@@ -35,7 +35,7 @@ export type TimesheetEntryRow = {
   endAt: string | null
   /** Decimal hours; 0 for open entries. */
   hours: number
-  /** True when the entry was not started from an assignment. */
+  /** True when the entry has no schedule link — checked in off-schedule. */
   manual: boolean
   approved: boolean
 }
@@ -258,7 +258,7 @@ export function TimesheetsReport({
                                   variant="outline"
                                   className="ml-2 text-[10px]"
                                 >
-                                  Manual
+                                  Unscheduled
                                 </Badge>
                               )}
                             </TableCell>

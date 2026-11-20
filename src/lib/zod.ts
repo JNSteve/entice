@@ -1123,24 +1123,29 @@ export type PackageAwardInput = z.infer<typeof packageAwardSchema>
 
 // ─── Timesheet entries ───────────────────────────────────────────────────────
 
-export const checkInSchema = z.object({
-  assignment_id: z.uuid(),
-  job_id: z.uuid().nullable(),
-  project_id: z.uuid().nullable(),
-  date: z.string().min(1, 'Date is required'),
-})
+const exactlyOneWork = (d: { job_id: string | null; project_id: string | null }) =>
+  (d.job_id ? 1 : 0) + (d.project_id ? 1 : 0) === 1
+
+// Check-in is allowed on any live job or project, scheduled or not. The
+// server looks up the schedule entry itself (see src/app/field/actions.ts).
+export const checkInSchema = z
+  .object({
+    job_id: z.uuid().nullable(),
+    project_id: z.uuid().nullable(),
+  })
+  .refine(exactlyOneWork, { message: 'Pick one job or project' })
 
 export type CheckInInput = z.infer<typeof checkInSchema>
 
 export const manualEntrySchema = z
   .object({
-    assignment_id: z.uuid(),
     job_id: z.uuid().nullable(),
     project_id: z.uuid().nullable(),
-    date: z.string().min(1, 'Date is required'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date is required'),
     start_time: z.string().regex(/^\d{2}:\d{2}$/, 'Invalid time (HH:MM)'),
     end_time: z.string().regex(/^\d{2}:\d{2}$/, 'Invalid time (HH:MM)'),
   })
+  .refine(exactlyOneWork, { message: 'Pick one job or project' })
   .refine(
     (d) => {
       const [sh, sm] = d.start_time.split(':').map(Number)
