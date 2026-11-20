@@ -148,7 +148,7 @@ export async function addUsage(input: unknown): Promise<Result> {
   })
   if (error) return { error: friendlyError(error) }
 
-  revalidatePath('/field/usage')
+  revalidatePath('/field', 'layout')
   return {}
 }
 
@@ -172,7 +172,7 @@ export async function updateUsage(usageId: string, input: unknown): Promise<Resu
     return { error: "You can only change today's or yesterday's entries" }
   }
 
-  revalidatePath('/field/usage')
+  revalidatePath('/field', 'layout')
   return {}
 }
 
@@ -194,7 +194,7 @@ export async function deleteUsage(usageId: string): Promise<Result> {
     return { error: "You can only change today's or yesterday's entries" }
   }
 
-  revalidatePath('/field/usage')
+  revalidatePath('/field', 'layout')
   return {}
 }
 
@@ -220,7 +220,7 @@ export async function saveDayNote(input: unknown): Promise<Result> {
   )
   if (error) return { error: friendlyError(error) }
 
-  revalidatePath('/field/usage')
+  revalidatePath('/field', 'layout')
   return {}
 }
 

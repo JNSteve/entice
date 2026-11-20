@@ -19,7 +19,7 @@ import {
 export default async function FieldWastePage({
   searchParams,
 }: {
-  searchParams: Promise<{ project?: string }>
+  searchParams: Promise<{ project?: string; job?: string }>
 }) {
   const profile = await getProfile()
   if (!profile) redirect('/login')
@@ -71,16 +71,24 @@ export default async function FieldWastePage({
 
   const defaultProjectId =
     sp.project && projects.some((p) => p.id === sp.project) ? sp.project : null
+  const defaultJobId =
+    !defaultProjectId && sp.job && jobs.some((j) => j.id === sp.job) ? sp.job : null
 
   return (
     <div className="flex flex-col gap-5">
       <div className="flex flex-col gap-1">
         <Link
-          href="/field/safety"
+          href={
+            defaultProjectId
+              ? `/field/work/project/${defaultProjectId}/day`
+              : defaultJobId
+                ? `/field/work/job/${defaultJobId}/day`
+                : '/field/safety'
+          }
           className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
         >
           <ArrowLeftIcon className="size-3.5" />
-          Safety
+          {defaultProjectId || defaultJobId ? 'Day sheet' : 'Safety'}
         </Link>
         <h1 className="text-lg font-bold">Log waste load</h1>
         <p className="text-sm text-muted-foreground">
@@ -111,6 +119,7 @@ export default async function FieldWastePage({
         jobs={jobs}
         facilities={facilities}
         defaultProjectId={defaultProjectId}
+        defaultJobId={defaultJobId}
       />
 
       {(myLoads ?? []).length > 0 && (

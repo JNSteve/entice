@@ -39,11 +39,13 @@ export function FieldWasteForm({
   jobs,
   facilities,
   defaultProjectId,
+  defaultJobId,
 }: {
   projects: TargetOption[]
   jobs: TargetOption[]
   facilities: FieldFacilityOption[]
   defaultProjectId: string | null
+  defaultJobId: string | null
 }) {
   const [pending, startTransition] = useTransition()
   const [created, setCreated] = useState<{ id: string; number: string } | null>(
@@ -51,7 +53,7 @@ export function FieldWasteForm({
   )
   const [form, setForm] = useState({
     project_id: defaultProjectId ?? '',
-    job_id: '',
+    job_id: defaultProjectId ? '' : (defaultJobId ?? ''),
     classification: 'general' as WasteClassification,
     classification_detail: '',
     qty: '',
