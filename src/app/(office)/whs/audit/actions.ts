@@ -22,6 +22,8 @@ const ENTITY_TYPES = new Set([
   'corrective_actions',
   'subbie_swms',
   'share_links',
+  'timesheet_entries',
+  'field_usage',
 ])
 
 export interface AuditExportFilters {

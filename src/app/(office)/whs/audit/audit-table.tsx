@@ -42,6 +42,8 @@ export const ENTITY_TYPE_LABELS: Record<string, string> = {
   corrective_actions: 'Corrective action',
   subbie_swms: 'Subbie SWMS',
   share_links: 'Share link',
+  timesheet_entries: 'Timesheet entry',
+  field_usage: 'Materials log line',
 }
 
 // ─── Smart entity link ────────────────────────────────────────────────────────
