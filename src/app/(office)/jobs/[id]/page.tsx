@@ -11,6 +11,7 @@ import { ScheduleWorkDialog } from './schedule-work-dialog'
 import { ChecklistSection } from './checklist-section'
 import { WorkLogSection } from './work-log-section'
 import { SignoffRegister } from '@/components/signoffs/SignoffRegister'
+import { SiteDaysRecent } from '@/components/site-days/SiteDaysRecent'
 import { PnlPanel } from '@/components/pnl/PnlPanel'
 import { loadPnl, type PnlData } from '@/lib/pnl-queries'
 import { InvoiceSection, type JobInvoiceRow } from './invoice-section'
@@ -369,6 +370,14 @@ export default async function JobDetailPage({
 
       {/* Work log */}
       <WorkLogSection jobId={job.id} entries={workLogData} />
+
+      <div className="border-t" />
+
+      {/* Site days — what the crew recorded, by day */}
+      <section className="flex flex-col gap-4">
+        <h2 className="text-base font-semibold">Site days</h2>
+        <SiteDaysRecent kind="job" workId={job.id} />
+      </section>
 
       <div className="border-t" />
 
