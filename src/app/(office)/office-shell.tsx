@@ -169,6 +169,9 @@ function UserMenu({ profile }: { profile: Profile }) {
         <DropdownMenuSeparator />
         <form action={signOut}>
           <DropdownMenuItem
+            // A real <button> so the form submits; tell Base UI so, or it
+            // warns in development that it expected a non-button element.
+            nativeButton
             render={<button type="submit" className="w-full" />}
           >
             <LogOutIcon className="size-4" />
