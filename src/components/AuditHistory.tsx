@@ -22,12 +22,13 @@ function isExternal(row: AuditRow): boolean {
 /** Produce a one-line human summary of the audit row detail. */
 export function summariseDetail(row: AuditRow): string {
   const { detail, action } = row
+  const summary = detail?.summary as string | undefined
 
   // Changed fields from UPDATE triggers
   const changed = detail?.changed as Record<string, { from: unknown; to: unknown }> | undefined
   if (changed) {
     const entries = Object.entries(changed)
-    if (entries.length === 0) return action
+    if (entries.length === 0) return summary || action
 
     const parts = entries.slice(0, 2).map(([col, { from, to }]) => {
       const fromStr = from == null ? '—' : String(from)
@@ -39,11 +40,12 @@ export function summariseDetail(row: AuditRow): string {
       return `${col}: ${fromStr} → ${toStr}`
     })
     const extra = entries.length > 2 ? ` +${entries.length - 2} more` : ''
-    return parts.join(', ') + extra
+    const changes = parts.join(', ') + extra
+    // Site-day update rows carry both: say whose entry it is, then what changed.
+    return summary ? `${summary} · ${changes}` : changes
   }
 
   // Summary field (external submissions / sign-ons etc.)
-  const summary = detail?.summary as string | undefined
   if (summary) return summary
 
   // Label (share-link events)

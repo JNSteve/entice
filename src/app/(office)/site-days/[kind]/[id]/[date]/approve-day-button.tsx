@@ -7,12 +7,17 @@ import { Button } from '@/components/ui/button'
 import type { DayRef } from '@/lib/site-days'
 import { approveDay } from '@/app/(office)/site-days/actions'
 
-export function ApproveDayButton({ dayRef, todo }: { dayRef: DayRef; todo: number }) {
+/**
+ * `entryIds` are the closed, unapproved entries shown on the page. Only those
+ * are approved, so an entry closed after the page loaded is never approved
+ * unseen.
+ */
+export function ApproveDayButton({ dayRef, entryIds }: { dayRef: DayRef; entryIds: string[] }) {
   const [pending, startTransition] = useTransition()
 
   function onClick() {
     startTransition(async () => {
-      const result = await approveDay(dayRef)
+      const result = await approveDay(dayRef, entryIds)
       if (result.error) {
         toast.error(result.error)
         return
@@ -22,7 +27,7 @@ export function ApproveDayButton({ dayRef, todo }: { dayRef: DayRef; todo: numbe
   }
 
   return (
-    <Button onClick={onClick} disabled={pending || todo === 0}>
+    <Button onClick={onClick} disabled={pending || entryIds.length === 0}>
       <CheckCheckIcon />
       {pending ? 'Approving…' : 'Approve day'}
     </Button>

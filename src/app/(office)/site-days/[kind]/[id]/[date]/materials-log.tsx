@@ -266,7 +266,9 @@ export function MaterialsLog({
 
       {!editable && (
         <p className="text-sm text-muted-foreground">
-          This day has a sign-off, so the log is read-only here. Change the figures in the sign-off.
+          {canBuild
+            ? 'This day has a sign-off, so the log is read-only here. Change the figures in the sign-off.'
+            : 'This day has a sign-off, so the log is read-only here. Ask the office to change the figures in the sign-off.'}
         </p>
       )}
 
@@ -351,7 +353,12 @@ export function MaterialsLog({
                     <TableCell>
                       <Badge variant="outline">{KIND_LABELS[line.kind]}</Badge>
                     </TableCell>
-                    <TableCell>{shown.item}</TableCell>
+                    <TableCell>
+                      {shown.item}
+                      {line.notes && (
+                        <p className="whitespace-pre-wrap text-xs text-muted-foreground">{line.notes}</p>
+                      )}
+                    </TableCell>
                     <TableCell className="tabular-nums">{shown.qty}</TableCell>
                     <TableCell className="text-muted-foreground">{line.loggedBy ?? '—'}</TableCell>
                     <TableCell className="text-right">

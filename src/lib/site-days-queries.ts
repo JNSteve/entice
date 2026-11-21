@@ -15,8 +15,10 @@ import {
   attentionReasons,
   compareDayRows,
   dayBoundsAU,
+  signonsAcrossAmendments,
   summariseHours,
   type AttentionReason,
+  type SignonChainRow,
   type CrewEntry,
   type HoursEntry,
   type HoursSummary,
@@ -104,6 +106,10 @@ export async function loadDayList(sb: SupabaseClient, date: string): Promise<Day
     sb.from('waste_loads').select('job_id, project_id').eq('date', date),
     sb.from('diaries').select('project_id').eq('date', date),
   ])
+
+  // A failed read must not be drawn as a day with no hours or materials.
+  if (entries.error) throw new Error(`Could not load the day's hours: ${entries.error.message}`)
+  if (usage.error) throw new Error(`Could not load the materials log: ${usage.error.message}`)
 
   const acc = new Map<string, Acc>()
   const touch = (r: ParentCols): Acc | null => {
@@ -365,7 +371,7 @@ export async function loadDayDetail(
     sb
       .from('field_usage')
       .select(
-        'id, kind, description, qty, unit, company, headcount, hours, created_at, profiles!field_usage_user_id_fkey(full_name)'
+        'id, kind, description, qty, unit, company, headcount, hours, notes, created_at, profiles!field_usage_user_id_fkey(full_name)'
       )
       .eq(col, id)
       .eq('date', date)
@@ -398,6 +404,10 @@ export async function loadDayDetail(
     sb.from('field_usage').select('date').eq(col, id).limit(2000),
   ])
 
+  // A failed read must not be drawn as "nobody checked in" / "nothing logged".
+  if (entries.error) throw new Error(`Could not load the day's hours: ${entries.error.message}`)
+  if (usage.error) throw new Error(`Could not load the day's materials log: ${usage.error.message}`)
+
   if (!work.data) return null
   const w = work.data as { id: string; number: string; title?: string; name?: string; clients: unknown }
 
@@ -423,14 +433,35 @@ export async function loadDayDetail(
     submittedBy: one(f.profiles as unknown as NameRel)?.full_name ?? 'Unknown',
   })
   const prestartRow = visible.filter((f) => f.kind === 'prestart_meeting').at(-1) ?? null
+  const toChainRow = (f: { id: unknown; amends: unknown; form_signons: unknown }): SignonChainRow => ({
+    id: f.id as string,
+    amends: (f.amends as string | null) ?? null,
+    signons: ((f.form_signons as { name: string }[] | null) ?? []).map((s) => s.name),
+  })
+  let prestartSignons: string[] = []
+  if (prestartRow) {
+    // Sign-ons stay on the version people signed, so collect them across the
+    // amendment chain. An ancestor filed on an earlier day is fetched by id.
+    const chainRows = formRows.map(toChainRow)
+    for (;;) {
+      const { names, missing } = signonsAcrossAmendments(chainRows, prestartRow.id as string)
+      prestartSignons = names
+      if (!missing) break
+      const { data: ancestor } = await sb
+        .from('form_submissions')
+        .select('id, amends, form_signons(name)')
+        .eq('id', missing)
+        .maybeSingle()
+      if (!ancestor) break
+      chainRows.push(toChainRow(ancestor))
+    }
+  }
   const prestart = prestartRow
     ? {
         id: prestartRow.id as string,
         submittedAt: prestartRow.submitted_at as string,
         submittedBy: shapeForm(prestartRow).submittedBy,
-        signons: ((prestartRow.form_signons as unknown as { name: string }[] | null) ?? []).map(
-          (s) => s.name
-        ),
+        signons: prestartSignons,
       }
     : null
   const otherForms = visible.filter((f) => f.id !== prestartRow?.id).map(shapeForm)
@@ -476,6 +507,7 @@ export async function loadDayDetail(
     headcount: u.headcount === null ? null : Number(u.headcount),
     hours: u.hours === null ? null : Number(u.hours),
     loggedBy: one(u.profiles as unknown as NameRel)?.full_name ?? null,
+    notes: ((u.notes as string | null) ?? '').trim() || null,
   }))
 
   const latest = (signoff.data ?? [])[0] as { id: string; status: string; version: number } | undefined

@@ -12,6 +12,7 @@ import {
   isWorkKind,
   materialsEditable,
   shiftDate,
+  signonsAcrossAmendments,
   summariseHours,
   timeOfDayAU,
   timesToInstants,
@@ -132,6 +133,51 @@ describe('materials lock', () => {
   })
 })
 
+describe('signonsAcrossAmendments', () => {
+  it('returns the sign-ons of a pre-start with no amendment', () => {
+    const rows = [{ id: 'a', amends: null, signons: ['Sam', 'Jo'] }]
+    expect(signonsAcrossAmendments(rows, 'a')).toEqual({ names: ['Sam', 'Jo'], missing: null })
+  })
+
+  it('keeps the sign-ons on the original after one amendment', () => {
+    const rows = [
+      { id: 'a', amends: null, signons: ['Sam', 'Jo', 'Ali', 'Kim'] },
+      { id: 'b', amends: 'a', signons: [] },
+    ]
+    expect(signonsAcrossAmendments(rows, 'b')).toEqual({ names: ['Sam', 'Jo', 'Ali', 'Kim'], missing: null })
+  })
+
+  it('walks a two-step chain', () => {
+    const rows = [
+      { id: 'a', amends: null, signons: ['Sam'] },
+      { id: 'b', amends: 'a', signons: ['Jo'] },
+      { id: 'c', amends: 'b', signons: ['Ali'] },
+    ]
+    expect(signonsAcrossAmendments(rows, 'c')).toEqual({ names: ['Ali', 'Jo', 'Sam'], missing: null })
+  })
+
+  it('lists a person who signed two versions once', () => {
+    const rows = [
+      { id: 'a', amends: null, signons: ['Sam', 'Jo'] },
+      { id: 'b', amends: 'a', signons: ['Jo'] },
+    ]
+    expect(signonsAcrossAmendments(rows, 'b')).toEqual({ names: ['Jo', 'Sam'], missing: null })
+  })
+
+  it('reports an ancestor that is not among the rows', () => {
+    const rows = [{ id: 'b', amends: 'a', signons: ['Jo'] }]
+    expect(signonsAcrossAmendments(rows, 'b')).toEqual({ names: ['Jo'], missing: 'a' })
+  })
+
+  it('stops on a cycle', () => {
+    const rows = [
+      { id: 'a', amends: 'b', signons: ['Sam'] },
+      { id: 'b', amends: 'a', signons: ['Jo'] },
+    ]
+    expect(signonsAcrossAmendments(rows, 'b')).toEqual({ names: ['Jo', 'Sam'], missing: null })
+  })
+})
+
 describe('timesToInstants', () => {
   it('reads times as Brisbane wall-clock on the given day', () => {
     expect(timesToInstants('2026-11-20', '06:45', '15:00')).toEqual({
@@ -185,6 +231,11 @@ describe('usage lines', () => {
       kind: 'subbie', description: 'Scaffold crew', qty: null, unit: null,
       company: 'Scaffold crew', headcount: 2, hours: 4,
     })
+  })
+
+  it('does not write the crew note on an office edit', () => {
+    const v = usageLineSchema.parse({ kind: 'material', description: 'Black plastic', qty: 2, unit: 'rolls', notes: 'x' })
+    expect(usageRowFields(v)).not.toHaveProperty('notes')
   })
 
   it('describes a line for display', () => {

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { z } from 'zod'
 import { requireRole } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
+import { todayAU } from '@/lib/tz'
 import { approveTimesheetEntry } from '@/app/(office)/reports/actions'
 import {
   isIsoDate,
@@ -34,6 +35,8 @@ function parseRef(ref: DayRef): DayRef | null {
   if (!isWorkKind(String(ref.kind))) return null
   if (!ID.safeParse(ref.workId).success) return null
   if (typeof ref.date !== 'string' || !isIsoDate(ref.date)) return null
+  // No hours or materials on a day that has not happened yet.
+  if (ref.date > todayAU()) return null
   return { kind: ref.kind, workId: ref.workId, date: ref.date }
 }
 
@@ -58,14 +61,20 @@ async function entryOnDay(supabase: Supabase, ref: DayRef, entryId: string): Pro
   return (data as EntryRow | null) ?? null
 }
 
-async function dayHasSignoff(supabase: Supabase, ref: DayRef): Promise<boolean> {
-  const { data } = await supabase
+/**
+ * Why the materials log cannot be edited, or null when it can. Fails closed:
+ * if the sign-off check itself fails we refuse the edit rather than assume
+ * there is no sign-off.
+ */
+async function materialsLockError(supabase: Supabase, ref: DayRef): Promise<string | null> {
+  const { data, error } = await supabase
     .from('daily_signoffs')
     .select('id')
     .eq(parentColumn(ref.kind), ref.workId)
     .eq('date', ref.date)
     .limit(1)
-  return (data ?? []).length > 0
+  if (error) return "Couldn't check whether this day has a sign-off. Try again."
+  return (data ?? []).length > 0 ? LOCKED : null
 }
 
 // ─── Hours ───────────────────────────────────────────────────────────────────
@@ -119,11 +128,11 @@ export async function updateEntryTimes(
   const patch: Record<string, unknown> = {}
   if (startChanged) patch.start_at = times.startIso
   if (endChanged) patch.end_at = times.endIso
-  // Changed hours are always approved again.
-  if (entry.approved) {
-    patch.approved = false
-    patch.approved_by = null
-  }
+  // Changed hours are always approved again. Written unconditionally, not
+  // only when the entry we just read was approved: Approve day could land
+  // between that read and this write. A no-op for an unapproved entry.
+  patch.approved = false
+  patch.approved_by = null
 
   const { error } = await supabase.from('timesheet_entries').update(patch).eq('id', entryId)
   if (error) return { error: error.message }
@@ -190,16 +199,26 @@ export async function deleteTimesheetEntry(ref: DayRef, entryId: string): Promis
   return {}
 }
 
-/** Approve every closed entry on this job for this day. */
-export async function approveDay(ref: DayRef): Promise<Result> {
+const approveIdsSchema = z.array(ID).min(1, 'Nothing to approve').max(200)
+
+/**
+ * Approve the closed entries the approver was looking at on this job-day.
+ * The ids come from the page so an entry that closed after the page loaded
+ * (someone checking out late, with times nobody has reviewed) is not approved
+ * and costed sight unseen. Each id must still belong to this job and day.
+ */
+export async function approveDay(ref: DayRef, entryIds: string[]): Promise<Result> {
   const profile = await requireRole('admin', 'office', 'supervisor')
   const day = parseRef(ref)
   if (!day) return { error: 'Day not found' }
+  const ids = approveIdsSchema.safeParse(entryIds)
+  if (!ids.success) return { error: ids.error.issues[0]?.message ?? 'Nothing to approve' }
 
   const supabase = await createClient()
   const { error } = await supabase
     .from('timesheet_entries')
     .update({ approved: true, approved_by: profile.id })
+    .in('id', ids.data)
     .eq(parentColumn(day.kind), day.workId)
     .eq('date', day.date)
     .eq('approved', false)
@@ -219,7 +238,8 @@ export async function addUsageLine(ref: DayRef, input: unknown): Promise<Result>
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid line' }
 
   const supabase = await createClient()
-  if (await dayHasSignoff(supabase, day)) return { error: LOCKED }
+  const locked = await materialsLockError(supabase, day)
+  if (locked) return { error: locked }
 
   const { error } = await supabase.from('field_usage').insert({
     [parentColumn(day.kind)]: day.workId,
@@ -241,7 +261,8 @@ export async function updateUsageLine(ref: DayRef, lineId: string, input: unknow
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid line' }
 
   const supabase = await createClient()
-  if (await dayHasSignoff(supabase, day)) return { error: LOCKED }
+  const locked = await materialsLockError(supabase, day)
+  if (locked) return { error: locked }
 
   const { data: line } = await supabase
     .from('field_usage')
@@ -269,7 +290,8 @@ export async function deleteUsageLine(ref: DayRef, lineId: string): Promise<Resu
   if (!ID.safeParse(lineId).success) return { error: 'Line not found' }
 
   const supabase = await createClient()
-  if (await dayHasSignoff(supabase, day)) return { error: LOCKED }
+  const locked = await materialsLockError(supabase, day)
+  if (locked) return { error: locked }
 
   const { data, error } = await supabase
     .from('field_usage')
@@ -294,7 +316,8 @@ export async function saveWorkSummary(ref: DayRef, summary: string): Promise<Res
   if (!parsed.success) return { error: parsed.error.issues[0]?.message ?? 'Invalid summary' }
 
   const supabase = await createClient()
-  if (await dayHasSignoff(supabase, day)) return { error: LOCKED }
+  const locked = await materialsLockError(supabase, day)
+  if (locked) return { error: locked }
 
   const col = parentColumn(day.kind)
   const { error } = await supabase.from('field_day_notes').upsert(

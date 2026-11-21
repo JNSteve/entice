@@ -34,6 +34,8 @@ export type UsageLine = {
   headcount: number | null
   hours: number | null
   loggedBy: string | null
+  /** The crew's per-line note. Display only: the office edit never writes it. */
+  notes: string | null
 }
 
 export type HoursEntry = {
@@ -167,6 +169,34 @@ export function compareDayRows(
 ): number {
   if (a.attention.length !== b.attention.length) return b.attention.length - a.attention.length
   return b.number.localeCompare(a.number)
+}
+
+// ─── Pre-start sign-ons ──────────────────────────────────────────────────────
+
+export type SignonChainRow = { id: string; amends: string | null; signons: readonly string[] }
+
+/**
+ * Sign-ons stay on the version each person signed; an amendment does not copy
+ * them. Walk from `startId` back through `amends`, collecting names once each
+ * in order of first appearance. `missing` is the first ancestor id not among
+ * `rows` (filed on an earlier day) — load it and call again. A cycle stops.
+ */
+export function signonsAcrossAmendments(
+  rows: readonly SignonChainRow[],
+  startId: string
+): { names: string[]; missing: string | null } {
+  const byId = new Map(rows.map((r) => [r.id, r]))
+  const seen = new Set<string>()
+  const names: string[] = []
+  let cursor: string | null = startId
+  while (cursor && !seen.has(cursor)) {
+    seen.add(cursor)
+    const row = byId.get(cursor)
+    if (!row) return { names, missing: cursor }
+    for (const n of row.signons) if (!names.includes(n)) names.push(n)
+    cursor = row.amends
+  }
+  return { names, missing: null }
 }
 
 // ─── Materials lock ──────────────────────────────────────────────────────────

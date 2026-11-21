@@ -9,7 +9,12 @@ export function SwmsSignon({
 }) {
   return (
     <section className="flex flex-col gap-3">
-      <h2 className="text-base font-semibold">SWMS</h2>
+      <div className="flex flex-col gap-1">
+        <h2 className="text-base font-semibold">SWMS</h2>
+        <p className="text-sm text-muted-foreground">
+          Sign-on status as of today, against each SWMS&apos;s current version.
+        </p>
+      </div>
       {swms.length === 0 ? (
         <p className="text-sm text-muted-foreground">No SWMS is active on this work.</p>
       ) : crewCount === 0 ? (

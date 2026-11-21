@@ -7,6 +7,7 @@ import { PageHeader } from '@/components/PageHeader'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { fmtDate } from '@/lib/format'
+import { todayAU } from '@/lib/tz'
 import {
   approveChip,
   isIsoDate,
@@ -35,6 +36,7 @@ export default async function SiteDayPage({
 
   const { kind, id, date } = await params
   if (!isWorkKind(kind) || !UUID_RE.test(id) || !isIsoDate(date)) notFound()
+  if (date > todayAU()) notFound() // no future days
 
   const supabase = await createClient()
   const day = await loadDayDetail(supabase, kind, id, date)
@@ -50,7 +52,8 @@ export default async function SiteDayPage({
     }))
   )
   const chip = approveChip(hours)
-  const todo = hours.closed - hours.approved
+  // The closed, unapproved entries on screen: Approve day approves only these.
+  const toApprove = day.entries.filter((e) => e.endAt !== null && !e.approved).map((e) => e.id)
   const crewCount = hours.people
   const workHref = kind === 'job' ? `/jobs/${id}` : `/projects/${id}`
   const photosHref = kind === 'job' ? `/jobs/${id}#photos` : `/projects/${id}/documents`
@@ -63,7 +66,7 @@ export default async function SiteDayPage({
         <PageHeader
           title={`${day.work.number} — ${day.work.title}`}
           description={`Site day · ${fmtDate(date)}${day.work.client ? ` · ${day.work.client}` : ''}`}
-          actions={<ApproveDayButton dayRef={dayRef} todo={todo} />}
+          actions={<ApproveDayButton dayRef={dayRef} entryIds={toApprove} />}
         />
         <div className="flex flex-wrap items-center gap-2 text-sm">
           <Button variant="outline" size="sm" render={<Link href={`/site-days?date=${date}`} />}>
