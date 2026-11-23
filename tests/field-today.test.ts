@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   fmtDateAU,
+  fmtDateTimeAU,
   fmtDuration,
   fmtTimeAU,
   hoursBetween,
@@ -40,6 +41,25 @@ describe('fmtDateAU', () => {
   it('accepts the +00:00 form Postgres returns', () => {
     expect(fmtDateAU('2026-01-01T13:59:59.123456+00:00')).toBe('01/01/2026')
     expect(fmtDateAU('2026-01-01T14:00:00+00:00')).toBe('02/01/2026')
+  })
+})
+
+describe('fmtDateTimeAU', () => {
+  it('shows the Brisbane date and 24-hour time for a stored instant', () => {
+    // 02:03 UTC is 12:03 pm in Brisbane.
+    expect(fmtDateTimeAU('2026-11-23T02:03:00Z')).toBe('23/11/2026 12:03')
+  })
+
+  it('rolls the date forward for an early-morning Brisbane time', () => {
+    expect(fmtDateTimeAU('2026-11-19T20:50:00Z')).toBe('20/11/2026 06:50')
+  })
+
+  it('writes midnight as 00, not 24', () => {
+    expect(fmtDateTimeAU('2026-11-22T14:05:00Z')).toBe('23/11/2026 00:05')
+  })
+
+  it('returns an empty string for a value that is not a date', () => {
+    expect(fmtDateTimeAU('not a date')).toBe('')
   })
 })
 

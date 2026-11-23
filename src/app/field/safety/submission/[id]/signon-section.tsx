@@ -3,7 +3,7 @@
 import React, { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
-import { UsersIcon } from 'lucide-react'
+import { PenLineIcon, UsersIcon } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -28,7 +28,8 @@ export function SignonSection({
   const router = useRouter()
   const [pending, startTransition] = useTransition()
 
-  // Self sign-on
+  // Self sign-on — one "Sign on" button; the name and signature pad open on tap.
+  const [showSelf, setShowSelf] = useState(false)
   const [myName, setMyName] = useState(defaultName)
   const [mySignature, setMySignature] = useState<string | null>(null)
   const [myPadKey, setMyPadKey] = useState(0)
@@ -68,6 +69,7 @@ export function SignonSection({
       toast.success('Signed on')
       setMySignature(null)
       setMyPadKey((k) => k + 1)
+      setShowSelf(false)
       router.refresh()
     })
   }
@@ -104,7 +106,14 @@ export function SignonSection({
 
   return (
     <div className="flex flex-col gap-4">
-      {!alreadySignedSelf && (
+      {!alreadySignedSelf && !showSelf && (
+        <Button type="button" size="lg" onClick={() => setShowSelf(true)}>
+          <PenLineIcon className="size-4" />
+          Sign on
+        </Button>
+      )}
+
+      {!alreadySignedSelf && showSelf && (
         <div className="flex flex-col gap-3 rounded-xl border p-4">
           <p className="text-sm font-semibold">My sign-on</p>
           <div className="flex flex-col gap-1.5">
@@ -129,7 +138,19 @@ export function SignonSection({
             disabled={pending || !mySignature}
             onClick={submitSelf}
           >
-            {pending ? 'Signing…' : 'Sign on'}
+            {pending ? 'Signing…' : 'Confirm sign-on'}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={pending}
+            onClick={() => {
+              setShowSelf(false)
+              setMySignature(null)
+              setMyPadKey((k) => k + 1)
+            }}
+          >
+            Cancel
           </Button>
         </div>
       )}

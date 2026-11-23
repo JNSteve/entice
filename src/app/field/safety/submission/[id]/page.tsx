@@ -6,7 +6,7 @@ import {
   CheckCircle2Icon,
   ChevronRightIcon,
 } from 'lucide-react'
-import { format, isValid, parseISO } from 'date-fns'
+import { fmtDateTimeAU } from '@/lib/field-today'
 import { getProfile } from '@/lib/auth'
 import { createClient } from '@/lib/supabase/server'
 import { fetchAttachmentsWithUrls } from '@/lib/attachment-queries'
@@ -18,10 +18,9 @@ import { FORM_KIND_LABELS as KIND_LABELS } from '@/lib/form-kinds'
 import type { FormField, FormTemplateKind } from '@/lib/zod'
 import { SignonSection } from './signon-section'
 
-function fmtDateTime(value: string): string {
-  const d = parseISO(value)
-  return isValid(d) ? format(d, 'dd/MM/yyyy HH:mm') : ''
-}
+// Brisbane wall-clock. date-fns format() would use the server's own zone,
+// which is UTC in production — a 12:03 pm sign-on would read 02:03.
+const fmtDateTime = fmtDateTimeAU
 
 function humanise(key: string): string {
   return key
@@ -122,10 +121,11 @@ export default async function FormSubmissionPage({
   const schemaKeys = new Set(effectiveSchema.map((f) => f.key))
   const extraKeys = Object.keys(data).filter((k) => !schemaKeys.has(k))
 
+  // Numbers are stored with their prefix (RJ26038, RP26020) — print as stored.
   const targetLabel = projectRel
-    ? `P-${projectRel.number} — ${projectRel.name}`
+    ? `${projectRel.number} — ${projectRel.name}`
     : jobRel
-      ? `J-${jobRel.number} — ${jobRel.title}`
+      ? `${jobRel.number} — ${jobRel.title}`
       : '—'
 
   // Environmental monitoring exceedance → SUGGEST raising an incident
@@ -364,14 +364,14 @@ export default async function FormSubmissionPage({
             </div>
           )}
 
-          {isMine && (
-            <SignonSection
-              submissionId={id}
-              defaultName={profile.full_name}
-              alreadySignedSelf={mySignonExists}
-              canRecordOthers={canRecordOthers}
-            />
-          )}
+          {/* Everyone who opens the form can sign on for themselves, not only
+              whoever filed it. Recording other people stays with the filer. */}
+          <SignonSection
+            submissionId={id}
+            defaultName={profile.full_name}
+            alreadySignedSelf={mySignonExists}
+            canRecordOthers={canRecordOthers}
+          />
         </section>
       )}
 

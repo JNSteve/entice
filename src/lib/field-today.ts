@@ -32,6 +32,23 @@ export function fmtDateAU(iso: string): string {
   return `${d}/${m}/${y}`
 }
 
+/**
+ * '23/11/2026 12:03' — Brisbane date and 24-hour time of a stored UTC instant;
+ * '' when the value is not a date. For timestamps rendered on the server, in
+ * place of date-fns format(), which uses the server's own zone.
+ */
+export function fmtDateTimeAU(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  const time = new Intl.DateTimeFormat('en-GB', {
+    timeZone: TZ,
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(d)
+  return `${fmtDateAU(iso)} ${time}`
+}
+
 export interface TodayStatus {
   /** submitted_at of today's pre-start meeting on this work, or null. */
   prestartSubmittedAt: string | null
