@@ -56,3 +56,46 @@ export function checkSwmsDocumentAttachment(
   if (!isPdfFile(att.content_type, att.filename)) return 'The SWMS must be a PDF'
   return null
 }
+
+/**
+ * Where an uploaded SWMS PDF stands with the crew:
+ *   issued      an active SWMS uses it — the crew see it and sign on
+ *   superseded  the only SWMS that used it has been superseded
+ *   replaced    a revision moved its SWMS on to a newer PDF
+ *   not_pdf     only a PDF can be issued for sign-on
+ *   not_issued  filed, but the crew cannot see it yet
+ */
+export type SwmsIssueState = 'issued' | 'superseded' | 'replaced' | 'not_pdf' | 'not_issued'
+
+export function swmsIssueState(
+  file: { id: string; filename: string; content_type: string | null },
+  instances: { status: string; documentId: string | null }[],
+  replacedIds: readonly string[]
+): SwmsIssueState {
+  const using = instances.filter((i) => i.documentId === file.id)
+  if (using.some((i) => i.status === 'active')) return 'issued'
+  if (using.length > 0) return 'superseded'
+  if (replacedIds.includes(file.id)) return 'replaced'
+  if (!isPdfFile(file.content_type, file.filename)) return 'not_pdf'
+  return 'not_issued'
+}
+
+/**
+ * The PDFs a document-backed SWMS used before it was revised, read from the
+ * audit trail: audit_whs() (migration 0010) logs every swms_instances update
+ * as `{ changed: { <column>: { from, to } } }`, so a revision shows as a
+ * document_attachment_id change. Takes the audit rows' `detail` values.
+ */
+export function replacedDocumentIds(details: unknown[]): string[] {
+  const ids = new Set<string>()
+  for (const detail of details) {
+    if (!detail || typeof detail !== 'object') continue
+    const changed = (detail as { changed?: unknown }).changed
+    if (!changed || typeof changed !== 'object') continue
+    const change = (changed as { document_attachment_id?: unknown }).document_attachment_id
+    if (!change || typeof change !== 'object') continue
+    const from = (change as { from?: unknown }).from
+    if (typeof from === 'string' && from) ids.add(from)
+  }
+  return [...ids]
+}

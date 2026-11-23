@@ -162,6 +162,15 @@ function codedPattern(jobNumber: string, code: string): RegExp {
   return new RegExp(`(?:^|[^A-Z0-9])(?:${numbers.join('|')})-${code}-(\\d+)`, 'i')
 }
 
+/**
+ * True for a file filed under this job's SWMS code (RJ26013-SWMS-01 …) — the
+ * uploads that are issued to the crew for sign-on. A risk assessment (RA) or a
+ * loosely named PDF is not one.
+ */
+export function isSwmsRecordName(jobNumber: string, filename: string | null): boolean {
+  return codedPattern(jobNumber, 'SWMS').test(filename ?? '')
+}
+
 /** The job's files that satisfy a slot. Register slots never match a file. */
 export function filesForSlot(jobNumber: string, slot: JobRecordSlot, files: JobFile[]): JobFile[] {
   switch (slot.naming) {

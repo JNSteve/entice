@@ -114,6 +114,20 @@ export async function createDocumentSwmsInstance(data: unknown): Promise<Result>
   const problem = checkSwmsDocumentAttachment(att, parent)
   if (problem) return { error: problem }
 
+  // One PDF, one SWMS in force. A SWMS filed in Job records is issued as part
+  // of the upload, so picking the same file again under Add SWMS would hand
+  // the crew the same document twice. A superseded SWMS does not block.
+  const { data: inForce } = await supabase
+    .from('swms_instances')
+    .select('title')
+    .eq('document_attachment_id', attachment_id)
+    .eq('status', 'active')
+    .limit(1)
+    .maybeSingle()
+  if (inForce) {
+    return { error: `That PDF is already issued to the crew as '${inForce.title}'` }
+  }
+
   const { error } = await supabase.from('swms_instances').insert({
     template_id: null,
     project_id,

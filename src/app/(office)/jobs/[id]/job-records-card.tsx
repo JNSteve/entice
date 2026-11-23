@@ -24,6 +24,8 @@ import {
 import { CheckIcon, UploadIcon } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { recordAttachment } from '@/lib/attachments'
+import { createDocumentSwmsInstance, reviseDocumentSwmsInstance } from '@/lib/swms-actions'
+import { isPdfFile, titleFromFilename, type SwmsIssueState } from '@/lib/swms-document'
 import {
   buildStorageKey,
   removeUploadedObject,
@@ -49,10 +51,34 @@ import {
 import { updateJobRecordProfile } from '../actions'
 
 export interface JobRecordFile {
+  /** The attachment id — set for uploaded files, not for portal records. */
+  id?: string
   filename: string
   caption: string | null
   kind: string
   url: string | null
+  /** For a file filed under the SWMS code: where it stands with the crew. */
+  swms?: SwmsIssueState
+}
+
+/** An uploaded SWMS in force on the job — a revised PDF can replace its file. */
+export interface SwmsReviseTarget {
+  id: string
+  title: string
+}
+
+const SWMS_STATE_LABELS: Record<SwmsIssueState, { text: string; className: string }> = {
+  issued: { text: 'Issued to crew', className: 'text-green-700 dark:text-green-400' },
+  not_issued: {
+    text: 'Not issued to crew',
+    className: 'font-medium text-amber-600 dark:text-amber-400',
+  },
+  not_pdf: {
+    text: 'Not a PDF — cannot be issued to the crew',
+    className: 'text-amber-600 dark:text-amber-400',
+  },
+  superseded: { text: 'Superseded', className: 'text-muted-foreground' },
+  replaced: { text: 'Replaced by a newer revision', className: 'text-muted-foreground' },
 }
 
 const LICENSED_LABELS: Record<LicensedRemoval, string> = {
@@ -81,7 +107,10 @@ function extOf(name: string): string {
  * The job folder under SMS-02: the records this job must hold (from its
  * length, licensed removal class and regulated waste), what is already filed,
  * and the seven-day filing clock from the last shift (CAR-2026-06). Admin and
- * office file records from here under their SMS-02 names.
+ * office file records from here under their SMS-02 names. A PDF filed under
+ * the SWMS code is issued to the crew for sign-on as part of the upload; one
+ * filed before that (or whose issue failed) shows as not issued, with a
+ * one-click Issue to crew.
  */
 export function JobRecordsCard({
   jobId,
@@ -94,6 +123,8 @@ export function JobRecordsCard({
   files,
   today,
   canManage,
+  canIssueSwms,
+  swmsTargets,
 }: {
   jobId: string
   jobNumber: string
@@ -107,6 +138,10 @@ export function JobRecordsCard({
   /** Brisbane today (todayAU), from the server. */
   today: string
   canManage: boolean
+  /** admin/office/supervisor — the roles that may issue a SWMS. */
+  canIssueSwms: boolean
+  /** Uploaded SWMS in force on the job, offered as "replaces" on a new upload. */
+  swmsTargets: SwmsReviseTarget[]
 }) {
   const [pending, startTransition] = useTransition()
   // Held locally so the list follows a change at once; reverted if the save fails.
@@ -209,6 +244,8 @@ export function JobRecordsCard({
                   status={status}
                   filenames={filenames}
                   canManage={canManage}
+                  canIssueSwms={canIssueSwms}
+                  swmsTargets={swmsTargets}
                 />
               ))}
             </div>
@@ -245,12 +282,16 @@ function RecordRow({
   status,
   filenames,
   canManage,
+  canIssueSwms,
+  swmsTargets,
 }: {
   jobId: string
   jobNumber: string
   status: SlotStatus
   filenames: string[]
   canManage: boolean
+  canIssueSwms: boolean
+  swmsTargets: SwmsReviseTarget[]
 }) {
   const { slot, filed } = status
   // filesForSlot returns a subset of the card's own files, so each keeps its url.
@@ -273,26 +314,36 @@ function RecordRow({
               {matched.map((f, i) => (
                 <li key={i} className="flex items-start gap-1.5 text-xs">
                   <CheckIcon className="mt-px size-3.5 shrink-0 text-green-600" />
-                  {f.kind === 'swms' || f.kind === 'quote' ? (
-                    // Held in the portal (SWMS builder / quote module), not as a file.
-                    <a
-                      href={f.url ?? '#swms'}
-                      className="min-w-0 break-words underline underline-offset-2 hover:text-muted-foreground"
-                    >
-                      {`${f.filename} (${f.kind === 'swms' ? 'portal SWMS' : 'quote module'})`}
-                    </a>
-                  ) : f.url ? (
-                    <a
-                      href={f.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="min-w-0 break-words underline underline-offset-2 hover:text-muted-foreground"
-                    >
-                      {f.filename}
-                    </a>
-                  ) : (
-                    <span className="min-w-0 break-words">{f.filename}</span>
-                  )}
+                  <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    {f.kind === 'swms' || f.kind === 'quote' ? (
+                      // Held in the portal (SWMS builder / quote module), not as a file.
+                      <a
+                        href={f.url ?? '#swms'}
+                        className="min-w-0 break-words underline underline-offset-2 hover:text-muted-foreground"
+                      >
+                        {`${f.filename} (${f.kind === 'swms' ? 'portal SWMS' : 'quote module'})`}
+                      </a>
+                    ) : f.url ? (
+                      <a
+                        href={f.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="min-w-0 break-words underline underline-offset-2 hover:text-muted-foreground"
+                      >
+                        {f.filename}
+                      </a>
+                    ) : (
+                      <span className="min-w-0 break-words">{f.filename}</span>
+                    )}
+                    {f.swms && (
+                      <span className={SWMS_STATE_LABELS[f.swms].className}>
+                        {SWMS_STATE_LABELS[f.swms].text}
+                      </span>
+                    )}
+                    {f.swms === 'not_issued' && canIssueSwms && f.id && (
+                      <IssueSwmsButton jobId={jobId} attachmentId={f.id} filename={f.filename} />
+                    )}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -315,10 +366,53 @@ function RecordRow({
             jobNumber={jobNumber}
             slot={slot}
             filenames={filenames}
+            swmsTargets={swmsTargets}
           />
         )}
       </div>
     </div>
+  )
+}
+
+// ─── Issue a SWMS that is filed but not yet with the crew ─────────────────────
+
+function IssueSwmsButton({
+  jobId,
+  attachmentId,
+  filename,
+}: {
+  jobId: string
+  attachmentId: string
+  filename: string
+}) {
+  const router = useRouter()
+  const [pending, startTransition] = useTransition()
+
+  function issue() {
+    startTransition(async () => {
+      try {
+        const result = await createDocumentSwmsInstance({
+          title: titleFromFilename(filename),
+          attachment_id: attachmentId,
+          job_id: jobId,
+          project_id: null,
+        })
+        if (result.error) {
+          toast.error(result.error)
+          return
+        }
+        toast.success('Issued to the crew — it is now on this job’s SWMS tab in the field view')
+        router.refresh()
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not issue the SWMS')
+      }
+    })
+  }
+
+  return (
+    <Button type="button" variant="outline" size="xs" disabled={pending} onClick={issue}>
+      {pending ? 'Issuing…' : 'Issue to crew'}
+    </Button>
   )
 }
 
@@ -329,11 +423,13 @@ function UploadRecordDialog({
   jobNumber,
   slot,
   filenames,
+  swmsTargets,
 }: {
   jobId: string
   jobNumber: string
   slot: JobRecordSlot
   filenames: string[]
+  swmsTargets: SwmsReviseTarget[]
 }) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
@@ -344,9 +440,14 @@ function UploadRecordDialog({
   const [title, setTitle] = useState(slot.label)
   const [date, setDate] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  // The SWMS this upload replaces; '' files it as a new SWMS.
+  const [replaceId, setReplaceId] = useState('')
 
   const coded = slot.naming === 'coded'
   const dated = slot.naming === 'dated'
+  // A file under the SWMS code goes to the crew for sign-on as it is filed.
+  const issuesSwms = coded && code === 'SWMS'
+  const notPdf = issuesSwms && !!file && !isPdfFile(file.type, file.name)
   const caption = JOB_FOLDERS[slot.folder]
   const finalName = recordFileName(jobNumber, slot, {
     ext: file ? extOf(file.name) : '',
@@ -364,6 +465,7 @@ function UploadRecordDialog({
     setTitle(defaultTitle(slot, first))
     setDate(todayAUClient())
     setFile(null)
+    setReplaceId('')
     setOpen(true)
   }
 
@@ -386,6 +488,31 @@ function UploadRecordDialog({
     setFile(picked)
   }
 
+  /**
+   * Issues the filed PDF as a new SWMS, or as the next revision of one in
+   * force. Returns the problem, or null — it never throws, because by now the
+   * record is filed and the caller must not roll the upload back.
+   */
+  async function issueSwms(
+    attachmentId: string,
+    filename: string,
+    replaces: SwmsReviseTarget | null
+  ): Promise<string | null> {
+    try {
+      const result = replaces
+        ? await reviseDocumentSwmsInstance({ instance_id: replaces.id, attachment_id: attachmentId })
+        : await createDocumentSwmsInstance({
+            title: titleFromFilename(filename),
+            attachment_id: attachmentId,
+            job_id: jobId,
+            project_id: null,
+          })
+      return result.error ?? null
+    } catch (err) {
+      return err instanceof Error ? err.message : 'the server could not be reached'
+    }
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!file) {
@@ -394,10 +521,13 @@ function UploadRecordDialog({
     }
     const upload = file
     const filename = finalName
+    const issue = issuesSwms
+    const replaces = swmsTargets.find((t) => t.id === replaceId) ?? null
     startTransition(async () => {
       const supabase = createClient()
       // Uploaded as-is (no image downscale): records are filed as received.
       const path = buildStorageKey(`job/${jobId}`, filename)
+      // True while the stored object has no attachment row pointing at it.
       let uploaded = false
 
       try {
@@ -432,8 +562,34 @@ function UploadRecordDialog({
           toast.error(result.error)
           return
         }
+        // Filed. From here nothing may remove the stored file: a failed issue
+        // leaves the record in place, showing as not issued.
+        uploaded = false
 
-        toast.success(`Filed as ${filename}`)
+        if (!issue) {
+          toast.success(`Filed as ${filename}`)
+        } else if (!isPdfFile(upload.type, upload.name)) {
+          toast.warning(
+            `Filed as ${filename}, but not issued to the crew — only a PDF can be issued for sign-on`
+          )
+        } else {
+          const problem = result.id
+            ? await issueSwms(result.id, filename, replaces)
+            : 'the filed record could not be read back'
+          if (problem) {
+            toast.warning(
+              replaces
+                ? `Filed as ${filename}, but not issued to the crew: ${problem}. Revise ${replaces.title} in the SWMS section to use this file.`
+                : `Filed as ${filename}, but not issued to the crew: ${problem}. Use Issue to crew beside the file.`
+            )
+          } else if (replaces) {
+            toast.success(
+              `Filed as ${filename} and issued to the crew as a revision — everyone signs on again`
+            )
+          } else {
+            toast.success(`Filed as ${filename} and issued to the crew`)
+          }
+        }
         setOpen(false)
         router.refresh()
       } catch (err) {
@@ -449,7 +605,13 @@ function UploadRecordDialog({
 
   return (
     <>
-      <Button type="button" variant="outline" size="sm" onClick={openDialog}>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        aria-label={`Upload ${slot.label}`}
+        onClick={openDialog}
+      >
         <UploadIcon className="size-4" />
         Upload
       </Button>
@@ -507,6 +669,48 @@ function UploadRecordDialog({
               <Label htmlFor={`${idPrefix}-file`}>File (max 25 MB)</Label>
               <Input id={`${idPrefix}-file`} type="file" onChange={handleFileChange} required />
             </div>
+            {issuesSwms && (
+              <div className="flex flex-col gap-2 rounded-lg border px-3 py-2.5">
+                <p className="text-sm font-medium">Issued to the crew on upload</p>
+                <p className="text-xs text-muted-foreground">
+                  It shows on this job&apos;s SWMS tab in the field view, ready for sign-on.
+                </p>
+                {swmsTargets.length > 0 && (
+                  <fieldset className="flex flex-col gap-1.5">
+                    <legend className="mb-1 text-xs font-medium">This file is</legend>
+                    <label className="flex items-start gap-2 text-sm">
+                      <input
+                        type="radio"
+                        name={`${idPrefix}-issue-as`}
+                        className="mt-1 accent-primary"
+                        checked={replaceId === ''}
+                        onChange={() => setReplaceId('')}
+                      />
+                      <span>A new SWMS</span>
+                    </label>
+                    {swmsTargets.map((t) => (
+                      <label key={t.id} className="flex items-start gap-2 text-sm">
+                        <input
+                          type="radio"
+                          name={`${idPrefix}-issue-as`}
+                          className="mt-1 accent-primary"
+                          checked={replaceId === t.id}
+                          onChange={() => setReplaceId(t.id)}
+                        />
+                        <span className="min-w-0 break-words">
+                          {`Replaces ${t.title} — crew sign on again`}
+                        </span>
+                      </label>
+                    ))}
+                  </fieldset>
+                )}
+                {notPdf && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    Only a PDF can be issued to the crew. This file will be filed but not issued.
+                  </p>
+                )}
+              </div>
+            )}
             <div className="flex flex-col gap-1.5">
               <p className="text-sm font-medium">{`Filed in ${caption} as`}</p>
               <p className="rounded-lg bg-muted px-2.5 py-2 font-mono text-xs break-all">{finalName}</p>

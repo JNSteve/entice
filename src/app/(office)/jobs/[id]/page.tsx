@@ -26,7 +26,12 @@ import {
   MaintenanceLogList,
   type MaintenanceLogListEntry,
 } from '@/components/MaintenanceLog'
-import { fetchSwmsInstances, toSwmsDocumentOptions } from '@/lib/swms-queries'
+import {
+  fetchReplacedSwmsDocumentIds,
+  fetchSwmsInstances,
+  toSwmsDocumentOptions,
+} from '@/lib/swms-queries'
+import { swmsIssueState } from '@/lib/swms-document'
 import { SwmsInstancesSection } from '@/components/SwmsInstancesSection'
 import {
   buildSwmsTitlePagePrefill,
@@ -35,7 +40,7 @@ import {
 import { DocketTable, type DocketRow, type CostCodeOption } from '@/components/DocketTable'
 import { ArchiveBanner, ArchiveButton } from '@/components/ArchiveControl'
 import { todayAU } from '@/lib/tz'
-import { lastShiftOnSite, type LicensedRemoval } from '@/lib/job-records'
+import { isSwmsRecordName, lastShiftOnSite, type LicensedRemoval } from '@/lib/job-records'
 import { JobRecordsCard } from './job-records-card'
 
 
@@ -174,6 +179,22 @@ export default async function JobDetailPage({
   const canMutate = profile.role === 'admin' || profile.role === 'office' || profile.role === 'supervisor'
   const canSeeCosts = profile.role === 'admin' || profile.role === 'office'
   const canDeleteAttachment = profile.role === 'admin' || profile.role === 'office'
+
+  // Job records: where each file filed under the SWMS code stands with the
+  // crew. A SWMS issued from an uploaded PDF points at its file; the files a
+  // revision moved on from come from the audit trail.
+  const documentSwms = swmsInstances.filter((s) => s.document)
+  const replacedSwmsDocIds = await fetchReplacedSwmsDocumentIds(
+    supabase,
+    documentSwms.map((s) => s.id)
+  )
+  const swmsDocumentRefs = swmsInstances.map((s) => ({
+    status: s.status,
+    documentId: s.document?.id ?? null,
+  }))
+  const swmsRecordIds = new Set(
+    attachments.filter((a) => isSwmsRecordName(job.number, a.filename)).map((a) => a.id)
+  )
 
   // Invoices — admin/office only (money data).
   let invoiceRows: JobInvoiceRow[] = []
@@ -494,14 +515,22 @@ export default async function JobDetailPage({
         regulatedWaste={Boolean(job.regulated_waste)}
         files={[
           ...attachments.map((a) => ({
+            id: a.id,
             filename: a.filename,
             caption: a.caption,
             kind: a.kind,
             url: a.signedUrl,
+            swms: swmsRecordIds.has(a.id)
+              ? swmsIssueState(a, swmsDocumentRefs, replacedSwmsDocIds)
+              : undefined,
           })),
-          // A SWMS built in the portal and in force is the job's SWMS.
+          // A SWMS built in the portal and in force is the job's SWMS. One
+          // issued from a file already listed above under its SWMS code is
+          // that file, so it is not listed a second time.
           ...swmsInstances
-            .filter((s) => s.status === 'active')
+            .filter(
+              (s) => s.status === 'active' && !(s.document && swmsRecordIds.has(s.document.id))
+            )
             .map((s) => ({ filename: s.title, caption: null, kind: 'swms', url: '#swms' })),
           ...(acceptedQuote
             ? [{
@@ -514,6 +543,10 @@ export default async function JobDetailPage({
         ]}
         today={todayAU()}
         canManage={canDeleteAttachment}
+        canIssueSwms={canMutate}
+        swmsTargets={documentSwms
+          .filter((s) => s.status === 'active')
+          .map((s) => ({ id: s.id, title: s.title }))}
       />
 
       {/* Documents */}

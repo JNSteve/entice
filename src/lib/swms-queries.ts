@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { parseSwmsStructure } from '@/lib/swms'
-import { isPdfFile } from '@/lib/swms-document'
+import { isPdfFile, replacedDocumentIds } from '@/lib/swms-document'
 import { todayAU, dateAU } from '@/lib/tz'
 
 // ─── Field worker SWMS list ──────────────────────────────────────────────────
@@ -292,4 +292,24 @@ export async function fetchSwmsDocumentOptions(
   return toSwmsDocumentOptions(
     (data ?? []) as { id: string; filename: string; content_type: string | null; created_at: string }[]
   )
+}
+
+/**
+ * PDFs that these SWMS used before a revision swapped them for a newer file.
+ * Read from the audit trail (staff-readable), so it covers revisions made
+ * anywhere — Job records or the SWMS section's Replace PDF. A failed read
+ * returns none: the old file then shows as not issued rather than vanishing.
+ */
+export async function fetchReplacedSwmsDocumentIds(
+  supabase: SupabaseClient,
+  instanceIds: string[]
+): Promise<string[]> {
+  if (instanceIds.length === 0) return []
+  const { data } = await supabase
+    .from('audit_log')
+    .select('detail')
+    .eq('entity_type', 'swms_instances')
+    .eq('action', 'update')
+    .in('entity_id', instanceIds)
+  return replacedDocumentIds((data ?? []).map((r) => r.detail as unknown))
 }

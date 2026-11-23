@@ -3,6 +3,7 @@ import {
   filesForSlot,
   filingDueDate,
   isMultiDay,
+  isSwmsRecordName,
   jobRecordStatus,
   lastShiftOnSite,
   missingRecords,
@@ -180,5 +181,20 @@ describe('records held in the portal', () => {
     expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'quote')!, [quote])).toHaveLength(1)
     expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'ra_swms')!, [quote])).toHaveLength(0)
     expect(filesForSlot('RJ26013', slots.find((s) => s.key === 'prestart')!, [quote])).toHaveLength(0)
+  })
+})
+
+describe('isSwmsRecordName', () => {
+  it('recognises a file filed under the SWMS code, including quote-stage and prefixed copies', () => {
+    expect(isSwmsRecordName('RJ26038', 'RJ26038-SWMS-01 SWMS.pdf')).toBe(true)
+    expect(isSwmsRecordName('RJ26018', 'RQ26018-SWMS-01 Safe Work Method Statement Rev 0.pdf')).toBe(true)
+    expect(isSwmsRecordName('RJ26013', '01 RJ26013-SWMS-03 x.pdf')).toBe(true)
+  })
+
+  it('a risk assessment, another job, or a loosely named file is not one', () => {
+    expect(isSwmsRecordName('RJ26038', 'RJ26038-RA-01 Risk assessment.pdf')).toBe(false)
+    expect(isSwmsRecordName('RJ26038', 'RJ26039-SWMS-01 SWMS.pdf')).toBe(false)
+    expect(isSwmsRecordName('RJ26038', 'SWMS asbestos removal.pdf')).toBe(false)
+    expect(isSwmsRecordName('RJ26038', null)).toBe(false)
   })
 })
